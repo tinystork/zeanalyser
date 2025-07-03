@@ -327,6 +327,10 @@ class AstroImageAnalyzerGUI:
         self.current_snr_max = None
         self.snr_range_slider = None
         self.snr_slider_lines = ()
+        self.current_star_min = None
+        self.current_star_max = None
+        self.star_range_slider = None
+        self.star_slider_lines = ()
         
         # Références aux widgets (pour traduction, activation/désactivation)
         self.widgets_refs = {}
@@ -688,255 +692,103 @@ class AstroImageAnalyzerGUI:
         analysis_thread.start()
         return True 
     
-    def visualize_results(self):
-        """Affiche les graphiques de visualisation dans une nouvelle fenêtre."""
-        # Vérifier s'il y a des résultats à afficher
-        if not self.analysis_results and not self.analysis_running:
-            messagebox.showinfo(self._("msg_info"), self._("msg_no_results_visualize"), parent=self.root)
-            return
-        # Empêcher visualisation si analyse en cours
-        if self.analysis_running:
-            messagebox.showwarning(self._("msg_warning"), self._("msg_analysis_wait_visualize"), parent=self.root)
-            return
-        # Avertir si analyse terminée avec erreurs
-        if not self.analysis_completed_successfully:
-            messagebox.showwarning(self._("msg_warning"), self._("msg_results_incomplete") + "\n" + self._("Affichage des données disponibles.", default="Displaying available data."), parent=self.root)
 
-        # --- Bloc try principal pour la création de la fenêtre ---
-        vis_window = None # Initialiser à None
-        canvas_list = []
+    def visualize_results(self, results):
+        """Affiche un histogramme SNR et le nombre d'étoiles."""
+        vis_window = tk.Toplevel(self.root)
+        vis_window.title(self._("visu_window_title"))
+        vis_window.state('zoomed')
+        vis_window.transient(self.root)
+        vis_window.grab_set()
+
+        notebook = ttk.Notebook(vis_window)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        dist_tab = ttk.Frame(notebook)
+        notebook.add(dist_tab, text=self._("visu_tab_distribution", default="Distribution"))
+
+        paned = ttk.PanedWindow(dist_tab, orient=tk.HORIZONTAL)
+        paned.pack(fill=tk.BOTH, expand=True)
+
+        snr_frame = ttk.Labelframe(paned, text="SNR")
+        star_frame = ttk.Labelframe(paned, text=self._("Nombre d'étoiles", default="Star count"))
+        paned.add(snr_frame, weight=1)
+        paned.add(star_frame, weight=1)
+
         figures_list = []
-        try:
-            # Créer la fenêtre Toplevel pour la visualisation
-            vis_window = tk.Toplevel(self.root)
-            vis_window.title(self._("visu_window_title"))
-            vis_window.state('zoomed')
-            vis_window.transient(self.root) # Lier à la fenêtre principale
-            vis_window.grab_set() # Rendre modale
 
-            # Notebook pour les différents onglets de graphiques/données
-            notebook = ttk.Notebook(vis_window)
-            notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        snr_vals = results.get('snr_values', [])
+        fig1, ax1 = plt.subplots(figsize=(5, 4))
+        figures_list.append(fig1)
+        if snr_vals:
+            ax1.hist(snr_vals, bins=20, color='skyblue', edgecolor='black')
+            ax1.set_title(self._("visu_snr_dist_title"))
+            ax1.set_xlabel(self._("visu_snr_dist_xlabel"))
+            ax1.set_ylabel(self._("visu_snr_dist_ylabel"))
+            ax1.grid(axis='y', linestyle='--', alpha=0.7)
+            min_snr, max_snr = min(snr_vals), max(snr_vals)
+            self.current_snr_min = min_snr
+            self.current_snr_max = max_snr
+            ax1.set_xlim(min_snr, max_snr)
+            line_lo = ax1.axvline(min_snr, color='red', linestyle='--')
+            line_hi = ax1.axvline(max_snr, color='red', linestyle='--')
+            fig1.subplots_adjust(bottom=0.25)
+            slider_ax = fig1.add_axes([0.15, 0.1, 0.7, 0.05])
+            self.snr_range_slider = RangeSlider(slider_ax, "SNR", min_snr, max_snr, valinit=(min_snr, max_snr))
+            self.snr_slider_lines = (line_lo, line_hi)
+            self.snr_range_slider.on_changed(self.on_snr_slider)
+        else:
+            ax1.text(0.5, 0.5, self._("visu_snr_dist_no_data"), ha='center', va='center', fontsize=12, color='red')
+        canvas1 = FigureCanvasTkAgg(fig1, master=snr_frame)
+        canvas1.draw()
+        canvas1.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-            # --- Onglet Distribution SNR ---
-            snr_tab = ttk.Frame(notebook)
-            notebook.add(snr_tab, text=self._("visu_tab_snr_dist"))
-            fig1 = None # Initialiser figure à None
-            try:
-                fig1, ax1 = plt.subplots(figsize=(7, 5))
-                figures_list.append(fig1)
-                valid_snrs = [r['snr'] for r in self.analysis_results if r.get('status')=='ok' and 'snr' in r and np.isfinite(r['snr'])]
-                if valid_snrs:
-                    hist = ax1.hist(valid_snrs, bins=20, color='skyblue', edgecolor='black')
-                    ax1.set_title(self._("visu_snr_dist_title"))
-                    ax1.set_xlabel(self._("visu_snr_dist_xlabel"))
-                    ax1.set_ylabel(self._("visu_snr_dist_ylabel"))
-                    ax1.grid(axis='y', linestyle='--', alpha=0.7)
+        star_vals = results.get('star_counts', [])
+        fig2, ax2 = plt.subplots(figsize=(5, 4))
+        figures_list.append(fig2)
+        if star_vals:
+            ax2.hist(star_vals, bins=20, color='orange', edgecolor='black')
+            ax2.set_title(self._("Distribution des étoiles", default="Star Count Distribution"))
+            ax2.set_xlabel(self._("Nombre d'étoiles", default="Star count"))
+            ax2.set_ylabel(self._("Nombre d'images", default="Number of images"))
+            ax2.grid(axis='y', linestyle='--', alpha=0.7)
+            min_sc, max_sc = min(star_vals), max(star_vals)
+            self.current_star_min = min_sc
+            self.current_star_max = max_sc
+            ax2.set_xlim(min_sc, max_sc)
+            line_lo_sc = ax2.axvline(min_sc, color='red', linestyle='--')
+            line_hi_sc = ax2.axvline(max_sc, color='red', linestyle='--')
+            fig2.subplots_adjust(bottom=0.25)
+            slider_ax_sc = fig2.add_axes([0.15, 0.1, 0.7, 0.05])
+            self.star_range_slider = RangeSlider(slider_ax_sc, self._("Étoiles", default="Stars"), min_sc, max_sc, valinit=(min_sc, max_sc))
+            self.star_slider_lines = (line_lo_sc, line_hi_sc)
+            self.star_range_slider.on_changed(self.on_star_slider)
+        else:
+            ax2.text(0.5, 0.5, self._("Aucune donnée", default="No data"), ha='center', va='center', fontsize=12, color='red')
+        canvas2 = FigureCanvasTkAgg(fig2, master=star_frame)
+        canvas2.draw()
+        canvas2.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-                    min_snr, max_snr = min(valid_snrs), max(valid_snrs)
-                    self.current_snr_min = min_snr
-                    self.current_snr_max = max_snr
-                    ax1.set_xlim(min_snr, max_snr)
-                    line_lo = ax1.axvline(min_snr, color='red', linestyle='--')
-                    line_hi = ax1.axvline(max_snr, color='red', linestyle='--')
+        bottom_frame = ttk.Frame(vis_window)
+        bottom_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=5)
 
-                    fig1.subplots_adjust(bottom=0.25)
-                    slider_ax = fig1.add_axes([0.15, 0.1, 0.7, 0.05])
-                    self.snr_range_slider = RangeSlider(slider_ax, "SNR", min_snr, max_snr, valinit=(min_snr, max_snr))
-                    self.snr_slider_lines = (line_lo, line_hi)
+        self.visual_apply_button = ttk.Button(
+            bottom_frame,
+            text="Apply SNR Rejection",
+            state=tk.DISABLED,
+            command=self._on_visual_apply_snr
+        )
+        self.visual_apply_button.pack(side=tk.RIGHT, padx=5)
 
-                    def _on_slider_change(val):
-                        lo, hi = val
-                        line_lo.set_xdata([lo, lo])
-                        line_hi.set_xdata([hi, hi])
-                        fig1.canvas.draw_idle()
-                        self.current_snr_min = lo
-                        self.current_snr_max = hi
-                        if self.apply_snr_button:
-                            self.apply_snr_button.config(state=tk.NORMAL)
-                        if self.visual_apply_button:
-                            self.visual_apply_button.config(state=tk.NORMAL)
+        close_button = ttk.Button(
+            bottom_frame,
+            text=self._("Fermer", default="Close"),
+            command=vis_window.destroy
+        )
+        close_button.pack(side=tk.RIGHT)
+        vis_window.protocol("WM_DELETE_WINDOW", vis_window.destroy)
 
-                    self.snr_range_slider.on_changed(_on_slider_change)
-                else:
-                    ax1.text(0.5, 0.5, self._("visu_snr_dist_no_data"), ha='center', va='center', fontsize=12, color='red')
-                canvas1 = FigureCanvasTkAgg(fig1, master=snr_tab)
-                canvas1.draw()
-                canvas1.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-                canvas_list.append(canvas1)
-            except Exception as e:
-                print(f"Erreur Histogramme SNR: {e}"); ttk.Label(snr_tab, text=f"{self._('msg_error')}:\n{e}\n{traceback.format_exc()}").pack()
-                if fig1: plt.close(fig1) # Fermer figure si erreur canvas
-
-            # --- Onglet Comparaison SNR (Top/Bottom N) ---
-            comp_tab = ttk.Frame(notebook)
-            notebook.add(comp_tab, text=self._("visu_tab_snr_comp"))
-            fig2 = None
-            try:
-                valid_res = [r for r in self.analysis_results if r.get('status')=='ok' and 'snr' in r and np.isfinite(r['snr']) and 'file' in r]
-                if len(valid_res) >= 2:
-                    sorted_res = sorted(valid_res, key=lambda x: x['snr'], reverse=True)
-                    num_total = len(sorted_res); num_show = min(10, num_total // 2 if num_total >= 2 else 1)
-                    best = sorted_res[:num_show]; worst = sorted_res[-num_show:]
-                    fig_height = max(4, num_show * 0.5)
-                    fig2, (ax2, ax3) = plt.subplots(1, 2, figsize=(10, fig_height))
-                    figures_list.append(fig2)
-                    best_labels = [os.path.basename(r['file']) for r in best]; ax2.barh(best_labels, [r['snr'] for r in best], color='mediumseagreen', edgecolor='black'); ax2.set_title(self._("visu_snr_comp_best_title", n=num_show)); ax2.invert_yaxis(); ax2.set_xlabel(self._("visu_snr_comp_xlabel")); ax2.tick_params(axis='y', labelsize=8)
-                    worst_labels = [os.path.basename(r['file']) for r in worst]; ax3.barh(worst_labels, [r['snr'] for r in worst], color='salmon', edgecolor='black'); ax3.set_title(self._("visu_snr_comp_worst_title", n=num_show)); ax3.invert_yaxis(); ax3.set_xlabel(self._("visu_snr_comp_xlabel")); ax3.tick_params(axis='y', labelsize=8)
-                    fig2.tight_layout(pad=1.5); canvas2 = FigureCanvasTkAgg(fig2, master=comp_tab); canvas2.draw(); canvas2.get_tk_widget().pack(fill=tk.BOTH, expand=True); canvas_list.append(canvas2)
-                else: ttk.Label(comp_tab, text=self._("visu_snr_comp_no_data")).pack(padx=10, pady=10)
-            except Exception as e:
-                print(f"Erreur Comparaison SNR: {e}"); ttk.Label(comp_tab, text=f"{self._('msg_error')}:\n{e}\n{traceback.format_exc()}").pack()
-                if fig2: plt.close(fig2)
-
-            # --- Onglet Traînées Satellites (Camembert) ---
-            detect_trails_was_active = any('has_trails' in r for r in self.analysis_results)
-            if detect_trails_was_active:
-                sat_tab = ttk.Frame(notebook); notebook.add(sat_tab, text=self._("visu_tab_sat_trails")); fig3 = None
-                try:
-                    sat_count = sum(1 for r in self.analysis_results if r.get('has_trails', False)); no_sat_count = sum(1 for r in self.analysis_results if 'has_trails' in r and not r.get('has_trails')); total_analyzed_for_trails = sat_count + no_sat_count
-                    if total_analyzed_for_trails > 0:
-                        fig3, ax4 = plt.subplots(figsize=(6, 6)); figures_list.append(fig3); labels = [self._("visu_sat_pie_without"), self._("visu_sat_pie_with")]; sizes = [no_sat_count, sat_count]; colors = ['#66b3ff', '#ff9999']; explode = (0, 0.1 if sat_count > 0 and no_sat_count > 0 else 0)
-                        wedges, texts, autotexts = ax4.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%', shadow=True, startangle=90); ax4.axis('equal'); ax4.set_title(self._("visu_sat_pie_title")); plt.setp(autotexts, size=10, weight="bold", color="white"); plt.setp(texts, size=10)
-                        canvas3 = FigureCanvasTkAgg(fig3, master=sat_tab); canvas3.draw(); canvas3.get_tk_widget().pack(fill=tk.BOTH, expand=True); canvas_list.append(canvas3)
-                    else: ttk.Label(sat_tab, text=self._("visu_sat_pie_no_data")).pack(padx=10, pady=10)
-                except Exception as e:
-                    print(f"Erreur Camembert Satellites: {e}"); ttk.Label(sat_tab, text=f"{self._('msg_error')}:\n{e}\n{traceback.format_exc()}").pack()
-                    if fig3: plt.close(fig3)
-
-            # --- Onglet Données Détaillées (Tableau Treeview) ---
-            data_tab = ttk.Frame(notebook); notebook.add(data_tab, text=self._("visu_tab_raw_data"))
-            try:
-                cols = ('file', 'status', 'snr', 'bg', 'noise', 'pixsig'); col_names_map = {'file': self._("visu_data_col_file"), 'status': self._("Statut", default="Status"), 'snr': self._("visu_data_col_snr"), 'bg': self._("visu_data_col_bg"), 'noise': self._("visu_data_col_noise"), 'pixsig': self._("visu_data_col_pixsig"), 'trails': self._("visu_data_col_trails"), 'nbseg': self._("visu_data_col_nbseg"), 'action': self._("Action", default="Action"), 'reason': self._("Raison Rejet", default="Reject Reason"), 'comment': self._("Commentaire", default="Comment")}; col_widths = {'file': 250, 'status': 60, 'snr': 60, 'bg': 60, 'noise': 60, 'pixsig': 60, 'trails': 60, 'nbseg': 60, 'action': 80, 'reason': 80, 'comment': 150}; col_anchors = {'file': tk.W, 'status': tk.CENTER, 'snr': tk.CENTER, 'bg': tk.CENTER, 'noise': tk.CENTER, 'pixsig': tk.CENTER, 'trails': tk.CENTER, 'nbseg': tk.CENTER, 'action': tk.W, 'reason': tk.W, 'comment': tk.W}
-                if detect_trails_was_active: cols = cols + ('trails', 'nbseg'); cols = cols + ('action', 'reason', 'comment'); col_names = [col_names_map.get(c, c.capitalize()) for c in cols]
-                tree = ttk.Treeview(data_tab, columns=cols, show='headings')
-                for col_id, col_name in zip(cols, col_names): tree.heading(col_id, text=col_name, command=lambda _col=col_id: self.sort_treeview(tree, _col, False)); tree.column(col_id, width=col_widths.get(col_id, 80), anchor=col_anchors.get(col_id, tk.CENTER), stretch=tk.NO)
-                display_res = sorted(self.analysis_results, key=lambda x: x.get('snr', -np.inf) if np.isfinite(x.get('snr', -np.inf)) else -np.inf, reverse=True) if self.sort_by_snr.get() else self.analysis_results
-                for r in display_res:
-                    status = r.get('status','?'); vals = []
-                    for col_id in cols:
-                        if col_id == 'file': vals.append(r.get('rel_path', os.path.basename(r.get('file','?'))));
-                        elif col_id == 'status': vals.append(status)
-                        elif col_id == 'snr': vals.append(f"{r.get('snr',0.0):.2f}" if np.isfinite(r.get('snr', np.nan)) else "N/A")
-                        elif col_id == 'bg': vals.append(f"{r.get('sky_bg',0.0):.2f}" if np.isfinite(r.get('sky_bg', np.nan)) else "N/A")
-                        elif col_id == 'noise': vals.append(f"{r.get('sky_noise',0.0):.2f}" if np.isfinite(r.get('sky_noise', np.nan)) else "N/A")
-                        elif col_id == 'pixsig': vals.append(f"{r.get('signal_pixels',0)}")
-                        elif col_id == 'trails': vals.append(self._("logic_trail_yes") if r.get('has_trails',False) else self._("logic_trail_no"))
-                        elif col_id == 'nbseg': vals.append(f"{r.get('num_trails',0)}" if 'num_trails' in r else "N/A")
-                        elif col_id == 'action': vals.append(r.get('action','?'))
-                        elif col_id == 'reason': vals.append(r.get('rejected_reason','') or '')
-                        elif col_id == 'comment': vals.append(r.get('error_message', '') + r.get('action_comment', ''))
-                        else: vals.append(r.get(col_id, '?'))
-                    tag = ('error',) if status == 'error' else ('rejected',) if r.get('rejected_reason') else ()
-                    tree.insert('', tk.END, values=tuple(vals), tags=tag)
-                tree.tag_configure('error', background='mistyrose'); tree.tag_configure('rejected', background='lightyellow'); vsb = ttk.Scrollbar(data_tab, orient=tk.VERTICAL, command=tree.yview); hsb = ttk.Scrollbar(data_tab, orient=tk.HORIZONTAL, command=tree.xview); tree.configure(yscroll=vsb.set, xscroll=hsb.set); vsb.pack(side=tk.RIGHT, fill=tk.Y); hsb.pack(side=tk.BOTTOM, fill=tk.X); tree.pack(fill=tk.BOTH, expand=True)
-            except Exception as e: print(f"Erreur Tableau Données: {e}"); ttk.Label(data_tab, text=f"{self._('msg_error')}:\n{e}\n{traceback.format_exc()}").pack()
-
-            # --- Onglet Recommandations Stacking ---
-            stack_tab = ttk.Frame(notebook); notebook.add(stack_tab, text=self._("visu_tab_recom")); fig4=None # Placeholder fig
-            try:
-                recom_frame = ttk.LabelFrame(stack_tab, text=self._("visu_recom_frame_title"), padding=10); recom_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-                valid_kept_results = [r for r in self.analysis_results if r.get('status')=='ok' and r.get('action')=='kept' and r.get('rejected_reason') is None and 'snr' in r and np.isfinite(r['snr'])]; valid_kept_snrs = [r['snr'] for r in valid_kept_results]
-                if len(valid_kept_snrs) >= 5:
-                    p25_threshold = np.percentile(valid_kept_snrs, 25); good_img = [r for r in valid_kept_results if r['snr'] >= p25_threshold]
-                    if good_img:
-                        good_img_sorted = sorted(good_img, key=lambda x: x['snr'], reverse=True); ttk.Label(recom_frame, text=self._("visu_recom_text", count=len(good_img_sorted), p75=p25_threshold)).pack(anchor=tk.W, pady=(0,5)); rec_cols = ("file", "snr"); rec_tree = ttk.Treeview(recom_frame, columns=rec_cols, show='headings', height=10); rec_tree.heading("file", text=self._("visu_recom_col_file")); rec_tree.column("file", width=450, anchor='w'); rec_tree.heading("snr", text=self._("visu_recom_col_snr")); rec_tree.column("snr", width=100, anchor='center')
-                        for img in good_img_sorted: rec_tree.insert('', tk.END, values=(img.get('rel_path', os.path.basename(img.get('file', '?'))), f"{img.get('snr', 0.0):.2f}"));
-                        rec_scr = ttk.Scrollbar(recom_frame, orient=tk.VERTICAL, command=rec_tree.yview); rec_tree.configure(yscroll=rec_scr.set); rec_scr.pack(side=tk.RIGHT, fill=tk.Y); rec_tree.pack(fill=tk.BOTH, expand=True, pady=(0,10)); export_cmd = lambda gi=good_img_sorted, p=p25_threshold: self.export_recommended_list(gi, p); export_button = ttk.Button(recom_frame, text=self._("export_button"), command=export_cmd); export_button.pack(pady=5)
-                    else: ttk.Label(recom_frame, text=self._("visu_recom_no_selection")).pack(padx=10, pady=10)
-                elif len(valid_kept_snrs) > 0:
-                    ttk.Label(recom_frame, text=self._("visu_recom_not_enough")).pack(padx=10, pady=10); export_all_kept_cmd = lambda gi=valid_kept_results: self.export_recommended_list(gi, -1); export_all_button = ttk.Button(recom_frame, text=self._("Exporter Toutes Conservées", default="Export All Kept"), command=export_all_kept_cmd); export_all_button.pack(pady=5)
-                else: ttk.Label(recom_frame, text=self._("visu_recom_no_data")).pack(padx=10, pady=10)
-            except Exception as e:
-                 print(f"Erreur Recommandations: {e}"); traceback.print_exc(); ttk.Label(stack_tab, text=f"{self._('msg_error')}:\n{e}\n{traceback.format_exc()}").pack()
-                 # Pas de fig4 à fermer ici pour l'instant
-
-            # --- Fonction de Nettoyage et Bouton Fermer ---
-            # <--- DÉBUT DU CODE MANQUANT --->
-            def cleanup_vis_window():
-                """Nettoie les ressources Matplotlib et détruit la fenêtre."""
-                nonlocal canvas_list, figures_list, vis_window # Utiliser les variables locales
-                print("Nettoyage de la fenêtre de visualisation...")
-                # Détruire les canvas Tkinter
-                for canvas in canvas_list:
-                    if canvas and canvas.get_tk_widget().winfo_exists():
-                        try:
-                            # Tenter d'appeler close_event() - peut ne pas exister sur toutes les versions/backends
-                            if hasattr(canvas, 'close_event') and callable(canvas.close_event):
-                                canvas.close_event()
-                                print(f"  Canvas close_event() appelé pour {canvas}")
-                            # Détacher et détruire le widget Tkinter
-                            canvas.get_tk_widget().pack_forget()
-                            canvas.get_tk_widget().destroy()
-                            print(f"  Widget Canvas détruit pour {canvas}")
-                        except tk.TclError as e_tk:
-                            print(f"  TclError détruisant le widget canvas: {e_tk}")
-                        except Exception as e_other:
-                            print(f"  Erreur détruisant le widget canvas: {e_other}")
-                canvas_list = [] # Vider la liste
-
-                # Fermer les figures Matplotlib
-                print(f"  Fermeture de {len(figures_list)} figures Matplotlib...")
-                for fig in figures_list:
-                    try:
-                        plt.close(fig) # Fermer la figure
-                    except Exception as e_plt:
-                        print(f"  Erreur lors de la fermeture de la figure {fig}: {e_plt}")
-                figures_list = [] # Vider la liste
-
-                # Forcer Garbage Collection
-                print("  Forçage du Garbage Collector...")
-                collected_count = gc.collect()
-                print(f"    Garbage Collector a collecté {collected_count} objets.")
-
-                # Détruire la fenêtre Toplevel
-                if vis_window and vis_window.winfo_exists():
-                    try:
-                        print("  Destruction de la fenêtre Toplevel de visualisation...")
-                        vis_window.grab_release() # Libérer grab modal
-                        vis_window.destroy()
-                        print("  Fenêtre de visualisation détruite.")
-                    except tk.TclError as e_tk_win:
-                        print(f"  TclError détruisant vis_window: {e_tk_win}")
-                    except Exception as e_other_win:
-                        print(f"  Erreur détruisant vis_window: {e_other_win}")
-
-            # Boutons d'action en bas de la fenêtre
-            bottom_frame = ttk.Frame(vis_window)
-            bottom_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=5)
-
-            self.visual_apply_button = ttk.Button(
-                bottom_frame,
-                text="Apply SNR Rejection",
-                state=tk.DISABLED,
-                command=self._on_visual_apply_snr
-            )
-            self.visual_apply_button.pack(side=tk.RIGHT, padx=5)
-
-            close_button = ttk.Button(
-                bottom_frame,
-                text=self._("Fermer", default="Close"),
-                command=cleanup_vis_window
-            )
-            close_button.pack(side=tk.RIGHT)
-            vis_window.protocol("WM_DELETE_WINDOW", cleanup_vis_window)  # Lier bouton X
-
-            # Attendre que la fenêtre de visualisation soit fermée
-            self.root.wait_window(vis_window)
-            print("Fenêtre de visualisation fermée (wait_window finished).")
-            # <--- FIN DU CODE MANQUANT --->
-
-        # --- Fin du bloc try principal ---
-        except Exception as e_vis:
-            # Gérer erreur globale création fenêtre visualisation
-            print(f"Erreur Globale Visualisation: {e_vis}")
-            traceback.print_exc()
-            messagebox.showerror(self._("msg_error"), self._("msg_unexpected_error", e=e_vis), parent=self.root)
-            # Essayer de nettoyer même en cas d'erreur
-            if vis_window and vis_window.winfo_exists():
-                try:
-                    vis_window.destroy()
-                except Exception: pass
+        self.root.wait_window(vis_window)
 
     def sort_treeview(self, tree, col, reverse):
         """Trie les données d'un Treeview lorsqu'un en-tête de colonne est cliqué."""
@@ -1564,7 +1416,15 @@ class AstroImageAnalyzerGUI:
         self.send_reference_button.pack(side=tk.LEFT, padx=5)
         self.widgets_refs['send_reference_button'] = self.send_reference_button
 
-        self.visualize_button = ttk.Button(button_frame, text="", command=self.visualize_results, width=18)
+        self.visualize_button = ttk.Button(
+            button_frame,
+            text="",
+            command=lambda: self.visualize_results({
+                'snr_values': [r['snr'] for r in self.analysis_results if r.get('status')=='ok' and 'snr' in r and np.isfinite(r['snr'])],
+                'star_counts': [r.get('star_count', 0) for r in self.analysis_results if r.get('status')=='ok']
+            }),
+            width=18
+        )
         self.visualize_button.pack(side=tk.LEFT, padx=5); self.visualize_button.config(state=tk.DISABLED) # Désactivé au début
         self.widgets_refs['visualize_button'] = self.visualize_button # Référencer
 
@@ -2246,8 +2106,30 @@ class AstroImageAnalyzerGUI:
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
 
+    def on_snr_slider(self, val):
+        lo, hi = val
+        line_lo, line_hi = self.snr_slider_lines
+        line_lo.set_xdata([lo, lo])
+        line_hi.set_xdata([hi, hi])
+        if self.snr_range_slider:
+            self.snr_range_slider.figure.canvas.draw_idle()
+        self.current_snr_min = lo
+        self.current_snr_max = hi
+        if self.visual_apply_button:
+            self.visual_apply_button.config(state=tk.NORMAL)
+
+    def on_star_slider(self, val):
+        lo, hi = val
+        line_lo, line_hi = self.star_slider_lines
+        line_lo.set_xdata([lo, lo])
+        line_hi.set_xdata([hi, hi])
+        if self.star_range_slider:
+            self.star_range_slider.figure.canvas.draw_idle()
+        self.current_star_min = lo
+        self.current_star_max = hi
     def _on_visual_apply_snr(self):
         """Handler pour le bouton d'application SNR de la fenêtre de visualisation."""
+
         # Reuse the existing logic
         self.apply_pending_snr_actions_gui()
 

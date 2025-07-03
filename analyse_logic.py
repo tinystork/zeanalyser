@@ -10,6 +10,8 @@ from astropy.utils.exceptions import AstropyWarning
 import warnings
 import json
 import concurrent.futures
+from astropy.stats import sigma_clipped_stats
+from photutils.detection import DAOStarFinder
 
 try:
     import snr_module
@@ -279,6 +281,18 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
     return actions_count
 
 
+def count_stars(image_data, fwhm=3.0, threshold_sigma=5.0):
+    """Compte approximativement le nombre d'étoiles dans l'image."""
+    try:
+        data = np.array(image_data, dtype=float)
+        mean, median, std = sigma_clipped_stats(data, sigma=3.0, maxiters=5)
+        finder = DAOStarFinder(fwhm=fwhm, threshold=threshold_sigma * std)
+        sources = finder(data - median)
+        return 0 if sources is None else len(sources)
+    except Exception:
+        return 0
+
+
 
 # --- Helpers for parallel processing ---
 def _snr_worker(path):
@@ -306,7 +320,9 @@ def _snr_worker(path):
                 result['filter'] = header.get('FILTER', 'N/A')
                 result['temperature'] = header.get('CCD-TEMP', header.get('TEMPERAT', 'N/A'))
                 snr, sky_bg, sky_noise, signal_pixels = snr_module.calculate_snr(data)
-                result.update({'snr': snr, 'sky_bg': sky_bg, 'sky_noise': sky_noise, 'signal_pixels': signal_pixels})
+                star_count = count_stars(data)
+                result.update({'snr': snr, 'sky_bg': sky_bg, 'sky_noise': sky_noise,
+                               'signal_pixels': signal_pixels, 'star_count': star_count})
             else:
                 result['error'] = 'Pas de données image valides dans HDU 0.'
     except Exception as e:
@@ -583,12 +599,14 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                 filter_name = header.get('FILTER', 'N/A')
                                 temperature = header.get('CCD-TEMP', header.get('TEMPERAT', 'N/A'))
                                 snr, sky_bg, sky_noise, signal_pixels = snr_module.calculate_snr(data)
+                                star_count = count_stars(data)
                                 if np.isfinite(snr) and np.isfinite(sky_bg) and np.isfinite(sky_noise):
                                     snr_data = {
                                         'snr': snr,
                                         'sky_bg': sky_bg,
                                         'sky_noise': sky_noise,
                                         'signal_pixels': signal_pixels,
+                                        'star_count': star_count,
                                         'exposure': exposure,
                                         'filter': filter_name,
                                         'temperature': temperature,
