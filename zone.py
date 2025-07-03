@@ -66,6 +66,7 @@ translations = {
         'use_best_reference_button': 'Envoyer Référence',
         'Exporter Toutes Conservées': "Exporter Toutes Conservées",
         'apply_snr_rejection_button': "Appliquer Rejet SNR",
+        'visual_apply_snr_button': "Appliquer Rejet SNR",
 
         # --- Textes acstools status ---
         'acstools_ok': "(acstools disponible)", 'acstools_missing': "(acstools non trouvé ou incompatible)", 'acstools_sig_error': "(fonction detsat incompatible)",
@@ -236,6 +237,7 @@ translations = {
         
         #--- Apply SNR
         'apply_snr_rejection_button': "Apply SNR Rejection",
+        'visual_apply_snr_button': "Apply SNR Rejection",
         'Des actions SNR sont en attente.': "Pending SNR actions.", # Message de statut
         'Aucune action SNR en attente à appliquer.': "No pending SNR actions to apply.",
         "L'action sur rejet est 'Ne Rien Faire'. Aucune action ne sera appliquée.": "Reject action is 'Do Nothing'. No file actions will be performed.",
