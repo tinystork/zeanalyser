@@ -901,25 +901,33 @@ class AstroImageAnalyzerGUI:
                     except Exception as e_other_win:
                         print(f"  Erreur détruisant vis_window: {e_other_win}")
 
-            # Boutons d'action en bas de la fenêtre
-            bottom_frame = ttk.Frame(vis_window)
+            # --- Action buttons at the bottom of the window ---
+            top = vis_window  # existing toplevel window for the visualization
+
+            bottom_frame = ttk.Frame(top)
             bottom_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=5)
 
+            # cloned Apply SNR Rejection button
             self.visual_apply_button = ttk.Button(
                 bottom_frame,
-                text="Apply SNR Rejection",
+                text=self._("visual_apply_snr_button", default="Apply SNR Rejection"),
                 state=tk.DISABLED,
                 command=self._on_visual_apply_snr
             )
             self.visual_apply_button.pack(side=tk.RIGHT, padx=5)
+            self.tooltips['visual_apply_button'] = ToolTip(
+                self.visual_apply_button,
+                lambda: self._('tooltip_apply_snr_rejection', default='Apply pending SNR actions')
+            )
 
+            # existing Close button
             close_button = ttk.Button(
                 bottom_frame,
                 text=self._("Fermer", default="Close"),
                 command=cleanup_vis_window
             )
             close_button.pack(side=tk.RIGHT)
-            vis_window.protocol("WM_DELETE_WINDOW", cleanup_vis_window)  # Lier bouton X
+            top.protocol("WM_DELETE_WINDOW", cleanup_vis_window)  # Bind window X button
 
             # Attendre que la fenêtre de visualisation soit fermée
             self.root.wait_window(vis_window)
@@ -2248,16 +2256,16 @@ class AstroImageAnalyzerGUI:
 
     def _on_visual_apply_snr(self):
         """Handler pour le bouton d'application SNR de la fenêtre de visualisation."""
-        # Reuse the existing logic
+        # 1) réutilise la logique existante
         self.apply_pending_snr_actions_gui()
 
-        # Disable both buttons
+        # 2) désactive les deux boutons
         if self.apply_snr_button:
             self.apply_snr_button.config(state=tk.DISABLED)
         if self.visual_apply_button:
             self.visual_apply_button.config(state=tk.DISABLED)
 
-        # Disable the slider if possible
+        # 3) désactive le RangeSlider pour verrouiller la plage
         try:
             if self.snr_range_slider:
                 self.snr_range_slider.set_active(False)
