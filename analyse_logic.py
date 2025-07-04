@@ -296,8 +296,10 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
 
 
 # --- Helpers for parallel processing ---
+
 def _snr_worker(path):
     """Worker to compute SNR and star count for a FITS file."""
+
     result = {
         'path': path,
         'snr': np.nan,
@@ -323,7 +325,9 @@ def _snr_worker(path):
                 result['temperature'] = header.get('CCD-TEMP', header.get('TEMPERAT', 'N/A'))
                 snr, sky_bg, sky_noise, signal_pixels = snr_module.calculate_snr(data)
                 result.update({'snr': snr, 'sky_bg': sky_bg, 'sky_noise': sky_noise, 'signal_pixels': signal_pixels})
+
                 if starcount_module is not None:
+
                     try:
                         result['starcount'] = starcount_module.calculate_starcount(data)
                     except Exception:
@@ -517,7 +521,9 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     snr_loop_errors = 0
     try:
         with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers) as ex:
+
             future_map = {ex.submit(_snr_worker, p): p for p in fits_files_to_process}
+
             for idx, future in enumerate(concurrent.futures.as_completed(future_map)):
                 fits_file_path = future_map[future]
                 progress = ((idx + 1) / total_files) * 50
@@ -573,6 +579,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         _log("logic_warn_prefix", text=f"Echec pool SNR ({pool_e}), fallback séquentiel")
         all_results_list = []
         snr_loop_errors = 0
+
         for i, fits_file_path in enumerate(fits_files_to_process):
             progress = ((i + 1) / total_files) * 50
             try:
@@ -619,7 +626,9 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                         'temperature': temperature,
                                     }
                                     result.update(snr_data)
+
                                     if starcount_module is not None:
+
                                         try:
                                             result['starcount'] = starcount_module.calculate_starcount(data)
                                         except Exception:
