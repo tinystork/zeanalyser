@@ -2906,9 +2906,13 @@ class AstroImageAnalyzerGUI:
         self.analysis_completed_successfully = success
         self.best_reference_path = self._get_best_reference()
         if success and self.analysis_results:
-            self.recommended_images = self._compute_recommendations()
+            (self.recommended_images,
+             self.reco_snr_min,
+             self.reco_fwhm_max,
+             self.reco_ecc_max) = analyse_logic.build_recommended_images(self.analysis_results)
         else:
             self.recommended_images = []
+            self.reco_snr_min = self.reco_fwhm_max = self.reco_ecc_max = None
         self._set_widget_state(self.send_reference_button, tk.NORMAL if self.best_reference_path else tk.DISABLED)
         final_status_key = ""
         processed_count = 0 ; action_count = 0 ; errors_count = 0
@@ -3197,6 +3201,7 @@ class AstroImageAnalyzerGUI:
     def _apply_recommendations_gui(self):
         """Keep only recommended images and apply reject actions."""
         if not getattr(self, 'recommended_images', None):
+            messagebox.showinfo("Info", "Aucune recommandation calculée.")
             return
 
         reco_files = {os.path.abspath(img['file']) for img in self.recommended_images}
@@ -3217,6 +3222,57 @@ class AstroImageAnalyzerGUI:
             progress_callback=lambda p: None,
             input_dir_abs=self.input_dir.get()
         )
+
+        # Apply any pending SNR/FWHM/Starcount/Eccentricity actions as well
+        try:
+            analyse_logic.apply_pending_snr_actions(
+                self.analysis_results,
+                self.snr_reject_dir.get(),
+                delete_rejected_flag=self.reject_action.get() == 'delete',
+                move_rejected_flag=self.reject_action.get() == 'move',
+                log_callback=lambda *a, **k: None,
+                status_callback=lambda *a, **k: None,
+                progress_callback=lambda p: None,
+                input_dir_abs=self.input_dir.get(),
+            )
+        except Exception:
+            pass
+
+        if hasattr(analyse_logic, 'apply_pending_starcount_actions'):
+            analyse_logic.apply_pending_starcount_actions(
+                self.analysis_results,
+                self.starcount_reject_dir.get(),
+                delete_rejected_flag=self.reject_action.get() == 'delete',
+                move_rejected_flag=self.reject_action.get() == 'move',
+                log_callback=lambda *a, **k: None,
+                status_callback=lambda *a, **k: None,
+                progress_callback=lambda p: None,
+                input_dir_abs=self.input_dir.get(),
+            )
+
+        if hasattr(analyse_logic, 'apply_pending_fwhm_actions'):
+            analyse_logic.apply_pending_fwhm_actions(
+                self.analysis_results,
+                self.starcount_reject_dir.get(),
+                delete_rejected_flag=self.reject_action.get() == 'delete',
+                move_rejected_flag=self.reject_action.get() == 'move',
+                log_callback=lambda *a, **k: None,
+                status_callback=lambda *a, **k: None,
+                progress_callback=lambda p: None,
+                input_dir_abs=self.input_dir.get(),
+            )
+
+        if hasattr(analyse_logic, 'apply_pending_ecc_actions'):
+            analyse_logic.apply_pending_ecc_actions(
+                self.analysis_results,
+                self.starcount_reject_dir.get(),
+                delete_rejected_flag=self.reject_action.get() == 'delete',
+                move_rejected_flag=self.reject_action.get() == 'move',
+                log_callback=lambda *a, **k: None,
+                status_callback=lambda *a, **k: None,
+                progress_callback=lambda p: None,
+                input_dir_abs=self.input_dir.get(),
+            )
 
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
