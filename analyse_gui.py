@@ -2906,9 +2906,13 @@ class AstroImageAnalyzerGUI:
         self.analysis_completed_successfully = success
         self.best_reference_path = self._get_best_reference()
         if success and self.analysis_results:
-            self.recommended_images = self._compute_recommendations()
+            (self.recommended_images,
+             self.reco_snr_min,
+             self.reco_fwhm_max,
+             self.reco_ecc_max) = analyse_logic.build_recommended_images(self.analysis_results)
         else:
             self.recommended_images = []
+            self.reco_snr_min = self.reco_fwhm_max = self.reco_ecc_max = None
         self._set_widget_state(self.send_reference_button, tk.NORMAL if self.best_reference_path else tk.DISABLED)
         final_status_key = ""
         processed_count = 0 ; action_count = 0 ; errors_count = 0
@@ -3197,6 +3201,7 @@ class AstroImageAnalyzerGUI:
     def _apply_recommendations_gui(self):
         """Keep only recommended images and apply reject actions."""
         if not getattr(self, 'recommended_images', None):
+            messagebox.showinfo("Info", "Aucune recommandation calculée.")
             return
 
         reco_files = {os.path.abspath(img['file']) for img in self.recommended_images}
