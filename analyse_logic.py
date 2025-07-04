@@ -47,6 +47,23 @@ except Exception as e:
     print(f"ERREUR (analyse_logic): Erreur lors de l'import ou de la lecture de trail_module: {e}")
 
 
+def sanitize_for_json(obj):
+    """Convertit récursivement les objets pour compatibilité JSON."""
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_for_json(elem) for elem in obj]
+    if isinstance(obj, (np.float32, np.float64)):
+        return float(obj) if np.isfinite(obj) else None
+    if isinstance(obj, (np.int32, np.int64, np.int_)):
+        return int(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, float) and not np.isfinite(obj):
+        return None
+    return obj
+
+
 
 def write_log_summary(log_file_path, input_dir, options,
                       analysis_config=None,
@@ -135,34 +152,10 @@ def write_log_summary(log_file_path, input_dir, options,
                 else:
                     log_file.write("Statistiques Starcount: Aucune donnée valide.\n")
             
-            # --- AJOUT : Section pour sauvegarder les données de visualisation ---
             if results_list is not None:
-                log_file.write("\n" + "--- BEGIN VISUALIZATION DATA ---" + "\n")
-                try:
-                    # Remplacer les NaN par None pour une sérialisation JSON valide
-                    # et convertir les booléens numpy en booléens python
-                    def sanitize_for_json(obj):
-                        if isinstance(obj, dict):
-                            return {k: sanitize_for_json(v) for k, v in obj.items()}
-                        elif isinstance(obj, list):
-                            return [sanitize_for_json(elem) for elem in obj]
-                        elif isinstance(obj, (np.float32, np.float64)):
-                            return float(obj) if np.isfinite(obj) else None
-                        elif isinstance(obj, (np.int32, np.int64, np.int_)):
-                            return int(obj)
-                        elif isinstance(obj, np.bool_):
-                            return bool(obj)
-                        elif isinstance(obj, float) and not np.isfinite(obj): # Gérer NaN/inf float Python
-                            return None
-                        return obj
-
-                    sanitized_results = sanitize_for_json(results_list)
-                    json.dump(sanitized_results, log_file, indent=4) # indent pour lisibilité
-                    log_file.write("\n" + "--- END VISUALIZATION DATA ---" + "\n")
-                except Exception as e_json:
-                    log_file.write(f"ERREUR: Impossible de sauvegarder les données de visualisation en JSON: {e_json}\n")
-                    log_file.write("--- END VISUALIZATION DATA (ERROR) ---" + "\n")
-            # --- FIN AJOUT ---
+                log_file.write("\n--- BEGIN VISUALIZATION DATA ---\n")
+                json.dump(sanitize_for_json(results_list), log_file, indent=4)
+                log_file.write("\n--- END VISUALIZATION DATA ---\n")
 
     except Exception as e:
         print(f"ERREUR CRITIQUE lors de l'écriture du résumé du log ({log_file_path}): {e}"); traceback.print_exc()
