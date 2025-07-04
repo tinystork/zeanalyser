@@ -3223,6 +3223,57 @@ class AstroImageAnalyzerGUI:
             input_dir_abs=self.input_dir.get()
         )
 
+        # Apply any pending SNR/FWHM/Starcount/Eccentricity actions as well
+        try:
+            analyse_logic.apply_pending_snr_actions(
+                self.analysis_results,
+                self.snr_reject_dir.get(),
+                delete_rejected_flag=self.reject_action.get() == 'delete',
+                move_rejected_flag=self.reject_action.get() == 'move',
+                log_callback=lambda *a, **k: None,
+                status_callback=lambda *a, **k: None,
+                progress_callback=lambda p: None,
+                input_dir_abs=self.input_dir.get(),
+            )
+        except Exception:
+            pass
+
+        if hasattr(analyse_logic, 'apply_pending_starcount_actions'):
+            analyse_logic.apply_pending_starcount_actions(
+                self.analysis_results,
+                self.starcount_reject_dir.get(),
+                delete_rejected_flag=self.reject_action.get() == 'delete',
+                move_rejected_flag=self.reject_action.get() == 'move',
+                log_callback=lambda *a, **k: None,
+                status_callback=lambda *a, **k: None,
+                progress_callback=lambda p: None,
+                input_dir_abs=self.input_dir.get(),
+            )
+
+        if hasattr(analyse_logic, 'apply_pending_fwhm_actions'):
+            analyse_logic.apply_pending_fwhm_actions(
+                self.analysis_results,
+                self.starcount_reject_dir.get(),
+                delete_rejected_flag=self.reject_action.get() == 'delete',
+                move_rejected_flag=self.reject_action.get() == 'move',
+                log_callback=lambda *a, **k: None,
+                status_callback=lambda *a, **k: None,
+                progress_callback=lambda p: None,
+                input_dir_abs=self.input_dir.get(),
+            )
+
+        if hasattr(analyse_logic, 'apply_pending_ecc_actions'):
+            analyse_logic.apply_pending_ecc_actions(
+                self.analysis_results,
+                self.starcount_reject_dir.get(),
+                delete_rejected_flag=self.reject_action.get() == 'delete',
+                move_rejected_flag=self.reject_action.get() == 'move',
+                log_callback=lambda *a, **k: None,
+                status_callback=lambda *a, **k: None,
+                progress_callback=lambda p: None,
+                input_dir_abs=self.input_dir.get(),
+            )
+
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
         if hasattr(self, 'apply_reco_button') and self.apply_reco_button:
