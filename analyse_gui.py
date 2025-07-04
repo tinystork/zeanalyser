@@ -25,6 +25,13 @@ import json
 import importlib.util
 import numbers
 
+# Détection de l'environnement : intégré ou autonome
+try:
+    import zeseestarstacker  # package parent
+    _EMBEDDED_IN_STACKER = True
+except ImportError:
+    _EMBEDDED_IN_STACKER = False
+
 # Helper to safely check numeric finite values
 def is_finite_number(value):
     """Return True if value is a real number and finite."""
@@ -544,7 +551,7 @@ class ToolTip:
 class AstroImageAnalyzerGUI:
     """Interface graphique pour l'analyseur d'images astronomiques."""
     def __init__(self, root, command_file_path=None, main_app_callback=None,
-                 initial_lang='fr', lock_language=False):
+                 initial_lang='fr', lock_language=None):
         """
         Initialise l'interface graphique.
 
@@ -554,7 +561,9 @@ class AstroImageAnalyzerGUI:
                                                pour la communication avec le GUI principal.
             main_app_callback (callable, optional): Fonction à appeler lors de la fermeture (Retour).
             initial_lang (str): Langue initiale de l'interface.
-            lock_language (bool): Si vrai, la sélection de langue sera désactivée.
+            lock_language (bool or None):
+                Si True, la sélection de langue sera désactivée.
+                Si None, le choix est déterminé automatiquement.
         """
         self.root = root
         self.main_app_callback = main_app_callback # Callback pour retourner au script appelant
@@ -601,6 +610,8 @@ class AstroImageAnalyzerGUI:
 
         # Variables Tkinter pour lier les widgets aux données
         self.current_lang = tk.StringVar(value=initial_lang)
+        if lock_language is None:
+            lock_language = _EMBEDDED_IN_STACKER
         self.lock_language = lock_language
         self.current_lang.trace_add('write', self.change_language)
 
@@ -2140,21 +2151,23 @@ class AstroImageAnalyzerGUI:
         self.widgets_refs['include_subfolders_label'] = subfolder_check
 
         # Ligne 3: Sélection Langue (Aligné à droite)
-        lang_frame = ttk.Frame(config_frame)
-        lang_frame.grid(row=3, column=0, columnspan=3, sticky=tk.E, pady=5, padx=5)
-        lang_label = ttk.Label(lang_frame, text="")
-        lang_label.pack(side=tk.LEFT, padx=(0, 5))
-        self.widgets_refs['lang_label'] = lang_label
-        lang_options = sorted([lang for lang in translations.keys()]) # Options de langue disponibles
-        combo_state = "disabled" if self.lock_language else "readonly"
-        self.lang_combobox = ttk.Combobox(
-            lang_frame,
-            textvariable=self.current_lang,
-            values=lang_options,
-            state=combo_state,
-            width=5,
-        )
-        self.lang_combobox.pack(side=tk.LEFT)
+        if not self.lock_language:
+            lang_frame = ttk.Frame(config_frame)
+            lang_frame.grid(row=3, column=0, columnspan=3, sticky=tk.E, pady=5, padx=5)
+            lang_label = ttk.Label(lang_frame, text="")
+            lang_label.pack(side=tk.LEFT, padx=(0, 5))
+            self.widgets_refs['lang_label'] = lang_label
+            lang_options = sorted([lang for lang in translations.keys()])
+            self.lang_combobox = ttk.Combobox(
+                lang_frame,
+                textvariable=self.current_lang,
+                values=lang_options,
+                state="readonly",
+                width=5,
+            )
+            self.lang_combobox.pack(side=tk.LEFT)
+        else:
+            self.lang_combobox = None
 
         # --- Cadre Analyse SNR ---
         snr_frame = ttk.LabelFrame(main_frame, text="", padding="10")

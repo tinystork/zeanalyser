@@ -303,6 +303,15 @@ translations = {
         "Échec application rejets SNR.": "Failed applying SNR rejections.",
 
 
+# Fin du dictionnaire de traductions
     }
 }
+
+# Fallback pour la fonction de traduction
+try:
+    from zeseestarstacker.i18n import _
+except ImportError:
+    def _(key, *args, **kwargs):
+        return translations.get('fr', {}).get(key, key)
+
 # --- FIN DU FICHIER zone.py ---
