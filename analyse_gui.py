@@ -1174,7 +1174,7 @@ class AstroImageAnalyzerGUI:
                     self.fwhm_range_slider.on_changed(
                         lambda val: self._on_fwhm_slider_change(val))
                 else:
-                    ax_fwhm.text(0.5, 0.5, self._('visu_snr_dist_no_data'), ha='center', va='center', fontsize=12, color='red')
+                    ax_fwhm.text(0.5, 0.5, self._('visu_fwhm_no_data'), ha='center', va='center', fontsize=12, color='red')
 
                 canvas_fwhm = FigureCanvasTkAgg(fig_fwhm, master=fwhm_tab)
                 canvas_fwhm.draw()
@@ -1215,7 +1215,7 @@ class AstroImageAnalyzerGUI:
                     self.ecc_range_slider.on_changed(
                         lambda val: self._on_ecc_slider_change(val))
                 else:
-                    ax_ecc.text(0.5, 0.5, self._('visu_snr_dist_no_data'), ha='center', va='center', fontsize=12, color='red')
+                    ax_ecc.text(0.5, 0.5, self._('visu_ecc_no_data'), ha='center', va='center', fontsize=12, color='red')
 
                 canvas_ecc = FigureCanvasTkAgg(fig_ecc, master=ecc_tab)
                 canvas_ecc.draw()
