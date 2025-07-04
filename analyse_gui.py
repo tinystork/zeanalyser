@@ -680,6 +680,8 @@ class AstroImageAnalyzerGUI:
         self.apply_starcount_button = None
         self.apply_fwhm_button = None
         self.apply_ecc_button = None
+        self.apply_reco_button = None
+        self.visual_apply_reco_button = None
         
         # Vérifier si les traductions ont été chargées
         if 'translations' not in globals() or not translations:
@@ -1661,6 +1663,16 @@ class AstroImageAnalyzerGUI:
                 lambda: self._('tooltip_apply_snr_rejection', default='Apply pending SNR actions')
             )
 
+            self.visual_apply_reco_button = ttk.Button(
+                bottom_frame,
+                text=self._('visual_apply_reco_button'),
+                state=tk.DISABLED,
+                command=self._apply_recommendations_gui
+            )
+            self.visual_apply_reco_button.pack(side=tk.RIGHT, padx=5)
+            if self.recommended_images:
+                self.visual_apply_reco_button.config(state=tk.NORMAL)
+
             # existing Close button
             close_button = ttk.Button(
                 bottom_frame,
@@ -2325,6 +2337,16 @@ class AstroImageAnalyzerGUI:
         self.manage_markers_button.pack(side=tk.LEFT, padx=5)
         self.widgets_refs['manage_markers_button'] = self.manage_markers_button
 
+        self.apply_reco_button = ttk.Button(
+            button_frame,
+            text=self._('apply_reco_button'),
+            command=self._apply_recommendations_gui,
+            width=18,
+            state=tk.DISABLED
+        )
+        self.apply_reco_button.pack(side=tk.RIGHT, padx=5)
+        self.widgets_refs['apply_reco_button'] = self.apply_reco_button
+
         self.return_button = ttk.Button(button_frame, text="", command=self.return_or_quit, width=12)
         self.return_button.pack(side=tk.RIGHT, padx=5)
         # La référence pour le bouton Retour/Quitter sera ajoutée dans change_language
@@ -2883,6 +2905,10 @@ class AstroImageAnalyzerGUI:
         self.analysis_results = results if results else []
         self.analysis_completed_successfully = success
         self.best_reference_path = self._get_best_reference()
+        if success and self.analysis_results:
+            self.recommended_images = self._compute_recommendations()
+        else:
+            self.recommended_images = []
         self._set_widget_state(self.send_reference_button, tk.NORMAL if self.best_reference_path else tk.DISABLED)
         final_status_key = ""
         processed_count = 0 ; action_count = 0 ; errors_count = 0
@@ -2941,8 +2967,12 @@ class AstroImageAnalyzerGUI:
                 )
                 if self.reject_action.get() == 'move' and not self.snr_reject_dir.get():
                     can_apply_snr_action = False # Ne pas activer si déplacement requis mais dossier non spécifié
-                    
+
                 self._set_widget_state(self.apply_snr_button, tk.NORMAL if can_apply_snr_action else tk.DISABLED)
+            # Activer/désactiver bouton recommandations
+            if hasattr(self, 'apply_reco_button') and self.apply_reco_button:
+                state = tk.NORMAL if (success and self.recommended_images) else tk.DISABLED
+                self.apply_reco_button.config(state=state)
             # --- FIN NOUVEAU ---
         
         if should_write_command and folder_to_stack:
@@ -2990,6 +3020,35 @@ class AstroImageAnalyzerGUI:
             and is_finite_number(r['snr'])
         ]
         return max(valid, key=lambda r: r['snr'])['path'] if valid else None
+
+    def _compute_recommendations(self):
+        """Return a list of recommended images based on percentiles."""
+        valid_kept = [
+            r for r in self.analysis_results
+            if r.get('status') == 'ok'
+            and r.get('action') == 'kept'
+            and r.get('rejected_reason') is None
+            and 'snr' in r and is_finite_number(r['snr'])
+        ]
+        snrs = [r['snr'] for r in valid_kept]
+        sc_vals = [r['starcount'] for r in valid_kept
+                   if r.get('starcount') is not None and is_finite_number(r['starcount'])]
+        fwhm_vals = [r['fwhm'] for r in valid_kept if is_finite_number(r.get('fwhm', np.nan))]
+        ecc_vals = [r['ecc'] for r in valid_kept if is_finite_number(r.get('ecc', np.nan))]
+
+        if len(snrs) >= 5 and len(fwhm_vals) >= 5 and len(ecc_vals) >= 5:
+            snr_p25 = np.percentile(snrs, 25)
+            fwhm_p75 = np.percentile(fwhm_vals, 75)
+            ecc_p75 = np.percentile(ecc_vals, 75)
+            return [r for r in valid_kept if r['snr'] >= snr_p25 and r.get('fwhm', np.inf) <= fwhm_p75 and r.get('ecc', np.inf) <= ecc_p75]
+        if len(snrs) >= 5 and len(sc_vals) >= 5:
+            snr_p25 = np.percentile(snrs, 25)
+            sc_p25 = np.percentile(sc_vals, 25)
+            return [r for r in valid_kept if r['snr'] >= snr_p25 and r.get('starcount', -np.inf) >= sc_p25]
+        if len(snrs) >= 5:
+            snr_p25 = np.percentile(snrs, 25)
+            return [r for r in valid_kept if r['snr'] >= snr_p25]
+        return []
 
     def send_reference_to_main(self):
         """Envoie le chemin de référence calculé au GUI principal."""
@@ -3134,6 +3193,37 @@ class AstroImageAnalyzerGUI:
 
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
+
+    def _apply_recommendations_gui(self):
+        """Keep only recommended images and apply reject actions."""
+        if not getattr(self, 'recommended_images', None):
+            return
+
+        reco_files = {os.path.abspath(img['file']) for img in self.recommended_images}
+
+        for r in self.analysis_results:
+            if r.get('status') == 'ok' and r.get('action') == 'kept':
+                if os.path.abspath(r['file']) not in reco_files:
+                    r['rejected_reason'] = 'not_in_recommendation'
+                    r['action'] = 'pending_reco_action'
+
+        analyse_logic.apply_pending_reco_actions(
+            self.analysis_results,
+            self.snr_reject_dir.get(),
+            delete_rejected_flag=self.reject_action.get() == 'delete',
+            move_rejected_flag=self.reject_action.get() == 'move',
+            log_callback=lambda *a, **k: None,
+            status_callback=lambda *a, **k: None,
+            progress_callback=lambda p: None,
+            input_dir_abs=self.input_dir.get()
+        )
+
+        if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
+            self._refresh_treeview()
+        if hasattr(self, 'apply_reco_button') and self.apply_reco_button:
+            self.apply_reco_button.config(state=tk.DISABLED)
+        if hasattr(self, 'visual_apply_reco_button') and self.visual_apply_reco_button:
+            self.visual_apply_reco_button.config(state=tk.DISABLED)
 
     def _on_visual_apply_snr(self):
         """Handler pour le bouton d'application SNR de la fenêtre de visualisation."""

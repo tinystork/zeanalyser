@@ -68,6 +68,8 @@ translations = {
         'apply_snr_rejection_button': "Appliquer Rejet SNR",
         'visual_apply_snr_button': "Appliquer Rejet SNR",
         'apply_starcount_rejection': "Appliquer Rejet Starcount",
+        'apply_reco_button': "Appliquer Recommandations",
+        'visual_apply_reco_button': "Appliquer Recommandations",
 
         # --- Textes acstools status ---
         'acstools_ok': "(acstools disponible)", 'acstools_missing': "(acstools non trouvé ou incompatible)", 'acstools_sig_error': "(fonction detsat incompatible)",
@@ -280,7 +282,9 @@ translations = {
         'marker_delete_selected_success': "{count} marker(s) deleted.",
         'marker_delete_all_success': "All {count} found marker(s) deleted.",
         'apply_starcount_rejection': "Apply Starcount Rejection",
-        
+        'apply_reco_button': "Apply Recommendations",
+        'visual_apply_reco_button': "Apply Recommendations",
+
         #--- Apply SNR
         'apply_snr_rejection_button': "Apply SNR Rejection",
         'visual_apply_snr_button': "Apply SNR Rejection",

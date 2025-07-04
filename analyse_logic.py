@@ -300,6 +300,109 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
     return actions_count
 
 
+def apply_pending_reco_actions(results_list, reject_abs_path,
+                               delete_rejected_flag, move_rejected_flag,
+                               log_callback, status_callback, progress_callback,
+                               input_dir_abs):
+    """Apply actions for images not in recommendations."""
+    actions_count = 0
+    if not results_list:
+        return actions_count
+
+    _log = log_callback if callable(log_callback) else lambda k, **kw: None
+    _status = status_callback if callable(status_callback) else lambda k, **kw: None
+    _progress = progress_callback if callable(progress_callback) else lambda v: None
+
+    to_process = [r for r in results_list if r.get('rejected_reason') == 'not_in_recommendation' and r.get('action') == 'pending_reco_action' and r.get('status') == 'ok']
+    total = len(to_process)
+    if total == 0:
+        _log('logic_info_prefix', text="Aucune action recommandation en attente.")
+        return 0
+
+    _status('status_custom', text=f'Application des actions recommandation sur {total} fichiers...')
+    _progress(0)
+
+    for i, r in enumerate(to_process):
+        _progress(((i + 1) / total) * 100)
+        try:
+            rel_path = os.path.relpath(r.get('path'), input_dir_abs) if r.get('path') and input_dir_abs else r.get('file', 'N/A')
+        except ValueError:
+            rel_path = r.get('file', 'N/A')
+
+        _status('status_custom', text=f'Action reco sur {rel_path} ({i+1}/{total})')
+
+        current_path = r.get('path')
+        if not current_path or not os.path.exists(current_path):
+            _log('logic_move_skipped', file=rel_path, e='Fichier source introuvable pour action recommandation.')
+            r['action_comment'] = r.get('action_comment', '') + ' Source non trouvée pour action différée.'
+            r['action'] = 'error_action_deferred'
+            r['status'] = 'error'
+            continue
+
+        action_done = False
+        original_reason = r['rejected_reason']
+        if delete_rejected_flag:
+            try:
+                os.remove(current_path)
+                _log('logic_info_prefix', text=f'Fichier supprimé (reco): {rel_path}')
+                r['path'] = None
+                r['action'] = 'deleted_reco'
+                r['rejected_reason'] = 'not_in_recommendation'
+                r['status'] = 'processed_action'
+                actions_count += 1
+                action_done = True
+            except Exception as del_e:
+                _log('logic_error_prefix', text=f'Erreur suppression reco {rel_path}: {del_e}')
+                r['action_comment'] = r.get('action_comment', '') + f' Erreur suppression différée: {del_e}'
+                r['action'] = 'error_delete'
+                r['rejected_reason'] = original_reason
+        elif move_rejected_flag and reject_abs_path:
+            if not os.path.isdir(reject_abs_path):
+                try:
+                    os.makedirs(reject_abs_path)
+                    _log('logic_dir_created', path=reject_abs_path)
+                except OSError as e_mkdir:
+                    _log('logic_dir_create_error', path=reject_abs_path, e=e_mkdir)
+                    r['action_comment'] = r.get('action_comment', '') + f' Dossier rejet reco inaccessible: {e_mkdir}'
+                    r['action'] = 'error_move'
+                    r['rejected_reason'] = original_reason
+                    continue
+
+            dest_path = os.path.join(reject_abs_path, os.path.basename(current_path))
+            try:
+                if os.path.normpath(current_path) != os.path.normpath(dest_path):
+                    shutil.move(current_path, dest_path)
+                    _log('logic_moved_info', folder=os.path.basename(reject_abs_path), text_key_suffix='_deferred_reco', file_rel_path=rel_path)
+                    r['path'] = dest_path
+                    r['action'] = 'moved_reco'
+                    r['rejected_reason'] = 'not_in_recommendation'
+                    r['status'] = 'processed_action'
+                    actions_count += 1
+                    action_done = True
+                else:
+                    r['action_comment'] = r.get('action_comment', '') + ' Déjà dans dossier cible (différé)?'
+                    r['action'] = 'kept'
+                    r['rejected_reason'] = 'not_in_recommendation'
+                    r['status'] = 'processed_action'
+                    action_done = True
+            except Exception as move_e:
+                _log('logic_move_error', file=rel_path, e=move_e)
+                r['action_comment'] = r.get('action_comment', '') + f' Erreur déplacement différé: {move_e}'
+                r['action'] = 'error_move'
+                r['rejected_reason'] = original_reason
+
+        if not action_done and not delete_rejected_flag and not move_rejected_flag:
+            r['action'] = 'kept_pending_reco_no_action'
+            r['rejected_reason'] = 'not_in_recommendation'
+            r['status'] = 'processed_action'
+            r['action_comment'] = r.get('action_comment', '') + ' Action recommandation différée mais aucune opération configurée.'
+
+    _progress(100)
+    _status('status_custom', text=f'{actions_count} actions recommandation appliquées.')
+    _log('logic_info_prefix', text=f'{actions_count} actions recommandation appliquées.')
+    return actions_count
+
+
 
 # --- Helpers for parallel processing ---
 
