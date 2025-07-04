@@ -673,6 +673,12 @@ class AstroImageAnalyzerGUI:
         self.current_ecc_min = None
         self.current_ecc_max = None
         self.ecc_range_slider = None
+
+        # Recommended images and associated thresholds
+        self.recommended_images = []
+        self.reco_snr_min = None
+        self.reco_fwhm_max = None
+        self.reco_ecc_max = None
         
         # Références aux widgets (pour traduction, activation/désactivation)
         self.widgets_refs = {}
@@ -764,7 +770,15 @@ class AstroImageAnalyzerGUI:
                 if isinstance(loaded_data, list):
                     self.analysis_results = loaded_data
                     print(f"INFO: Données de visualisation chargées depuis {log_path} ({len(self.analysis_results)} éléments).")
-                    self.analysis_completed_successfully = True 
+                    self.analysis_completed_successfully = True
+                    if self.analysis_results:
+                        (self.recommended_images,
+                         self.reco_snr_min,
+                         self.reco_fwhm_max,
+                         self.reco_ecc_max) = analyse_logic.build_recommended_images(self.analysis_results)
+                    else:
+                        self.recommended_images = []
+                        self.reco_snr_min = self.reco_fwhm_max = self.reco_ecc_max = None
                     return True
                 else:
                     print(f"AVERTISSEMENT: Données JSON dans {log_path} ne sont pas une liste. Type: {type(loaded_data)}") # NOUVEAU PRINT
