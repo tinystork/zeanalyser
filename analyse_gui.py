@@ -23,6 +23,12 @@ from PIL import Image, ImageTk
 # L'import de ToolTip est déplacé APRES l'ajustement de sys.path
 import json
 import importlib.util
+import numbers
+
+# Helper to safely check numeric finite values
+def is_finite_number(value):
+    """Return True if value is a real number and finite."""
+    return isinstance(value, numbers.Number) and np.isfinite(value)
 
 # --- AJUSTEMENT DE SYS.PATH POUR PERMETTRE LES IMPORTS DEPUIS LA RACINE DU PROJET ---
 # Ceci est crucial lorsque ce script (analyse_gui.py) est exécuté directement
@@ -1056,7 +1062,7 @@ class AstroImageAnalyzerGUI:
             try:
                 fig1, ax1 = plt.subplots(figsize=(7, 5))
                 figures_list.append(fig1)
-                valid_snrs = [r['snr'] for r in self.analysis_results if r.get('status')=='ok' and 'snr' in r and np.isfinite(r['snr'])]
+                valid_snrs = [r['snr'] for r in self.analysis_results if r.get('status')=='ok' and 'snr' in r and is_finite_number(r['snr'])]
                 if valid_snrs:
                     hist = ax1.hist(valid_snrs, bins=20, color='skyblue', edgecolor='black')
                     ax1.set_title(self._("visu_snr_dist_title"))
@@ -1144,7 +1150,7 @@ class AstroImageAnalyzerGUI:
             notebook.add(fwhm_tab, text=self._('visu_tab_fwhm_dist'))
             fig_fwhm = None
             try:
-                fwhm_values = [r['fwhm'] for r in self.analysis_results if np.isfinite(r.get('fwhm', np.nan))]
+                fwhm_values = [r['fwhm'] for r in self.analysis_results if is_finite_number(r.get('fwhm', np.nan))]
                 fig_fwhm, ax_fwhm = plt.subplots(figsize=(7, 5))
                 figures_list.append(fig_fwhm)
                 if fwhm_values:
@@ -1185,7 +1191,7 @@ class AstroImageAnalyzerGUI:
             notebook.add(ecc_tab, text=self._('visu_tab_ecc_dist'))
             fig_ecc = None
             try:
-                ecc_values = [r['ecc'] for r in self.analysis_results if np.isfinite(r.get('ecc', np.nan))]
+                ecc_values = [r['ecc'] for r in self.analysis_results if is_finite_number(r.get('ecc', np.nan))]
                 fig_ecc, ax_ecc = plt.subplots(figsize=(7, 5))
                 figures_list.append(fig_ecc)
                 if ecc_values:
@@ -1226,7 +1232,11 @@ class AstroImageAnalyzerGUI:
             notebook.add(scatter_tab, text='FWHM vs e')
             fig_scatter = None
             try:
-                valid_pairs = [(r['fwhm'], r['ecc']) for r in self.analysis_results if np.isfinite(r.get('fwhm', np.nan)) and np.isfinite(r.get('ecc', np.nan))]
+                valid_pairs = [
+                    (r['fwhm'], r['ecc'])
+                    for r in self.analysis_results
+                    if is_finite_number(r.get('fwhm', np.nan)) and is_finite_number(r.get('ecc', np.nan))
+                ]
                 fig_scatter, ax_scatt = plt.subplots(figsize=(7,5))
                 figures_list.append(fig_scatter)
                 if valid_pairs:
@@ -1253,7 +1263,14 @@ class AstroImageAnalyzerGUI:
             notebook.add(comp_tab, text=self._("visu_tab_snr_comp"))
             fig2 = None
             try:
-                valid_res = [r for r in self.analysis_results if r.get('status')=='ok' and 'snr' in r and np.isfinite(r['snr']) and 'file' in r]
+                valid_res = [
+                    r
+                    for r in self.analysis_results
+                    if r.get('status') == 'ok'
+                    and 'snr' in r
+                    and is_finite_number(r['snr'])
+                    and 'file' in r
+                ]
                 if len(valid_res) >= 2:
                     sorted_res = sorted(valid_res, key=lambda x: x['snr'], reverse=True)
                     num_total = len(sorted_res); num_show = min(10, num_total // 2 if num_total >= 2 else 1)
@@ -1291,15 +1308,40 @@ class AstroImageAnalyzerGUI:
                 if detect_trails_was_active: cols = cols + ('trails', 'nbseg'); cols = cols + ('action', 'reason', 'comment'); col_names = [col_names_map.get(c, c.capitalize()) for c in cols]
                 tree = ttk.Treeview(data_tab, columns=cols, show='headings')
                 for col_id, col_name in zip(cols, col_names): tree.heading(col_id, text=col_name, command=lambda _col=col_id: self.sort_treeview(tree, _col, False)); tree.column(col_id, width=col_widths.get(col_id, 80), anchor=col_anchors.get(col_id, tk.CENTER), stretch=tk.NO)
-                display_res = sorted(self.analysis_results, key=lambda x: x.get('snr', -np.inf) if np.isfinite(x.get('snr', -np.inf)) else -np.inf, reverse=True) if self.sort_by_snr.get() else self.analysis_results
+                display_res = (
+                    sorted(
+                        self.analysis_results,
+                        key=lambda x: x.get('snr', -np.inf)
+                        if is_finite_number(x.get('snr', -np.inf))
+                        else -np.inf,
+                        reverse=True,
+                    )
+                    if self.sort_by_snr.get()
+                    else self.analysis_results
+                )
                 for r in display_res:
                     status = r.get('status','?'); vals = []
                     for col_id in cols:
                         if col_id == 'file': vals.append(r.get('rel_path', os.path.basename(r.get('file','?'))));
                         elif col_id == 'status': vals.append(status)
-                        elif col_id == 'snr': vals.append(f"{r.get('snr',0.0):.2f}" if np.isfinite(r.get('snr', np.nan)) else "N/A")
-                        elif col_id == 'bg': vals.append(f"{r.get('sky_bg',0.0):.2f}" if np.isfinite(r.get('sky_bg', np.nan)) else "N/A")
-                        elif col_id == 'noise': vals.append(f"{r.get('sky_noise',0.0):.2f}" if np.isfinite(r.get('sky_noise', np.nan)) else "N/A")
+                        elif col_id == 'snr':
+                            vals.append(
+                                f"{r.get('snr', 0.0):.2f}"
+                                if is_finite_number(r.get('snr', np.nan))
+                                else "N/A"
+                            )
+                        elif col_id == 'bg':
+                            vals.append(
+                                f"{r.get('sky_bg', 0.0):.2f}"
+                                if is_finite_number(r.get('sky_bg', np.nan))
+                                else "N/A"
+                            )
+                        elif col_id == 'noise':
+                            vals.append(
+                                f"{r.get('sky_noise', 0.0):.2f}"
+                                if is_finite_number(r.get('sky_noise', np.nan))
+                                else "N/A"
+                            )
                         elif col_id == 'pixsig': vals.append(f"{r.get('signal_pixels',0)}")
                         elif col_id == 'trails': vals.append(self._("logic_trail_yes") if r.get('has_trails',False) else self._("logic_trail_no"))
                         elif col_id == 'nbseg': vals.append(f"{r.get('num_trails',0)}" if 'num_trails' in r else "N/A")
@@ -1321,12 +1363,24 @@ class AstroImageAnalyzerGUI:
                     if r.get('status') == 'ok'
                     and r.get('action') == 'kept'
                     and r.get('rejected_reason') is None
-                    and 'snr' in r and np.isfinite(r['snr'])
+                    and 'snr' in r and is_finite_number(r['snr'])
                 ]
                 valid_kept_snrs = [r['snr'] for r in valid_kept_results]
-                sc_vals = [r['starcount'] for r in valid_kept_results if r.get('starcount') is not None and np.isfinite(r['starcount'])]
-                fwhm_vals = [r['fwhm'] for r in valid_kept_results if np.isfinite(r.get('fwhm', np.nan))]
-                ecc_vals = [r['ecc'] for r in valid_kept_results if np.isfinite(r.get('ecc', np.nan))]
+                sc_vals = [
+                    r['starcount']
+                    for r in valid_kept_results
+                    if r.get('starcount') is not None and is_finite_number(r['starcount'])
+                ]
+                fwhm_vals = [
+                    r['fwhm']
+                    for r in valid_kept_results
+                    if is_finite_number(r.get('fwhm', np.nan))
+                ]
+                ecc_vals = [
+                    r['ecc']
+                    for r in valid_kept_results
+                    if is_finite_number(r.get('ecc', np.nan))
+                ]
 
                 if len(valid_kept_snrs) >= 5 and len(fwhm_vals) >= 5 and len(ecc_vals) >= 5:
                     snr_p25 = np.percentile(valid_kept_snrs, 25)
@@ -2926,10 +2980,15 @@ class AstroImageAnalyzerGUI:
         print("DEBUG (analyse_gui): Sortie de finalize_analysis.")
 
     def _get_best_reference(self):
-        valid = [r for r in self.analysis_results
-                 if r.get('status') == 'ok' and r.get('action') == 'kept'
-                    and r.get('rejected_reason') is None
-                    and 'snr' in r and np.isfinite(r['snr'])]
+        valid = [
+            r
+            for r in self.analysis_results
+            if r.get('status') == 'ok'
+            and r.get('action') == 'kept'
+            and r.get('rejected_reason') is None
+            and 'snr' in r
+            and is_finite_number(r['snr'])
+        ]
         return max(valid, key=lambda r: r['snr'])['path'] if valid else None
 
     def send_reference_to_main(self):
@@ -2959,7 +3018,7 @@ class AstroImageAnalyzerGUI:
 
         for r in self.analysis_results:
             snr = r.get('snr')
-            if r.get('status') == 'ok' and snr is not None and np.isfinite(snr):
+            if r.get('status') == 'ok' and snr is not None and is_finite_number(snr):
                 if snr < lo or snr > hi:
                     r['rejected_reason'] = 'low_snr_pending_action'
                     r['action'] = 'pending_snr_action'
@@ -3028,7 +3087,7 @@ class AstroImageAnalyzerGUI:
             return
         for r in self.analysis_results:
             fv = r.get('fwhm')
-            if r.get('status') == 'ok' and fv is not None and np.isfinite(fv):
+            if r.get('status') == 'ok' and fv is not None and is_finite_number(fv):
                 if fv < lo or fv > hi:
                     r['rejected_reason'] = 'high_fwhm_pending_action'
                     r['action'] = 'pending_fwhm_action'
@@ -3056,7 +3115,7 @@ class AstroImageAnalyzerGUI:
             return
         for r in self.analysis_results:
             ev = r.get('ecc')
-            if r.get('status') == 'ok' and ev is not None and np.isfinite(ev):
+            if r.get('status') == 'ok' and ev is not None and is_finite_number(ev):
                 if ev < lo or ev > hi:
                     r['rejected_reason'] = 'high_ecc_pending_action'
                     r['action'] = 'pending_ecc_action'
