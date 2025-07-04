@@ -403,6 +403,40 @@ def apply_pending_reco_actions(results_list, reject_abs_path,
     return actions_count
 
 
+def build_recommended_images(results):
+    """Return list of files meeting SNR/FWHM/Ecc criteria."""
+    kept = [r for r in results if r.get('action') == 'kept']
+
+    snrs = np.array([r.get('snr', np.nan) for r in kept], dtype=float)
+    fwhms = np.array([r.get('fwhm', np.nan) for r in kept], dtype=float)
+    eccs = np.array([r.get('ecc', r.get('e', np.nan)) for r in kept], dtype=float)
+
+    if kept:
+        snr_min = float(np.nanpercentile(snrs, 25))
+        fwhm_max = float(np.nanpercentile(fwhms, 75))
+        ecc_max = float(np.nanpercentile(eccs, 75))
+    else:
+        snr_min = fwhm_max = ecc_max = float('nan')
+
+    reco = [
+        r for r in kept
+        if (r.get('snr') is not None and float(r.get('snr', np.nan)) >= snr_min)
+        and (float(r.get('fwhm', np.nan)) <= fwhm_max)
+        and (float(r.get('ecc', r.get('e', np.nan))) <= ecc_max)
+    ]
+    return reco, snr_min, fwhm_max, ecc_max
+
+
+def debug_counts(results):
+    total = len(results)
+    low_snr = sum(r.get('rejected_reason') == 'low_snr' for r in results)
+    high_fwhm = sum(r.get('rejected_reason') == 'high_fwhm' for r in results)
+    starcount = sum(r.get('rejected_reason') == 'starcount_out' for r in results)
+    ecc = sum(r.get('rejected_reason') == 'high_eccentricity' for r in results)
+    pending = sum(str(r.get('action', '')).startswith('pending') for r in results)
+    print(f"total={total} | snr={low_snr} | fwhm={high_fwhm} | stars={starcount} | e={ecc} | pending={pending}")
+
+
 
 # --- Helpers for parallel processing ---
 
