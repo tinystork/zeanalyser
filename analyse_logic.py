@@ -18,6 +18,12 @@ except ImportError:
     starcount_module = None
 
 try:
+    import ecc_module
+except ImportError:
+    print("AVERTISSEMENT (analyse_logic): ecc_module.py introuvable. FWHM/Ecc ne seront pas calculés.")
+    ecc_module = None
+
+try:
     import snr_module
 except ImportError:
     print("ERREUR CRITIQUE (analyse_logic): snr_module.py introuvable.")
@@ -311,6 +317,9 @@ def _snr_worker(path):
         'filter': 'N/A',
         'temperature': 'N/A',
         'error': None,
+        'fwhm': np.nan,
+        'ecc': np.nan,
+        'n_star_ecc': 0,
     }
     hdul = None
     try:
@@ -332,6 +341,18 @@ def _snr_worker(path):
                         result['starcount'] = starcount_module.calculate_starcount(data)
                     except Exception:
                         result['starcount'] = None
+
+                if ecc_module is not None:
+
+                    try:
+                        fwhm_val, ecc_val, n_det = ecc_module.calculate_fwhm_ecc(data)
+                        result['fwhm'] = fwhm_val
+                        result['ecc'] = ecc_val
+                        result['n_star_ecc'] = n_det
+                    except Exception:
+                        result['fwhm'] = np.nan
+                        result['ecc'] = np.nan
+                        result['n_star_ecc'] = 0
             else:
                 result['error'] = 'Pas de données image valides dans HDU 0.'
     except Exception as e:
@@ -545,6 +566,9 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     'has_trails': False,
                     'num_trails': 0,
                     'starcount': None,
+                    'fwhm': np.nan,
+                    'ecc': np.nan,
+                    'n_star_ecc': 0,
                 }
                 try:
                     worker_res = future.result()
@@ -563,6 +587,12 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                         result_base.update(snr_data)
                         if 'starcount' in worker_res:
                             result_base['starcount'] = worker_res['starcount']
+                        if 'fwhm' in worker_res:
+                            result_base['fwhm'] = worker_res['fwhm']
+                        if 'ecc' in worker_res:
+                            result_base['ecc'] = worker_res['ecc']
+                        if 'n_star_ecc' in worker_res:
+                            result_base['n_star_ecc'] = worker_res['n_star_ecc']
                         result_base['status'] = 'ok'
                         _log("logic_snr_info", file=result_base['rel_path'], snr=worker_res['snr'], bg=worker_res['sky_bg'])
                     else:
@@ -633,6 +663,18 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                             result['starcount'] = starcount_module.calculate_starcount(data)
                                         except Exception:
                                             result['starcount'] = None
+
+                                    if ecc_module is not None:
+
+                                        try:
+                                            fwhm_val, ecc_val, n_det = ecc_module.calculate_fwhm_ecc(data)
+                                            result['fwhm'] = fwhm_val
+                                            result['ecc'] = ecc_val
+                                            result['n_star_ecc'] = n_det
+                                        except Exception:
+                                            result['fwhm'] = np.nan
+                                            result['ecc'] = np.nan
+                                            result['n_star_ecc'] = 0
                                     result['status'] = 'ok'
                                     _log("logic_snr_info", file=result['rel_path'], snr=snr, bg=sky_bg)
                                 else:
@@ -674,6 +716,10 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     snr_threshold = -np.inf
     selection_stats = None
     starcount_threshold = options.get('starcount_threshold')
+    fwhm_max_slider = options.get('fwhm_max')
+    fwhm_min_slider = options.get('fwhm_min')
+    ecc_max_slider = options.get('ecc_max')
+    ecc_min_slider = options.get('ecc_min')
     if options.get('analyze_snr') and options.get('snr_selection_mode') != 'none':
         mode = options.get('snr_selection_mode')
         value_str = options.get('snr_selection_value')
@@ -775,6 +821,20 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 if r['starcount'] < starcount_threshold:
                     r['rejected_reason'] = 'starcount_pending_action'
                     r['action'] = 'pending_starcount_action'
+                    process_for_trails = False
+
+            if options.get('analyse_fwhm') and np.isfinite(r.get('fwhm', np.nan)):
+                if (fwhm_max_slider is not None and r['fwhm'] > fwhm_max_slider) or \
+                   (fwhm_min_slider is not None and r['fwhm'] < fwhm_min_slider):
+                    r['rejected_reason'] = 'high_fwhm_pending_action'
+                    r['action'] = 'pending_fwhm_action'
+                    process_for_trails = False
+
+            if options.get('analyse_ecc') and np.isfinite(r.get('ecc', np.nan)):
+                if (ecc_max_slider is not None and r['ecc'] > ecc_max_slider) or \
+                   (ecc_min_slider is not None and r['ecc'] < ecc_min_slider):
+                    r['rejected_reason'] = 'high_ecc_pending_action'
+                    r['action'] = 'pending_ecc_action'
                     process_for_trails = False
         
         # Ajouter à la liste pour analyse des traînées si applicable
