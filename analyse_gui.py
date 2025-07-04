@@ -656,8 +656,9 @@ class AstroImageAnalyzerGUI:
         self.tooltips = {}
         self.timer_running = False 
         self.timer_start_time = None 
-        self.timer_job_id = None 
+        self.timer_job_id = None
         self.base_status_message = ""
+        self.progress_start_time = None
         self.has_pending_snr_actions = False
         self.current_snr_min = None
         self.current_snr_max = None
@@ -2113,6 +2114,15 @@ class AstroImageAnalyzerGUI:
                 # Arrêter si une erreur Tkinter se produit
                 self._stop_timer()
 
+    def _format_seconds(self, seconds):
+        """Formatte un nombre de secondes en HH:MM:SS ou MM:SS."""
+        if seconds < 0:
+            seconds = 0
+        if seconds < 3600:
+            return time.strftime('%M:%S', time.gmtime(seconds))
+        else:
+            return time.strftime('%H:%M:%S', time.gmtime(seconds))
+
     # --- Création des Widgets ---
 
     def create_widgets(self):
@@ -2374,6 +2384,12 @@ class AstroImageAnalyzerGUI:
         status_frame.pack(fill=tk.X)
         self.status_label = ttk.Label(status_frame, textvariable=self.status_text)
         self.status_label.pack(side=tk.LEFT, padx=5)
+        self.remaining_label = ttk.Label(status_frame, text="")
+        self.remaining_label.pack(side=tk.RIGHT, padx=5)
+        self.elapsed_label = ttk.Label(status_frame, text="")
+        self.elapsed_label.pack(side=tk.RIGHT, padx=5)
+        self.widgets_refs['elapsed_label'] = self.elapsed_label
+        self.widgets_refs['remaining_label'] = self.remaining_label
 
         # --- Cadre Résultats / Journal ---
         results_frame = ttk.LabelFrame(main_frame, text="", padding="10")
@@ -2468,6 +2484,11 @@ class AstroImageAnalyzerGUI:
 
         # Mettre à jour l'état activé/désactivé des sections
         self.toggle_sections_state()
+
+        if hasattr(self, 'elapsed_label'):
+            self.elapsed_label.config(text=f"{self._('elapsed_time_label')} 00:00:00")
+        if hasattr(self, 'remaining_label'):
+            self.remaining_label.config(text=f"{self._('remaining_time_label')} 00:00:00")
 
     # --- Gestion des Chemins (Parcourir) ---
 
@@ -2609,6 +2630,7 @@ class AstroImageAnalyzerGUI:
         """Réinitialise les éléments UI pour une nouvelle analyse."""
         self.status_text.set(self._("status_ready"))
         self.progress_var.set(0.0)
+        self.progress_start_time = None
         # ... (gestion progress_bar) ...
         if hasattr(self, 'progress_bar') and self.progress_bar: # Copié d'une version précédente
              try:
@@ -2695,7 +2717,27 @@ class AstroImageAnalyzerGUI:
                         self.progress_bar.start(10) # Démarrer animation
                 # Si on reçoit une valeur numérique
                 elif isinstance(value, (int, float)):
-                    self.progress_var.set(value) # Mettre à jour la variable liée
+                    clamped = max(0.0, min(100.0, float(value)))
+                    self.progress_var.set(clamped)
+                    if clamped > 0:
+                        if self.progress_start_time is None:
+                            self.progress_start_time = time.time()
+                        elapsed = time.time() - self.progress_start_time
+                        if clamped > 0:
+                            est_total = elapsed / (clamped / 100.0)
+                            remaining = max(0.0, est_total - elapsed)
+                        else:
+                            remaining = 0.0
+                        elapsed_str = self._format_seconds(elapsed)
+                        remaining_str = self._format_seconds(remaining)
+                        if hasattr(self, 'elapsed_label'):
+                            self.elapsed_label.config(text=f"{self._('elapsed_time_label')} {elapsed_str}")
+                        if hasattr(self, 'remaining_label'):
+                            self.remaining_label.config(text=f"{self._('remaining_time_label')} {remaining_str}")
+                    else:
+                        self.progress_start_time = None
+                    if clamped >= 100:
+                        self.progress_start_time = None
 
                 # Forcer mise à jour UI si nécessaire (souvent utile pour voir la barre bouger)
                 if self.root.winfo_exists():

@@ -39,6 +39,8 @@ translations = {
         'include_subfolders_label': "Inclure les sous-dossiers",
         'lang_label': "Langue:",
         'status_label': "Statut :",
+        'elapsed_time_label': "Temps écoulé :",
+        'remaining_time_label': "Temps restant :",
         'analyze_snr_check_label': "Activer l'analyse SNR",
         'snr_select_mode_label': "Mode de Sélection SNR:",
         'snr_mode_percent': "Top Pourcentage (%)",
@@ -187,6 +189,8 @@ translations = {
         'include_subfolders_label': "Include Subfolders", # <-- NEW
         'lang_label': "Language:",
         'status_label': "Status:",
+        'elapsed_time_label': "Elapsed:",
+        'remaining_time_label': "Remaining:",
         'analyze_snr_check_label': "Enable SNR analysis", 'snr_select_mode_label': "SNR Selection Mode:", 'snr_mode_percent': "Top Percent (%)", 'snr_mode_threshold': "SNR Threshold (>)",
         'snr_mode_none': "Keep All", 'snr_reject_dir_label': "Reject Folder (Low SNR):",
         'detect_trails_check_label': "Enable trail detection",
