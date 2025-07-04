@@ -12,6 +12,12 @@ import json
 import concurrent.futures
 
 try:
+    import starcount_module
+except ImportError:
+    print("AVERTISSEMENT (analyse_logic): starcount_module.py introuvable. Le comptage d'etoiles sera désactivé.")
+    starcount_module = None
+
+try:
     import snr_module
 except ImportError:
     print("ERREUR CRITIQUE (analyse_logic): snr_module.py introuvable.")
@@ -106,13 +112,22 @@ def write_log_summary(log_file_path, input_dir, options,
                 
                 if options.get('analyze_snr'):
                      all_valid_snrs = [r['snr'] for r in results_list if r.get('status') == 'ok' and 'snr' in r and r['snr'] is not None and np.isfinite(r['snr'])]
-                     if all_valid_snrs: 
+                     if all_valid_snrs:
                          log_file.write(f"Statistiques SNR (sur {len(all_valid_snrs)} images valides):\n")
                          mean_snr = np.mean(all_valid_snrs); median_snr = np.median(all_valid_snrs)
                          min_snr = min(all_valid_snrs); max_snr = max(all_valid_snrs)
                          log_file.write(f"  Moy: {mean_snr:.2f}, Med: {median_snr:.2f}, Min: {min_snr:.2f}, Max: {max_snr:.2f}\n")
-                     else: 
+                     else:
                          log_file.write("Statistiques SNR: Aucune donnée SNR valide calculée.\n")
+
+                starcounts = [r['starcount'] for r in results_list if r.get('status') == 'ok' and r.get('starcount') is not None]
+                if starcounts:
+                    log_file.write(f"Statistiques Starcount (sur {len(starcounts)} images valides):\n")
+                    mean_sc = np.mean(starcounts); median_sc = np.median(starcounts)
+                    min_sc = min(starcounts); max_sc = max(starcounts)
+                    log_file.write(f"  Moy: {mean_sc:.2f}, Med: {median_sc:.2f}, Min: {min_sc:.2f}, Max: {max_sc:.2f}\n")
+                else:
+                    log_file.write("Statistiques Starcount: Aucune donnée valide.\n")
             
             # --- AJOUT : Section pour sauvegarder les données de visualisation ---
             if results_list is not None:
@@ -282,13 +297,14 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
 
 # --- Helpers for parallel processing ---
 def _snr_worker(path):
-    """Worker to compute SNR for a FITS file."""
+    """Worker to compute SNR and star count for a FITS file."""
     result = {
         'path': path,
         'snr': np.nan,
         'sky_bg': np.nan,
         'sky_noise': np.nan,
         'signal_pixels': 0,
+        'starcount': None,
         'exposure': 'N/A',
         'filter': 'N/A',
         'temperature': 'N/A',
@@ -307,6 +323,11 @@ def _snr_worker(path):
                 result['temperature'] = header.get('CCD-TEMP', header.get('TEMPERAT', 'N/A'))
                 snr, sky_bg, sky_noise, signal_pixels = snr_module.calculate_snr(data)
                 result.update({'snr': snr, 'sky_bg': sky_bg, 'sky_noise': sky_noise, 'signal_pixels': signal_pixels})
+                if starcount_module is not None:
+                    try:
+                        result['starcount'] = starcount_module.calculate_starcount(data)
+                    except Exception:
+                        result['starcount'] = None
             else:
                 result['error'] = 'Pas de données image valides dans HDU 0.'
     except Exception as e:
@@ -517,6 +538,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     'error_message': '',
                     'has_trails': False,
                     'num_trails': 0,
+                    'starcount': None,
                 }
                 try:
                     worker_res = future.result()
@@ -533,6 +555,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                             'temperature': worker_res['temperature'],
                         }
                         result_base.update(snr_data)
+                        if 'starcount' in worker_res:
+                            result_base['starcount'] = worker_res['starcount']
                         result_base['status'] = 'ok'
                         _log("logic_snr_info", file=result_base['rel_path'], snr=worker_res['snr'], bg=worker_res['sky_bg'])
                     else:
@@ -568,6 +592,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 'error_message': '',
                 'has_trails': False,
                 'num_trails': 0,
+                'starcount': None,
             }
             try:
                 if options.get('analyze_snr'):
@@ -594,6 +619,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                         'temperature': temperature,
                                     }
                                     result.update(snr_data)
+                                    if starcount_module is not None:
+                                        try:
+                                            result['starcount'] = starcount_module.calculate_starcount(data)
+                                        except Exception:
+                                            result['starcount'] = None
                                     result['status'] = 'ok'
                                     _log("logic_snr_info", file=result['rel_path'], snr=snr, bg=sky_bg)
                                 else:
@@ -634,6 +664,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     # ... (cette section reste identique) ...
     snr_threshold = -np.inf
     selection_stats = None
+    starcount_threshold = options.get('starcount_threshold')
     if options.get('analyze_snr') and options.get('snr_selection_mode') != 'none':
         mode = options.get('snr_selection_mode')
         value_str = options.get('snr_selection_value')
@@ -727,9 +758,15 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                         # Il sera toujours considéré pour l'analyse des traînées car process_for_trails est True.
                         pass 
                     # --- FIN MODIFICATION ---
-                else: # r['snr'] >= snr_threshold
-                    kept_by_snr_initial += 1 
+                else:  # r['snr'] >= snr_threshold
+                    kept_by_snr_initial += 1
             # else: Fichier OK mais pas de filtre SNR actif, ou SNR non valide (process_for_trails reste True)
+
+            if starcount_threshold is not None and r.get('starcount') is not None:
+                if r['starcount'] < starcount_threshold:
+                    r['rejected_reason'] = 'starcount_pending_action'
+                    r['action'] = 'pending_starcount_action'
+                    process_for_trails = False
         
         # Ajouter à la liste pour analyse des traînées si applicable
         # Un fichier marqué 'low_snr_pending_action' EST toujours candidat pour l'analyse des traînées.
@@ -919,7 +956,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     try:
          with open(output_log, 'a', encoding='utf-8') as log_file: # Mode 'a' pour ajouter au log existant
             log_file.write("\n--- Analyse individuelle des fichiers (État final après actions) ---\n")
-            header_parts = ["Fichier (Relatif)", "Statut", "SNR", "Fond", "Bruit", "PixSig"]
+            header_parts = ["Fichier (Relatif)", "Statut", "SNR", "Fond", "Bruit", "PixSig", "Starcount"]
             if options.get('detect_trails') and SATDET_AVAILABLE: header_parts.extend(["Traînée", "NbSeg"])
             header_parts.extend(["Expo", "Filtre", "Temp", "Action Finale", "Rejet", "Commentaire"])
             header = "\t".join(header_parts) + "\n"; log_file.write(header)
@@ -928,10 +965,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                  log_line_parts = [
                      str(r.get('rel_path','?')),
                      str(r.get('status','?')),
-                     f"{r.get('snr', np.nan):.2f}",
-                     f"{r.get('sky_bg', np.nan):.2f}",
-                     f"{r.get('sky_noise', np.nan):.2f}",
-                     str(r.get('signal_pixels',0))
+                    f"{r.get('snr', np.nan):.2f}",
+                    f"{r.get('sky_bg', np.nan):.2f}",
+                    f"{r.get('sky_noise', np.nan):.2f}",
+                    str(r.get('signal_pixels',0)),
+                    str(r.get('starcount', 'N/A'))
                  ]
                  if options.get('detect_trails') and SATDET_AVAILABLE:
                      trail_status = 'N/A'
