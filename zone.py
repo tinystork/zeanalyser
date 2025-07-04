@@ -94,7 +94,15 @@ translations = {
         'visu_sat_pie_title': 'Proportion d\'images avec/sans traînées détectées', 'visu_sat_pie_with': 'Avec Traînées', 'visu_sat_pie_without': 'Sans Traînées', 'visu_sat_pie_no_data': "Aucune image analysée pour les traînées.",
         'visu_data_col_file': "Fichier (Relatif)", 'visu_data_col_snr': "SNR", 'visu_data_col_bg': "Fond", 'visu_data_col_noise': "Bruit", 'visu_data_col_pixsig': "PixSig", 'visu_data_col_trails': "Traînées?", 'visu_data_col_nbseg': "Nb Seg.",
         'Statut': "Statut", 'Action': "Action", 'Raison Rejet': "Raison Rejet", 'Commentaire': "Commentaire",
-        'visu_recom_frame_title': "Recommandation (Images Conservées)", 'visu_recom_text': "Suggestion: Utiliser les {count} images conservées avec SNR >= {p75:.2f} (P25)", 'visu_recom_col_file': "Fichier (Relatif)", 'visu_recom_col_snr': "SNR", 'visu_recom_no_selection': "Aucune image conservée ne dépasse le seuil de recommandation.", 'visu_recom_not_enough': "Moins de 5 images conservées valides. Utilisez/Exportez toutes les images conservées.", 'visu_recom_no_data': "Aucune donnée SNR valide pour recommandation.",
+        'visu_recom_frame_title': "Recommandation (Images Conservées)",
+        'visu_recom_text': "Suggestion: Utiliser les {count} images conservées avec SNR >= {p75:.2f} (P25)",
+        'visu_recom_text_both': "Suggestion: Utiliser les {count} images conservées avec SNR ≥ {snr_p25:.2f} (P25) et Starcount ≥ {sc_p25:.0f} (P25)",
+        'visu_recom_col_file': "Fichier (Relatif)",
+        'visu_recom_col_snr': "SNR",
+        'visu_recom_col_starcount': "Starcount",
+        'visu_recom_no_selection': "Aucune image conservée ne dépasse le seuil de recommandation.",
+        'visu_recom_not_enough': "Moins de 5 images conservées valides. Utilisez/Exportez toutes les images conservées.",
+        'visu_recom_no_data': "Aucune donnée SNR valide pour recommandation.",
         'Toutes les images conservées valides': "Toutes les images conservées valides",
 
         # --- Infobulles (Tooltips) ---
@@ -211,7 +219,15 @@ translations = {
         'visu_sat_pie_title': 'Proportion of images with/without detected trails', 'visu_sat_pie_with': 'With Trails', 'visu_sat_pie_without': 'Without Trails', 'visu_sat_pie_no_data': "No images analyzed for trails.",
         'visu_data_col_file': "File (Relative)", 'visu_data_col_snr': "SNR", 'visu_data_col_bg': "BG", 'visu_data_col_noise': "Noise", 'visu_data_col_pixsig': "SigPix", 'visu_data_col_trails': "Trails?", 'visu_data_col_nbseg': "Nb Seg.",
         'Statut': "Status", 'Action': "Action", 'Raison Rejet': "Reject Reason", 'Commentaire': "Comment",
-        'visu_recom_frame_title': "Recommendation (Kept Images)", 'visu_recom_text': "Suggestion: Use the {count} kept images with SNR >= {p75:.2f} (P25)", 'visu_recom_col_file': "File (Relative)", 'visu_recom_col_snr': "SNR", 'visu_recom_no_selection': "No kept images meet the recommendation threshold.", 'visu_recom_not_enough': "Fewer than 5 valid kept images. Use/Export all valid kept images.", 'visu_recom_no_data': "No valid SNR data for recommendation.",
+        'visu_recom_frame_title': "Recommendation (Kept Images)",
+        'visu_recom_text': "Suggestion: Use the {count} kept images with SNR >= {p75:.2f} (P25)",
+        'visu_recom_text_both': "Suggestion: Use the {count} kept images with SNR \u2265 {snr_p25:.2f} (P25) and Starcount \u2265 {sc_p25:.0f} (P25)",
+        'visu_recom_col_file': "File (Relative)",
+        'visu_recom_col_snr': "SNR",
+        'visu_recom_col_starcount': "Starcount",
+        'visu_recom_no_selection': "No kept images meet the recommendation threshold.",
+        'visu_recom_not_enough': "Fewer than 5 valid kept images. Use/Export all valid kept images.",
+        'visu_recom_no_data': "No valid SNR data for recommendation.",
         'Toutes les images conservées valides': "All valid kept images",
 
         # --- Tooltips ---

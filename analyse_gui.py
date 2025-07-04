@@ -987,17 +987,145 @@ class AstroImageAnalyzerGUI:
             stack_tab = ttk.Frame(notebook); notebook.add(stack_tab, text=self._("visu_tab_recom")); fig4=None # Placeholder fig
             try:
                 recom_frame = ttk.LabelFrame(stack_tab, text=self._("visu_recom_frame_title"), padding=10); recom_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-                valid_kept_results = [r for r in self.analysis_results if r.get('status')=='ok' and r.get('action')=='kept' and r.get('rejected_reason') is None and 'snr' in r and np.isfinite(r['snr'])]; valid_kept_snrs = [r['snr'] for r in valid_kept_results]
-                if len(valid_kept_snrs) >= 5:
-                    p25_threshold = np.percentile(valid_kept_snrs, 25); good_img = [r for r in valid_kept_results if r['snr'] >= p25_threshold]
+                valid_kept_results = [
+                    r for r in self.analysis_results
+                    if r.get('status') == 'ok'
+                    and r.get('action') == 'kept'
+                    and r.get('rejected_reason') is None
+                    and 'snr' in r and np.isfinite(r['snr'])
+                ]
+                valid_kept_snrs = [r['snr'] for r in valid_kept_results]
+                sc_vals = [
+                    r['starcount'] for r in valid_kept_results
+                    if r.get('starcount') is not None and np.isfinite(r['starcount'])
+                ]
+
+                if len(valid_kept_snrs) >= 5 and len(sc_vals) >= 5:
+                    snr_p25 = np.percentile(valid_kept_snrs, 25)
+                    sc_p25 = np.percentile(sc_vals, 25)
+                    good_img = [
+                        r for r in valid_kept_results
+                        if r['snr'] >= snr_p25 and r['starcount'] >= sc_p25
+                    ]
+
+                    ttk.Label(
+                        recom_frame,
+                        text=self._(
+                            "visu_recom_text_both",
+                            count=len(good_img),
+                            snr_p25=snr_p25,
+                            sc_p25=sc_p25,
+                        ),
+                    ).pack(anchor=tk.W, pady=(0, 5))
+
+                    rec_cols = ("file", "snr", "starcount")
+                    rec_tree = ttk.Treeview(
+                        recom_frame, columns=rec_cols, show="headings", height=10
+                    )
+                    rec_tree.heading("file", text=self._("visu_recom_col_file"))
+                    rec_tree.heading("snr", text=self._("visu_recom_col_snr"))
+                    rec_tree.heading(
+                        "starcount", text=self._("visu_recom_col_starcount")
+                    )
+                    rec_tree.column("file", width=450, anchor="w")
+                    rec_tree.column("snr", width=80, anchor="center")
+                    rec_tree.column("starcount", width=90, anchor="center")
+
+                    for img in sorted(good_img, key=lambda x: x['snr'], reverse=True):
+                        rec_tree.insert(
+                            "",
+                            tk.END,
+                            values=(
+                                img.get("rel_path", os.path.basename(img["file"])),
+                                f"{img['snr']:.2f}",
+                                f"{img['starcount']:.0f}",
+                            ),
+                        )
+
+                    rec_scr = ttk.Scrollbar(
+                        recom_frame, orient=tk.VERTICAL, command=rec_tree.yview
+                    )
+                    rec_tree.configure(yscroll=rec_scr.set)
+                    rec_scr.pack(side=tk.RIGHT, fill=tk.Y)
+                    rec_tree.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+                    export_cmd = lambda gi=good_img, p=(snr_p25, sc_p25): self.export_recommended_list(gi, p)
+                    export_button = ttk.Button(
+                        recom_frame, text=self._("export_button"), command=export_cmd
+                    )
+                    export_button.pack(pady=5)
+
+                elif len(valid_kept_snrs) >= 5:
+                    p25_threshold = np.percentile(valid_kept_snrs, 25)
+                    good_img = [r for r in valid_kept_results if r['snr'] >= p25_threshold]
                     if good_img:
-                        good_img_sorted = sorted(good_img, key=lambda x: x['snr'], reverse=True); ttk.Label(recom_frame, text=self._("visu_recom_text", count=len(good_img_sorted), p75=p25_threshold)).pack(anchor=tk.W, pady=(0,5)); rec_cols = ("file", "snr"); rec_tree = ttk.Treeview(recom_frame, columns=rec_cols, show='headings', height=10); rec_tree.heading("file", text=self._("visu_recom_col_file")); rec_tree.column("file", width=450, anchor='w'); rec_tree.heading("snr", text=self._("visu_recom_col_snr")); rec_tree.column("snr", width=100, anchor='center')
-                        for img in good_img_sorted: rec_tree.insert('', tk.END, values=(img.get('rel_path', os.path.basename(img.get('file', '?'))), f"{img.get('snr', 0.0):.2f}"));
-                        rec_scr = ttk.Scrollbar(recom_frame, orient=tk.VERTICAL, command=rec_tree.yview); rec_tree.configure(yscroll=rec_scr.set); rec_scr.pack(side=tk.RIGHT, fill=tk.Y); rec_tree.pack(fill=tk.BOTH, expand=True, pady=(0,10)); export_cmd = lambda gi=good_img_sorted, p=p25_threshold: self.export_recommended_list(gi, p); export_button = ttk.Button(recom_frame, text=self._("export_button"), command=export_cmd); export_button.pack(pady=5)
-                    else: ttk.Label(recom_frame, text=self._("visu_recom_no_selection")).pack(padx=10, pady=10)
+                        good_img_sorted = sorted(good_img, key=lambda x: x['snr'], reverse=True)
+                        ttk.Label(
+                            recom_frame,
+                            text=self._(
+                                "visu_recom_text",
+                                count=len(good_img_sorted),
+                                p75=p25_threshold,
+                            ),
+                        ).pack(anchor=tk.W, pady=(0, 5))
+
+                        rec_cols = ("file", "snr")
+                        rec_tree = ttk.Treeview(
+                            recom_frame, columns=rec_cols, show="headings", height=10
+                        )
+                        rec_tree.heading("file", text=self._("visu_recom_col_file"))
+                        rec_tree.heading("snr", text=self._("visu_recom_col_snr"))
+                        rec_tree.column("file", width=450, anchor="w")
+                        rec_tree.column("snr", width=100, anchor="center")
+
+                        for img in good_img_sorted:
+                            rec_tree.insert(
+                                "",
+                                tk.END,
+                                values=(
+                                    img.get(
+                                        "rel_path", os.path.basename(img.get("file", "?"))
+                                    ),
+                                    f"{img.get('snr', 0.0):.2f}",
+                                ),
+                            )
+
+                        rec_scr = ttk.Scrollbar(
+                            recom_frame, orient=tk.VERTICAL, command=rec_tree.yview
+                        )
+                        rec_tree.configure(yscroll=rec_scr.set)
+                        rec_scr.pack(side=tk.RIGHT, fill=tk.Y)
+                        rec_tree.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+                        export_cmd = lambda gi=good_img_sorted, p=p25_threshold: self.export_recommended_list(gi, p)
+                        export_button = ttk.Button(
+                            recom_frame,
+                            text=self._("export_button"),
+                            command=export_cmd,
+                        )
+                        export_button.pack(pady=5)
+                    else:
+                        ttk.Label(
+                            recom_frame, text=self._("visu_recom_no_selection")
+                        ).pack(padx=10, pady=10)
+
                 elif len(valid_kept_snrs) > 0:
-                    ttk.Label(recom_frame, text=self._("visu_recom_not_enough")).pack(padx=10, pady=10); export_all_kept_cmd = lambda gi=valid_kept_results: self.export_recommended_list(gi, -1); export_all_button = ttk.Button(recom_frame, text=self._("Exporter Toutes Conservées", default="Export All Kept"), command=export_all_kept_cmd); export_all_button.pack(pady=5)
-                else: ttk.Label(recom_frame, text=self._("visu_recom_no_data")).pack(padx=10, pady=10)
+                    ttk.Label(
+                        recom_frame, text=self._("visu_recom_not_enough")
+                    ).pack(padx=10, pady=10)
+
+                    export_all_kept_cmd = lambda gi=valid_kept_results: self.export_recommended_list(gi, -1)
+                    export_all_button = ttk.Button(
+                        recom_frame,
+                        text=self._("Exporter Toutes Conservées", default="Export All Kept"),
+                        command=export_all_kept_cmd,
+                    )
+                    export_all_button.pack(pady=5)
+
+                else:
+                    ttk.Label(
+                        recom_frame, text=self._("visu_recom_no_data")
+                    ).pack(padx=10, pady=10)
             except Exception as e:
                  print(f"Erreur Recommandations: {e}"); traceback.print_exc(); ttk.Label(stack_tab, text=f"{self._('msg_error')}:\n{e}\n{traceback.format_exc()}").pack()
                  # Pas de fig4 à fermer ici pour l'instant
@@ -2164,15 +2292,23 @@ class AstroImageAnalyzerGUI:
 
     def export_recommended_list(self, images_to_export, criterion_value):
         """
-        Ouvre une boîte de dialogue pour enregistrer la liste des images recommandées 
+        Ouvre une boîte de dialogue pour enregistrer la liste des images recommandées
         dans un fichier texte.
         """
         if not images_to_export:
             messagebox.showwarning(self._("msg_warning"), self._("msg_export_no_images"), parent=self.root)
             return
 
-        # Proposer un nom de fichier par défaut
-        default_filename = f"recommended_images_snr_gt_{criterion_value:.2f}.txt" if criterion_value != -1 else "all_kept_images.txt"
+        # Générer un nom de fichier par défaut
+        if isinstance(criterion_value, tuple):
+            snr_val, sc_val = criterion_value
+            default_filename = (
+                f"recommended_images_snr_gt_{snr_val:.2f}_sc_gt_{sc_val:.0f}.txt"
+            )
+        elif criterion_value != -1:
+            default_filename = f"recommended_images_snr_gt_{criterion_value:.2f}.txt"
+        else:
+            default_filename = "all_kept_images.txt"
         
         save_path = filedialog.asksaveasfilename(
             parent=self.root, # Assurer que la fenêtre de dialogue est modale à la fenêtre de visu si elle est ouverte
@@ -2187,17 +2323,34 @@ class AstroImageAnalyzerGUI:
             try:
                 with open(save_path, 'w', encoding='utf-8') as f:
                     f.write(f"# {self._('Liste dimages recommandées', default='Recommended image list')}\n")
-                    if criterion_value != -1: # -1 est un marqueur pour "toutes les conservées"
-                        f.write(f"# {self._('Critère', default='Criterion')}: SNR >= {criterion_value:.2f} (P25)\n")
+                    if criterion_value != -1:
+                        if isinstance(criterion_value, tuple):
+                            snr_val, sc_val = criterion_value
+                            f.write(
+                                f"# {self._('Critère', default='Criterion')}: SNR >= {snr_val:.2f} (P25); Starcount >= {sc_val:.0f} (P25)\n"
+                            )
+                        else:
+                            f.write(
+                                f"# {self._('Critère', default='Criterion')}: SNR >= {criterion_value:.2f} (P25)\n"
+                            )
                     else:
                         f.write(f"# {self._('Critère', default='Criterion')}: {self._('Toutes les images conservées valides', default='All valid kept images')}\n")
                     f.write(f"# {self._('Généré le', default='Generated on')}: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                     f.write(f"# {self._('Nombre dimages', default='Number of images')}: {len(images_to_export)}\n\n")
-                    
+
+                    header_parts = ["file", "snr"]
+                    if any(r.get('starcount') is not None for r in images_to_export):
+                        header_parts.append("starcount")
+                    f.write("\t".join(header_parts) + "\n")
+
                     for img_data in images_to_export:
-                        # Utiliser 'rel_path' s'il existe, sinon 'file'
                         file_to_write = img_data.get('rel_path', os.path.basename(img_data.get('file', 'UNKNOWN_FILE')))
-                        f.write(f"{file_to_write}\n")
+                        line_parts = [file_to_write]
+                        if img_data.get('snr') is not None:
+                            line_parts.append(f"{img_data['snr']:.2f}")
+                        if img_data.get('starcount') is not None:
+                            line_parts.append(f"{img_data['starcount']:.0f}")
+                        f.write("\t".join(line_parts) + "\n")
                 
                 messagebox.showinfo(
                     self._("msg_info"), 
