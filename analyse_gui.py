@@ -103,6 +103,112 @@ except ImportError as e_logic:
     except Exception: pass
     sys.exit(1)
 
+# Ajout fonction apply_pending_starcount_actions si absente dans analyse_logic
+if not hasattr(analyse_logic, 'apply_pending_starcount_actions'):
+    def apply_pending_starcount_actions(results_list, sc_reject_abs_path,
+                                       delete_rejected_flag, move_rejected_flag,
+                                       log_callback, status_callback, progress_callback,
+                                       input_dir_abs):
+        actions_count = 0
+        if not results_list:
+            return actions_count
+
+        _log = log_callback if callable(log_callback) else lambda k, **kw: None
+        _status = status_callback if callable(status_callback) else lambda k, **kw: None
+        _progress = progress_callback if callable(progress_callback) else lambda v: None
+
+        to_process = [r for r in results_list if r.get('rejected_reason') == 'starcount_pending_action' and r.get('status') == 'ok']
+        total = len(to_process)
+        if total == 0:
+            _log('logic_info_prefix', text='Aucune action Starcount en attente.')
+            return 0
+
+        _status('status_custom', text=f'Application des actions Starcount différées sur {total} fichiers...')
+        _progress(0)
+
+        for i, r in enumerate(to_process):
+            current_progress = ((i + 1) / total) * 100
+            _progress(current_progress)
+            try:
+                rel_path = os.path.relpath(r.get('path'), input_dir_abs) if r.get('path') and input_dir_abs else r.get('file', 'N/A')
+            except ValueError:
+                rel_path = r.get('file', 'N/A')
+
+            _status('status_custom', text=f'Action Starcount sur {rel_path} ({i+1}/{total})')
+
+            current_path = r.get('path')
+            if not current_path or not os.path.exists(current_path):
+                _log('logic_move_skipped', file=rel_path, e='Fichier source introuvable pour action Starcount différée.')
+                r['action_comment'] = r.get('action_comment', '') + ' Source non trouvée pour action différée.'
+                r['action'] = 'error_action_deferred'
+                r['status'] = 'error'
+                continue
+
+            action_done = False
+            original_reason = r['rejected_reason']
+            if delete_rejected_flag:
+                try:
+                    os.remove(current_path)
+                    _log('logic_info_prefix', text=f'Fichier supprimé (Starcount différé): {rel_path}')
+                    r['path'] = None
+                    r['action'] = 'deleted_starcount'
+                    r['rejected_reason'] = 'starcount'
+                    r['status'] = 'processed_action'
+                    actions_count += 1
+                    action_done = True
+                except Exception as del_e:
+                    _log('logic_error_prefix', text=f'Erreur suppression Starcount différé {rel_path}: {del_e}')
+                    r['action_comment'] = r.get('action_comment', '') + f' Erreur suppression différée: {del_e}'
+                    r['action'] = 'error_delete'
+                    r['rejected_reason'] = original_reason
+            elif move_rejected_flag and sc_reject_abs_path:
+                if not os.path.isdir(sc_reject_abs_path):
+                    try:
+                        os.makedirs(sc_reject_abs_path)
+                        _log('logic_dir_created', path=sc_reject_abs_path)
+                    except OSError as e_mkdir:
+                        _log('logic_dir_create_error', path=sc_reject_abs_path, e=e_mkdir)
+                        r['action_comment'] = r.get('action_comment', '') + f' Dossier rejet Starcount inaccessible: {e_mkdir}'
+                        r['action'] = 'error_move'
+                        r['rejected_reason'] = original_reason
+                        continue
+
+                dest_path = os.path.join(sc_reject_abs_path, os.path.basename(current_path))
+                try:
+                    if os.path.normpath(current_path) != os.path.normpath(dest_path):
+                        shutil.move(current_path, dest_path)
+                        _log('logic_moved_info', folder=os.path.basename(sc_reject_abs_path), text_key_suffix='_deferred_starcount', file_rel_path=rel_path)
+                        r['path'] = dest_path
+                        r['action'] = 'moved_starcount'
+                        r['rejected_reason'] = 'starcount'
+                        r['status'] = 'processed_action'
+                        actions_count += 1
+                        action_done = True
+                    else:
+                        r['action_comment'] = r.get('action_comment', '') + ' Déjà dans dossier cible (différé)?'
+                        r['action'] = 'kept'
+                        r['rejected_reason'] = 'starcount'
+                        r['status'] = 'processed_action'
+                        action_done = True
+                except Exception as move_e:
+                    _log('logic_move_error', file=rel_path, e=move_e)
+                    r['action_comment'] = r.get('action_comment', '') + f' Erreur déplacement différé: {move_e}'
+                    r['action'] = 'error_move'
+                    r['rejected_reason'] = original_reason
+
+            if not action_done and not delete_rejected_flag and not move_rejected_flag:
+                r['action'] = 'kept_pending_starcount_no_action'
+                r['rejected_reason'] = 'starcount'
+                r['status'] = 'processed_action'
+                r['action_comment'] = r.get('action_comment', '') + ' Action Starcount différée mais aucune opération configurée.'
+
+        _progress(100)
+        _status('status_custom', text=f'{actions_count} actions Starcount différées appliquées.')
+        _log('logic_info_prefix', text=f'{actions_count} actions Starcount différées appliquées.')
+        return actions_count
+
+    analyse_logic.apply_pending_starcount_actions = apply_pending_starcount_actions
+
 # Importe le module contenant les textes traduits
 # Cet import devrait fonctionner car zone.py est dans le même dossier 'beforehand'
 try:
@@ -298,8 +404,9 @@ class AstroImageAnalyzerGUI:
 
         # Paramètres Sélection SNR
         self.snr_selection_mode = tk.StringVar(value='percent') 
-        self.snr_selection_value = tk.StringVar(value='80') 
-        self.snr_reject_dir = tk.StringVar() 
+        self.snr_selection_value = tk.StringVar(value='80')
+        self.snr_reject_dir = tk.StringVar()
+        self.starcount_reject_dir = tk.StringVar()
 
         # Paramètres Détection Traînées (acstools.satdet)
         self.trail_params = {
@@ -327,6 +434,9 @@ class AstroImageAnalyzerGUI:
         self.current_snr_max = None
         self.snr_range_slider = None
         self.snr_slider_lines = ()
+        self.current_sc_min = None
+        self.current_sc_max = None
+        self.starcount_range_slider = None
         
         # Références aux widgets (pour traduction, activation/désactivation)
         self.widgets_refs = {}
@@ -343,6 +453,7 @@ class AstroImageAnalyzerGUI:
         self.stack_after_analysis = False
         self.apply_snr_button = None
         self.visual_apply_button = None
+        self.apply_starcount_button = None
         
         # Vérifier si les traductions ont été chargées
         if 'translations' not in globals() or not translations:
@@ -768,6 +879,46 @@ class AstroImageAnalyzerGUI:
                 print(f"Erreur Histogramme SNR: {e}"); ttk.Label(snr_tab, text=f"{self._('msg_error')}:\n{e}\n{traceback.format_exc()}").pack()
                 if fig1: plt.close(fig1) # Fermer figure si erreur canvas
 
+            # --- Onglet Starcount Distribution ---
+            sc_tab = ttk.Frame(notebook)
+            notebook.add(sc_tab, text=self._('starcount_distribution_tab'))
+            fig_sc = None
+            try:
+                sc_values = [r['starcount'] for r in self.analysis_results if r.get('starcount') is not None]
+                fig_sc, ax_sc = plt.subplots(figsize=(7, 5))
+                figures_list.append(fig_sc)
+                if sc_values:
+                    n, bins, patches = ax_sc.hist(sc_values, bins=20, color='skyblue', edgecolor='black')
+                    ax_sc.set_title(self._('starcount_distribution_title'))
+                    ax_sc.set_xlabel(self._('starcount_label'))
+                    ax_sc.set_ylabel(self._('number_of_images'))
+                    ax_sc.grid(axis='y', linestyle='--', alpha=0.7)
+
+                    self.current_sc_min = min(sc_values)
+                    self.current_sc_max = max(sc_values)
+
+                    ax_slider_sc = fig_sc.add_axes([0.15, 0.02, 0.7, 0.03])
+                    self.starcount_range_slider = RangeSlider(
+                        ax_slider_sc,
+                        self._('starcount_label'),
+                        valmin=min(sc_values),
+                        valmax=max(sc_values),
+                        valinit=(min(sc_values), max(sc_values))
+                    )
+                    self.starcount_range_slider.on_changed(lambda val: self._on_starcount_slider_change(val, patches))
+                else:
+                    ax_sc.text(0.5, 0.5, self._('visu_snr_dist_no_data'), ha='center', va='center', fontsize=12, color='red')
+
+                canvas_sc = FigureCanvasTkAgg(fig_sc, master=sc_tab)
+                canvas_sc.draw()
+                canvas_sc.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+                canvas_list.append(canvas_sc)
+            except Exception as e:
+                print(f"Erreur Histogramme Starcount: {e}")
+                ttk.Label(sc_tab, text=f"{self._('msg_error')}:\n{e}\n{traceback.format_exc()}").pack()
+                if fig_sc:
+                    plt.close(fig_sc)
+
             # --- Onglet Comparaison SNR (Top/Bottom N) ---
             comp_tab = ttk.Frame(notebook)
             notebook.add(comp_tab, text=self._("visu_tab_snr_comp"))
@@ -906,6 +1057,19 @@ class AstroImageAnalyzerGUI:
 
             bottom_frame = ttk.Frame(top)
             bottom_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=5)
+
+            # Apply Starcount Rejection button
+            self.apply_starcount_button = ttk.Button(
+                bottom_frame,
+                text=self._('apply_starcount_rejection', default='Apply Starcount Rejection'),
+                state=tk.DISABLED,
+                command=self._on_visual_apply_starcount
+            )
+            self.apply_starcount_button.pack(side=tk.RIGHT, padx=5)
+            self.tooltips['apply_starcount_button'] = ToolTip(
+                self.apply_starcount_button,
+                lambda: self._('tooltip_apply_starcount_rejection', default='Apply pending starcount actions')
+            )
 
             # cloned Apply SNR Rejection button
             self.visual_apply_button = ttk.Button(
@@ -2254,6 +2418,43 @@ class AstroImageAnalyzerGUI:
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
 
+    def apply_pending_starcount_actions_gui(self):
+        """Applique les actions Starcount sélectionnées via le RangeSlider."""
+        lo = self.current_sc_min
+        hi = self.current_sc_max
+        if lo is None or hi is None:
+            return
+
+        for r in self.analysis_results:
+            sc = r.get('starcount')
+            if r.get('status') == 'ok' and sc is not None:
+                if sc < lo or sc > hi:
+                    r['rejected_reason'] = 'starcount_pending_action'
+                    r['action'] = 'pending_starcount_action'
+
+        if hasattr(analyse_logic, 'apply_pending_starcount_actions'):
+            analyse_logic.apply_pending_starcount_actions(
+                self.analysis_results,
+                self.starcount_reject_dir.get(),
+                delete_rejected_flag=self.reject_action.get() == 'delete',
+                move_rejected_flag=self.reject_action.get() == 'move',
+                log_callback=lambda *a, **k: None,
+                status_callback=lambda *a, **k: None,
+                progress_callback=lambda v: None,
+                input_dir_abs=self.input_dir.get()
+            )
+
+        if self.apply_starcount_button:
+            self.apply_starcount_button.config(state=tk.DISABLED)
+        if self.starcount_range_slider:
+            try:
+                self.starcount_range_slider.disconnect_events()
+            except Exception:
+                pass
+
+        if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
+            self._refresh_treeview()
+
     def _on_visual_apply_snr(self):
         """Handler pour le bouton d'application SNR de la fenêtre de visualisation."""
         # 1) réutilise la logique existante
@@ -2271,6 +2472,34 @@ class AstroImageAnalyzerGUI:
                 self.snr_range_slider.set_active(False)
         except Exception:
             pass
+
+    def _on_visual_apply_starcount(self):
+        """Handler pour le bouton d'application Starcount de la fenêtre de visualisation."""
+        self.apply_pending_starcount_actions_gui()
+        if self.apply_starcount_button:
+            self.apply_starcount_button.config(state=tk.DISABLED)
+        try:
+            if self.starcount_range_slider:
+                self.starcount_range_slider.set_active(False)
+        except Exception:
+            pass
+
+    def _on_starcount_slider_change(self, val, patches):
+        """Mise à jour visuelle lors du déplacement du RangeSlider Starcount."""
+        lo, hi = val
+        for p in patches:
+            x_left = p.get_x()
+            x_right = x_left + p.get_width()
+            if x_right < lo or x_left > hi:
+                p.set_alpha(0.2)
+            else:
+                p.set_alpha(1.0)
+        if patches:
+            patches[0].figure.canvas.draw_idle()
+        self.current_sc_min = lo
+        self.current_sc_max = hi
+        if self.apply_starcount_button:
+            self.apply_starcount_button.config(state=tk.NORMAL)
 
     def run_apply_actions_thread(self, results_list, snr_reject_abs, delete_flag, move_flag, callbacks, input_dir_abs):
         """
