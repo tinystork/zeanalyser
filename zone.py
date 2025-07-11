@@ -37,7 +37,7 @@ translations = {
         'input_dir_label': "Dossier d'entrée:",
         'output_log_label': "Fichier log:",
         'include_subfolders_label': "Inclure les sous-dossiers",
-        'bortle_file_label': "Base Bortle (GeoTIFF):",
+        'bortle_file_label': "Base Bortle (GeoTIFF/KMZ):",
         'bortle_browse_button': "Parcourir",
         'use_bortle_check_label': "Utiliser le classement Bortle",
         'bortle_class_unknown': "Inconnu",
@@ -191,7 +191,7 @@ translations = {
         # --- Labels & Fields ---
         'input_dir_label': "Input Folder:", 'output_log_label': "Log File:",
         'include_subfolders_label': "Include Subfolders", # <-- NEW
-        'bortle_file_label': "Bortle base (GeoTIFF):",
+        'bortle_file_label': "Bortle base (GeoTIFF/KMZ):",
         'bortle_browse_button': "Browse",
         'use_bortle_check_label': "Use Bortle classification",
         'bortle_class_unknown': "Unknown",

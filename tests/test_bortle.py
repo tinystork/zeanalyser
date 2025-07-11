@@ -3,10 +3,11 @@ import sys
 import numpy as np
 import rasterio
 from rasterio.transform import from_origin
-from tempfile import NamedTemporaryFile
+import zipfile
 import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from bortle_utils import load_bortle_raster, sqm_to_bortle, ucd_to_sqm, sample_bortle_dataset
+from analyse_logic import _load_bortle_raster
 
 def test_sqm_to_bortle(tmp_path):
     data = np.full((2, 2), 22.0, dtype=np.float32)
@@ -75,4 +76,35 @@ def test_sample_bortle_dataset_scaling(tmp_path):
     sqm = ucd_to_sqm(l_ucd + 174.0)
     bortle = sqm_to_bortle(sqm)
     assert bortle >= 6
+
+
+def test_load_bortle_kmz(tmp_path):
+    data = np.array([[22.0]], dtype=np.float32)
+    img = tmp_path / "img.tif"
+    with rasterio.open(img, 'w', driver='GTiff', height=1, width=1, count=1,
+                       dtype='float32', crs='EPSG:4326',
+                       transform=from_origin(0, 1, 1, 1)) as dst:
+        dst.write(data, 1)
+
+    kml = """<?xml version='1.0' encoding='UTF-8'?>
+<kml xmlns='http://www.opengis.net/kml/2.2'>
+  <GroundOverlay>
+    <Icon><href>img.tif</href></Icon>
+    <LatLonBox>
+      <north>1</north>
+      <south>0</south>
+      <east>1</east>
+      <west>0</west>
+    </LatLonBox>
+  </GroundOverlay>
+</kml>
+"""
+
+    kmz = tmp_path / "test.kmz"
+    with zipfile.ZipFile(kmz, 'w') as zf:
+        zf.writestr('doc.kml', kml)
+        zf.write(img, arcname='img.tif')
+
+    ds = _load_bortle_raster(str(kmz))
+    assert ds.read(1)[0, 0] == pytest.approx(22.0)
 
