@@ -4,6 +4,7 @@ import numpy as np
 import rasterio
 from rasterio.transform import from_origin
 from tempfile import NamedTemporaryFile
+import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from bortle_utils import load_bortle_raster, sqm_to_bortle
 
@@ -17,4 +18,11 @@ def test_sqm_to_bortle(tmp_path):
     val = list(ds.sample([(0, 0)]))[0][0]
     cls = sqm_to_bortle(float(val))
     assert cls == 1
+
+
+def test_load_bortle_raster_invalid_extension(tmp_path):
+    bogus = tmp_path / "bortle.tpk"
+    bogus.write_text("dummy")
+    with pytest.raises(ValueError):
+        load_bortle_raster(str(bogus))
 
