@@ -13,7 +13,7 @@ from bortle_utils import (
     sample_bortle_dataset,
     ucd_to_bortle,
 )
-from analyse_logic import _load_bortle_raster
+from analyse_logic import _load_bortle_raster, write_telescope_pollution_csv
 
 def test_sqm_to_bortle(tmp_path):
     data = np.full((2, 2), 1.0, dtype=np.float32)
@@ -123,4 +123,32 @@ def test_load_bortle_kmz(tmp_path):
 
     ds = _load_bortle_raster(str(kmz))
     assert ds.read(1)[0, 0] == pytest.approx(22.0)
+
+
+def test_write_telescope_pollution_csv(tmp_path):
+    data = np.array([[22.0]], dtype=np.float32)
+    tif = tmp_path / "bortle.tif"
+    with rasterio.open(
+        tif,
+        'w',
+        driver='GTiff',
+        height=1,
+        width=1,
+        count=1,
+        dtype='float32',
+        crs='EPSG:4326',
+        transform=from_origin(0, 1, 1, 1),
+    ) as dst:
+        dst.write(data, 1)
+
+    ds = load_bortle_raster(str(tif))
+    results = [
+        {'status': 'ok', 'telescope': 'ScopeA', 'sitelong': 0.5, 'sitelat': 0.5},
+        {'status': 'ok', 'telescope': 'ScopeB', 'sitelong': 0.0, 'sitelat': 0.0},
+    ]
+    csv_path = tmp_path / "pollution.csv"
+    write_telescope_pollution_csv(str(csv_path), results, ds)
+    content = csv_path.read_text()
+    assert 'ScopeA' in content
+    assert 'ScopeB' in content
 
