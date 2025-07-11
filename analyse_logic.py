@@ -20,6 +20,11 @@ from rasterio.transform import from_bounds
 
 import bortle_utils
 
+
+def artif_ratio_to_sqm(ratio_artif, mag_naturel=21.6):
+    """Convert a ratio artificial/natural sky brightness to SQM."""
+    return mag_naturel - 2.5 * np.log10(1 + ratio_artif)
+
 NATURAL_SKY = 174.0  # µcd/m² ≈ 22 mag/arcsec²
 
 
@@ -548,7 +553,7 @@ def write_telescope_pollution_csv(csv_path, results_list, bortle_dataset=None):
         if bortle_dataset and lon is not None and lat is not None:
             try:
                 l_ucd = bortle_utils.sample_bortle_dataset(bortle_dataset, lon, lat)
-                sqm = bortle_utils.ucd_to_sqm(l_ucd + NATURAL_SKY)
+                sqm = artif_ratio_to_sqm(l_ucd)
             except Exception:
                 l_ucd = None
                 sqm = None
@@ -1328,7 +1333,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 try:
                     with bortle_lock:
                         l_ucd = bortle_utils.sample_bortle_dataset(bortle_dataset, float(lon), float(lat))
-                    sqm = bortle_utils.ucd_to_sqm(float(l_ucd) + NATURAL_SKY)
+                    sqm = artif_ratio_to_sqm(float(l_ucd))
                     bortle_class = str(bortle_utils.sqm_to_bortle(float(sqm)))
                 except Exception:
                     bortle_class = 'Unknown'
