@@ -68,3 +68,14 @@ L'analyse Bortle repose sur le jeu de données de :
 Falchi, Fabio; Cinzano, Pierantonio; Duriscoe, Dan; Kyba, Christopher C. M.; Elvidge, Christopher D.; Baugh, Kimberly; Portnov, Boris; Rybnikova, Nataliya A.; Furgoni, Riccardo (2016) : *Supplement to: The New World Atlas of Artificial Night Sky Brightness. V. 1.1.* GFZ Data Services. <https://doi.org/10.5880/GFZ.1.4.2016.001>
 (étude : <https://www.science.org/doi/10.1126/sciadv.1600377>). Il faut télécharger ce raster pour pouvoir classer les données par Bortle.
 
+
+## Remerciements / Acknowledgments
+
+**Français**
+
+Je remercie chaleureusement **Astrobider**, rencontré sur Discord, à l'origine de l'idée de classement par télescope et Bortle. Merci également aux concepteurs de toutes les bibliothèques utilisées dans ce projet. Vous pouvez l'utiliser en accord avec la licence, mais j'apprécierais d'être cité si mon travail vous sert de base.
+
+**English**
+
+Many thanks to **Astrobider**, whom I met on Discord, for inspiring the idea of sorting by telescope and Bortle class. I also want to thank the authors of all the libraries used in this project. Feel free to use it in compliance with the license, but I would appreciate a citation if you reuse my work.
+
