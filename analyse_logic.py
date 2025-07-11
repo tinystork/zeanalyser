@@ -1244,10 +1244,12 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     try:
         with open(output_log, 'a', encoding='utf-8') as log_file:  # Mode 'a' pour ajouter au log existant
             log_file.write("\n--- Analyse individuelle des fichiers (État final après actions) ---\n")
+
             header_parts = ["Fichier (Relatif)", "Statut", "SNR", "Fond", "Bruit", "PixSig", "Starcount"]
             if options.get('detect_trails') and SATDET_AVAILABLE:
                 header_parts.extend(["Traînée", "NbSeg"])
             header_parts.extend(["Expo", "Filtre", "Temp", "Monture", "Bortle", "Dest", "Action Finale", "Rejet", "Commentaire"])
+
             header = "\t".join(header_parts) + "\n"
             log_file.write(header)
 
@@ -1280,6 +1282,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 ])
                 log_line = "\t".join(log_line_parts) + "\n"
                 log_file.write(log_line.replace('\tnan', '\tN/A').replace('\tN/A', '\t-'))
+
     except IOError as e: 
         # Utiliser le callback _log s'il est disponible, sinon print
         _log_func = _log if callable(_log) else print
