@@ -10,6 +10,9 @@ from astropy.utils.exceptions import AstropyWarning
 import warnings
 import json
 import concurrent.futures
+import threading
+
+import bortle_utils
 
 try:
     import starcount_module
@@ -446,6 +449,11 @@ def _snr_worker(path):
         'exposure': 'N/A',
         'filter': 'N/A',
         'temperature': 'N/A',
+        'eqmode': 2,
+        'sitelong': None,
+        'sitelat': None,
+        'telescope': None,
+        'date_obs': None,
         'error': None,
         'fwhm': np.nan,
         'ecc': np.nan,
@@ -459,6 +467,11 @@ def _snr_worker(path):
             if hdul and len(hdul) > 0 and hasattr(hdul[0], 'data') and hdul[0].data is not None:
                 data = hdul[0].data
                 header = hdul[0].header
+                result['eqmode'] = header.get('EQMODE', 2)
+                result['sitelong'] = header.get('SITELONG')
+                result['sitelat'] = header.get('SITELAT')
+                result['telescope'] = header.get('TELESCOP', header.get('TELESCOPE'))
+                result['date_obs'] = header.get('DATE-OBS')
                 result['exposure'] = header.get('EXPTIME', header.get('EXPOSURE', 'N/A'))
                 result['filter'] = header.get('FILTER', 'N/A')
                 result['temperature'] = header.get('CCD-TEMP', header.get('TEMPERAT', 'N/A'))
@@ -520,6 +533,14 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     n_cpus = multiprocessing.cpu_count()
     n_workers = max(1, int(n_cpus * 0.75))
 
+    bortle_dataset = None
+    bortle_lock = threading.Lock()
+    if options.get('use_bortle') and options.get('bortle_path'):
+        try:
+            bortle_dataset = bortle_utils.load_bortle_raster(options['bortle_path'])
+        except Exception as e:
+            _log('logic_warn_prefix', text=f'Bortle raster load error: {e}')
+
     # --- NOUVEAU : Extraire l'option pour l'application immédiate des actions SNR ---
     apply_snr_action_immediately = options.get('apply_snr_action_immediately', True)
     # --- FIN NOUVEAU ---
@@ -535,6 +556,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         return []
     
     abs_input_dir = os.path.abspath(input_dir)
+    output_root = options.get('output_root', abs_input_dir)
     reject_dirs_to_exclude_abs = []
     snr_reject_abs = None
     trail_reject_abs = None
@@ -699,6 +721,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     'fwhm': np.nan,
                     'ecc': np.nan,
                     'n_star_ecc': 0,
+                    'eqmode': 2,
+                    'sitelong': None,
+                    'sitelat': None,
+                    'telescope': None,
+                    'date_obs': None,
                 }
                 try:
                     worker_res = future.result()
@@ -715,6 +742,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                             'temperature': worker_res['temperature'],
                         }
                         result_base.update(snr_data)
+                        result_base['eqmode'] = worker_res.get('eqmode', 2)
+                        result_base['sitelong'] = worker_res.get('sitelong')
+                        result_base['sitelat'] = worker_res.get('sitelat')
+                        result_base['telescope'] = worker_res.get('telescope')
+                        result_base['date_obs'] = worker_res.get('date_obs')
                         if 'starcount' in worker_res:
                             result_base['starcount'] = worker_res['starcount']
                         if 'fwhm' in worker_res:
@@ -760,6 +792,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 'has_trails': False,
                 'num_trails': 0,
                 'starcount': None,
+                'eqmode': 2,
+                'sitelong': None,
+                'sitelat': None,
+                'telescope': None,
+                'date_obs': None,
             }
             try:
                 if options.get('analyze_snr'):
@@ -771,6 +808,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                             if hdul and len(hdul) > 0 and hasattr(hdul[0], 'data') and hdul[0].data is not None:
                                 data = hdul[0].data
                                 header = hdul[0].header
+                                result['eqmode'] = header.get('EQMODE', 2)
+                                result['sitelong'] = header.get('SITELONG')
+                                result['sitelat'] = header.get('SITELAT')
+                                result['telescope'] = header.get('TELESCOP', header.get('TELESCOPE'))
+                                result['date_obs'] = header.get('DATE-OBS')
                                 exposure = header.get('EXPTIME', header.get('EXPOSURE', 'N/A'))
                                 filter_name = header.get('FILTER', 'N/A')
                                 temperature = header.get('CCD-TEMP', header.get('TEMPERAT', 'N/A'))
@@ -1129,6 +1171,53 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                             file_had_trail_error = True
                     if not file_had_trail_error:
                          r['has_trails'] = False; r['num_trails'] = 0 # Marquer comme non-traînée si pas d'erreur spécifique
+
+    # --- Tri Bortle et organisation ---
+    for r in all_results_list:
+        r['mount'] = 'ALTZ'
+        r['bortle'] = 'Unknown'
+        r['filepath_dst'] = r.get('path')
+        if r.get('status') == 'ok' and r.get('action') == 'kept' and r.get('path'):
+            group = 'EQ' if str(r.get('eqmode', 2)) == '1' else 'ALTZ'
+            r['mount'] = group
+            lon = r.get('sitelong'); lat = r.get('sitelat')
+            bortle_class = 'Unknown'
+            if options.get('use_bortle') and bortle_dataset and lon is not None and lat is not None:
+                try:
+                    with bortle_lock:
+                        sqm = list(bortle_dataset.sample([(float(lon), float(lat))]))[0][0]
+                    bortle_class = str(bortle_utils.sqm_to_bortle(float(sqm)))
+                except Exception:
+                    bortle_class = 'Unknown'
+            r['bortle'] = bortle_class
+            tele = r.get('telescope') or 'Unknown'
+            date_obs = r.get('date_obs')
+            date_obj = None
+            if date_obs:
+                try:
+                    date_obj = datetime.datetime.fromisoformat(str(date_obs).split('T')[0])
+                except Exception:
+                    pass
+            parts = [output_root, group]
+            if options.get('use_bortle'):
+                parts.append(f"Bortle_{bortle_class}")
+            parts.append(tele)
+            if date_obj:
+                parts.append(date_obj.strftime('%Y-%m-%d'))
+            parts.append(f"Filter_{r.get('filter') or 'Unknown'}")
+            dest_dir = os.path.join(*filter(None, parts))
+            try:
+                os.makedirs(dest_dir, exist_ok=True)
+            except Exception as e:
+                _log('logic_dir_create_error', path=dest_dir, e=e)
+            dest_path = os.path.join(dest_dir, os.path.basename(r['path']))
+            try:
+                if os.path.normpath(r['path']) != os.path.normpath(dest_path):
+                    shutil.move(r['path'], dest_path)
+                r['path'] = dest_path
+                r['filepath_dst'] = dest_path
+            except Exception as e:
+                _log('logic_move_error', file=r.get('rel_path','?'), e=e)
     
 
     # --- Étape 7: Création des fichiers marqueurs ---
@@ -1153,41 +1242,44 @@ def perform_analysis(input_dir, output_log, options, callbacks):
 
     # --- Étape 8: Écrire les résultats détaillés FINALS dans le log ---
     try:
-         with open(output_log, 'a', encoding='utf-8') as log_file: # Mode 'a' pour ajouter au log existant
+        with open(output_log, 'a', encoding='utf-8') as log_file:  # Mode 'a' pour ajouter au log existant
             log_file.write("\n--- Analyse individuelle des fichiers (État final après actions) ---\n")
             header_parts = ["Fichier (Relatif)", "Statut", "SNR", "Fond", "Bruit", "PixSig", "Starcount"]
-            if options.get('detect_trails') and SATDET_AVAILABLE: header_parts.extend(["Traînée", "NbSeg"])
-            header_parts.extend(["Expo", "Filtre", "Temp", "Action Finale", "Rejet", "Commentaire"])
-            header = "\t".join(header_parts) + "\n"; log_file.write(header)
-            
+            if options.get('detect_trails') and SATDET_AVAILABLE:
+                header_parts.extend(["Traînée", "NbSeg"])
+            header_parts.extend(["Expo", "Filtre", "Temp", "Monture", "Bortle", "Dest", "Action Finale", "Rejet", "Commentaire"])
+            header = "\t".join(header_parts) + "\n"
+            log_file.write(header)
+
             for r in all_results_list:
-                 log_line_parts = [
-                     str(r.get('rel_path','?')),
-                     str(r.get('status','?')),
+                log_line_parts = [
+                    str(r.get('rel_path', '?')),
+                    str(r.get('status', '?')),
                     f"{r.get('snr', np.nan):.2f}",
                     f"{r.get('sky_bg', np.nan):.2f}",
                     f"{r.get('sky_noise', np.nan):.2f}",
-                    str(r.get('signal_pixels',0)),
+                    str(r.get('signal_pixels', 0)),
                     str(r.get('starcount', 'N/A'))
-                 ]
-                 if options.get('detect_trails') and SATDET_AVAILABLE:
-                     trail_status = 'N/A'
-                     if 'has_trails' in r: 
-                         # --- CORRECTION ICI ---
-                         trail_status = 'Oui' if r['has_trails'] else 'Non' 
-                         # --- FIN CORRECTION ---
-                     log_line_parts.extend([trail_status, str(r.get('num_trails',0))])
-                 
-                 log_line_parts.extend([
-                     str(r.get('exposure','N/A')),
-                     str(r.get('filter','N/A')),
-                     str(r.get('temperature','N/A')),
-                     str(r.get('action','?')),
-                     str(r.get('rejected_reason') or ''),
-                     (str(r.get('error_message') or '') + " " + str(r.get('action_comment') or '')).strip()
-                 ])
-                 log_line = "\t".join(log_line_parts) + "\n"
-                 log_file.write(log_line.replace('\tnan','\tN/A').replace('\tN/A','\t-'))
+                ]
+                if options.get('detect_trails') and SATDET_AVAILABLE:
+                    trail_status = 'N/A'
+                    if 'has_trails' in r:
+                        trail_status = 'Oui' if r['has_trails'] else 'Non'
+                    log_line_parts.extend([trail_status, str(r.get('num_trails', 0))])
+
+                log_line_parts.extend([
+                    str(r.get('exposure', 'N/A')),
+                    str(r.get('filter', 'N/A')),
+                    str(r.get('temperature', 'N/A')),
+                    str(r.get('mount', '')),
+                    str(r.get('bortle', '')),
+                    str(r.get('filepath_dst', '')),
+                    str(r.get('action', '?')),
+                    str(r.get('rejected_reason') or ''),
+                    (str(r.get('error_message') or '') + " " + str(r.get('action_comment') or '')).strip()
+                ])
+                log_line = "\t".join(log_line_parts) + "\n"
+                log_file.write(log_line.replace('\tnan', '\tN/A').replace('\tN/A', '\t-'))
     except IOError as e: 
         # Utiliser le callback _log s'il est disponible, sinon print
         _log_func = _log if callable(_log) else print
@@ -1199,10 +1291,16 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     _progress(100); end_time = time.time(); duration = end_time - start_time
     write_log_summary(output_log, abs_input_dir, options, trail_analysis_config, trail_errors, all_results_list, selection_stats, skipped_marker_dirs_count)
     try:
-        with open(output_log, 'a', encoding='utf-8') as log_file: 
+        with open(output_log, 'a', encoding='utf-8') as log_file:
             log_file.write(f"\nDurée totale de l'analyse: {duration:.2f} secondes\n")
             log_file.write("="*80 + "\nFin du log.\n")
     except IOError: pass # Ignorer si erreur ici, le principal est déjà écrit
-    
+
+    if bortle_dataset:
+        try:
+            bortle_dataset.close()
+        except Exception:
+            pass
+
     _status("status_analysis_done") # Statut final générique
     return all_results_list

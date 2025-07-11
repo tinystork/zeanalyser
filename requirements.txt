@@ -18,4 +18,5 @@ photutils
 # Détection de traînées via Hough  
 scipy
 scikit-image
+rasterio
 

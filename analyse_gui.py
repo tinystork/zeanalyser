@@ -608,6 +608,9 @@ class AstroImageAnalyzerGUI:
             print("AVERTISSEMENT (analyse_gui __init__): Aucun chemin de fichier de commande fourni. La fonction 'Analyser et Empiler' ne communiquera pas avec le stacker.")
         # --- FIN AJOUT ---
 
+        self.config_path = os.path.join(os.path.expanduser('~'), 'zeanalyser_gui_config.json')
+        self._config_data = self._load_gui_config()
+
         # Variables Tkinter pour lier les widgets aux données
         self.current_lang = tk.StringVar(value=initial_lang)
         if lock_language is None:
@@ -630,6 +633,8 @@ class AstroImageAnalyzerGUI:
         self.detect_trails = tk.BooleanVar(value=False)
         self.sort_by_snr = tk.BooleanVar(value=True)
         self.include_subfolders = tk.BooleanVar(value=False)
+        self.bortle_path = tk.StringVar(value=self._config_data.get('bortle_path', ''))
+        self.use_bortle = tk.BooleanVar(value=self._config_data.get('use_bortle', False))
 
         # Paramètres Sélection SNR
         self.snr_selection_mode = tk.StringVar(value='percent') 
@@ -829,6 +834,8 @@ class AstroImageAnalyzerGUI:
         options['analyze_snr'] = self.analyze_snr.get()
         options['detect_trails'] = self.detect_trails.get()
         options['include_subfolders'] = self.include_subfolders.get()
+        options['bortle_path'] = self.bortle_path.get()
+        options['use_bortle'] = self.use_bortle.get()
 
         # Vérifier chemins entrée/log (identique)
         if not input_dir or not os.path.isdir(input_dir):
@@ -941,6 +948,24 @@ class AstroImageAnalyzerGUI:
         if hasattr(self, 'visualize_button') and self.visualize_button:
             self._set_widget_state(self.visualize_button, tk.NORMAL if can_visualize else tk.DISABLED)
 
+
+    def _load_gui_config(self):
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _save_gui_config(self):
+        data = {
+            'bortle_path': self.bortle_path.get(),
+            'use_bortle': self.use_bortle.get()
+        }
+        try:
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+        except Exception:
+            pass
 
 
     def _launch_analysis(self, stack_after: bool):
@@ -2009,6 +2034,9 @@ class AstroImageAnalyzerGUI:
         collected_count = gc.collect()
         print(f"    Garbage Collector a collecté {collected_count} objets.")
 
+        # Sauvegarder la configuration GUI
+        self._save_gui_config()
+
         # Détruire la fenêtre Toplevel
         try:
             if self.root and self.root.winfo_exists():
@@ -2174,10 +2202,23 @@ class AstroImageAnalyzerGUI:
         subfolder_check.grid(row=2, column=0, columnspan=3, sticky=tk.W, padx=5, pady=(5,2))
         self.widgets_refs['include_subfolders_label'] = subfolder_check
 
-        # Ligne 3: Sélection Langue (Aligné à droite)
+        # Ligne 3: Bortle raster
+        bortle_label = ttk.Label(config_frame, text="")
+        bortle_label.grid(row=3, column=0, sticky=tk.W, pady=2)
+        self.widgets_refs['bortle_file_label'] = bortle_label
+        self.bortle_entry = ttk.Entry(config_frame, textvariable=self.bortle_path, width=40)
+        self.bortle_entry.grid(row=3, column=1, padx=5, pady=2, sticky=tk.W+tk.E)
+        self.bortle_browse_button = ttk.Button(config_frame, text="", command=self.browse_bortle_file)
+        self.bortle_browse_button.grid(row=3, column=2, padx=5, pady=2)
+        self.widgets_refs['bortle_browse_button'] = self.bortle_browse_button
+        self.use_bortle_check = ttk.Checkbutton(config_frame, text="", variable=self.use_bortle, command=self.toggle_sections_state)
+        self.use_bortle_check.grid(row=3, column=3, sticky=tk.W)
+        self.widgets_refs['use_bortle_check_label'] = self.use_bortle_check
+
+        # Ligne 4: Sélection Langue (Aligné à droite)
         if not self.lock_language:
             lang_frame = ttk.Frame(config_frame)
-            lang_frame.grid(row=3, column=0, columnspan=3, sticky=tk.E, pady=5, padx=5)
+            lang_frame.grid(row=4, column=0, columnspan=3, sticky=tk.E, pady=5, padx=5)
             lang_label = ttk.Label(lang_frame, text="")
             lang_label.pack(side=tk.LEFT, padx=(0, 5))
             self.widgets_refs['lang_label'] = lang_label
@@ -2558,6 +2599,21 @@ class AstroImageAnalyzerGUI:
         self.root.after(50, self.root.focus_force)
         self.root.after(100, self.root.lift)
 
+    def browse_bortle_file(self):
+        """Ouvre un fichier GeoTIFF contenant la carte Bortle."""
+        path = filedialog.askopenfilename(parent=self.root, title=self._('bortle_file_label'), filetypes=[('GeoTIFF', '*.tif *.tiff *.tpk'), (self._('Tous les fichiers'), '*.*')])
+        if path:
+            if os.path.isdir(path):
+                files = [f for f in os.listdir(path) if f.lower().endswith(('.tif', '.tiff', '.tpk'))]
+                if len(files) == 1:
+                    path = os.path.join(path, files[0])
+                elif len(files) > 1:
+                    # Simplified selection: take first file
+                    path = os.path.join(path, files[0])
+            self.bortle_path.set(path)
+        self.root.after(50, self.root.focus_force)
+        self.root.after(100, self.root.lift)
+
     # --- Gestion État Widgets ---
 
     def _set_widget_state(self, widget, state):
@@ -2609,6 +2665,10 @@ class AstroImageAnalyzerGUI:
             # État du dossier rejet traînées
             trail_reject_dir_state = tk.NORMAL if trails_enabled_by_user and trails_possible and action == 'move' else tk.DISABLED
             self._set_widget_state(self.trail_reject_dir_frame, trail_reject_dir_state)
+
+            bortle_state = tk.NORMAL if self.use_bortle.get() else tk.DISABLED
+            self._set_widget_state(self.bortle_entry, bortle_state)
+            self._set_widget_state(self.bortle_browse_button, bortle_state)
 
         except AttributeError:
             # Peut arriver si appelé avant que tous les widgets soient créés
