@@ -52,3 +52,27 @@ def test_sample_bortle_dataset_transform(tmp_path):
     val = sample_bortle_dataset(ds, 10.0, 0.0)
     assert val == pytest.approx(22.0)
 
+
+def test_sample_bortle_dataset_scaling(tmp_path):
+    data = np.array([[4.0]], dtype=np.float32)
+    transform = from_origin(0, 0, 1, 1)
+    tif = tmp_path / "bortle_scaled.tif"
+    with rasterio.open(
+        tif,
+        'w',
+        driver='GTiff',
+        height=1,
+        width=1,
+        count=1,
+        dtype='float32',
+        transform=transform,
+    ) as dst:
+        dst.write(data, 1)
+        dst.update_tags(scale_factor=1000)
+
+    ds = load_bortle_raster(str(tif))
+    l_ucd = sample_bortle_dataset(ds, 0.0, 0.0)
+    sqm = ucd_to_sqm(l_ucd + 174.0)
+    bortle = sqm_to_bortle(sqm)
+    assert bortle >= 6
+
