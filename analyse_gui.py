@@ -983,6 +983,8 @@ class AstroImageAnalyzerGUI:
         options['analyze_snr'] = self.analyze_snr.get()
         options['detect_trails'] = self.detect_trails.get()
         options['include_subfolders'] = self.include_subfolders.get()
+        options['bortle_path'] = self.bortle_path.get()
+        options['use_bortle'] = self.use_bortle.get()
 
         # --- NOUVEAU : Définir l'option pour l'action SNR différée ---
         options['apply_snr_action_immediately'] = False # On veut toujours différer l'action SNR depuis le GUI
