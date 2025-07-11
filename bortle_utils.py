@@ -76,3 +76,8 @@ def sqm_to_bortle(sqm: float) -> int:
         if sqm >= val:
             return int(cls)
     return max(THRESHOLDS.keys())
+
+
+def ucd_to_bortle(l_ucd: float) -> int:
+    """Directly convert luminance in µcd/m² to a Bortle class."""
+    return sqm_to_bortle(ucd_to_sqm(l_ucd))
