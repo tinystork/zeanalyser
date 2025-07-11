@@ -1,6 +1,7 @@
 import os
 import json
 import rasterio
+from rasterio.warp import transform
 import numpy as np
 
 THRESHOLD_FILE = os.path.join(os.path.dirname(__file__), 'bortle_thresholds.json')
@@ -39,6 +40,14 @@ def load_bortle_raster(path: str):
     if not path.lower().endswith(('.tif', '.tiff')):
         raise ValueError("Seuls les fichiers GeoTIFF (.tif/.tiff) sont pris en charge")
     return rasterio.open(path, 'r')
+
+
+def sample_bortle_dataset(ds, lon: float, lat: float) -> float:
+    """Return the raw value from the Bortle dataset at the given lon/lat."""
+    if ds.crs and ds.crs.to_string() not in ("EPSG:4326", "WGS84"):
+        lon, lat = transform("EPSG:4326", ds.crs, [lon], [lat])
+        lon = lon[0]; lat = lat[0]
+    return list(ds.sample([(lon, lat)]))[0][0]
 
 
 def ucd_to_sqm(l_ucd: float) -> float:

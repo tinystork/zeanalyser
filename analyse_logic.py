@@ -1207,7 +1207,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
             if options.get('use_bortle') and bortle_dataset and lon is not None and lat is not None:
                 try:
                     with bortle_lock:
-                        l_ucd = list(bortle_dataset.sample([(float(lon), float(lat))]))[0][0]
+                        l_ucd = bortle_utils.sample_bortle_dataset(bortle_dataset, float(lon), float(lat))
                     sqm = bortle_utils.ucd_to_sqm(float(l_ucd) + 174.0)
                     bortle_class = str(bortle_utils.sqm_to_bortle(float(sqm)))
                 except Exception:
