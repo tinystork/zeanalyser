@@ -2249,7 +2249,8 @@ class AstroImageAnalyzerGUI:
         self.bortle_entry.grid(row=3, column=1, padx=5, pady=2, sticky=tk.W+tk.E)
         self.bortle_browse_button = ttk.Button(config_frame, text="", command=self.browse_bortle_file)
         self.bortle_browse_button.grid(row=3, column=2, padx=5, pady=2)
-        self.widgets_refs['bortle_browse_button'] = self.bortle_browse_button
+        # Stocker avec un préfixe "browse_" pour appliquer la traduction
+        self.widgets_refs['browse_bortle_button'] = self.bortle_browse_button
         self.use_bortle_check = ttk.Checkbutton(config_frame, text="", variable=self.use_bortle, command=self.toggle_sections_state)
         self.use_bortle_check.grid(row=3, column=3, sticky=tk.W)
         self.widgets_refs['use_bortle_check_label'] = self.use_bortle_check
