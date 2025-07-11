@@ -1,6 +1,7 @@
 import os
 import json
 import rasterio
+import numpy as np
 
 THRESHOLD_FILE = os.path.join(os.path.dirname(__file__), 'bortle_thresholds.json')
 DEFAULT_THRESHOLDS = {
@@ -38,6 +39,11 @@ def load_bortle_raster(path: str):
     if not path.lower().endswith(('.tif', '.tiff')):
         raise ValueError("Seuls les fichiers GeoTIFF (.tif/.tiff) sont pris en charge")
     return rasterio.open(path, 'r')
+
+
+def ucd_to_sqm(l_ucd: float) -> float:
+    """Convertir un éclairement en µcd/m² en mag/arcsec²."""
+    return 22.0 - 1.0857 * np.log(l_ucd / 174.0)
 
 
 def sqm_to_bortle(sqm: float) -> int:
