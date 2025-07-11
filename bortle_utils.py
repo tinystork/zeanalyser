@@ -43,11 +43,26 @@ def load_bortle_raster(path: str):
 
 
 def sample_bortle_dataset(ds, lon: float, lat: float) -> float:
-    """Return the raw value from the Bortle dataset at the given lon/lat."""
+    """Return the sky brightness in \xb5cd/m\xb2 at the given lon/lat."""
     if ds.crs and ds.crs.to_string() not in ("EPSG:4326", "WGS84"):
         lon, lat = transform("EPSG:4326", ds.crs, [lon], [lat])
         lon = lon[0]; lat = lat[0]
-    return list(ds.sample([(lon, lat)]))[0][0]
+
+    raw = list(ds.sample([(lon, lat)]))[0][0]
+
+    tags = ds.tags()
+    scale = float(tags.get('scale_factor', 1))
+    offset = float(tags.get('add_offset', 0))
+    units = tags.get('units', '').lower()
+    if units.startswith('cd'):
+        mult = 1_000_000
+    elif units.startswith('mcd'):
+        mult = 1_000
+    else:
+        mult = 1
+
+    l_ucd = (raw * scale + offset) * mult
+    return l_ucd
 
 
 def ucd_to_sqm(l_ucd: float) -> float:

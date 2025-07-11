@@ -14,6 +14,8 @@ import threading
 
 import bortle_utils
 
+NATURAL_SKY = 174.0  # µcd/m² ≈ 22 mag/arcsec²
+
 try:
     import starcount_module
 except ImportError:
@@ -1208,7 +1210,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 try:
                     with bortle_lock:
                         l_ucd = bortle_utils.sample_bortle_dataset(bortle_dataset, float(lon), float(lat))
-                    sqm = bortle_utils.ucd_to_sqm(float(l_ucd) + 174.0)
+                    sqm = bortle_utils.ucd_to_sqm(float(l_ucd) + NATURAL_SKY)
                     bortle_class = str(bortle_utils.sqm_to_bortle(float(sqm)))
                 except Exception:
                     bortle_class = 'Unknown'
