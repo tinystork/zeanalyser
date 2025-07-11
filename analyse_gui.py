@@ -992,10 +992,10 @@ class AstroImageAnalyzerGUI:
 
         if options.get('use_bortle'):
             bp = options.get('bortle_path', '')
-            if not bp or not bp.lower().endswith(('.tif', '.tiff')):
+            if not bp or not bp.lower().endswith(('.tif', '.tiff', '.kmz')):
                 messagebox.showwarning(
                     self._("msg_warning"),
-                    "Sélectionnez un GeoTIFF Bortle valide avant de lancer l\u2019analyse.",
+                    "Sélectionnez un fichier Bortle valide (GeoTIFF ou KMZ) avant de lancer l\u2019analyse.",
                     parent=self.root
                 )
                 return False
@@ -2639,20 +2639,24 @@ class AstroImageAnalyzerGUI:
         self.root.after(100, self.root.lift)
 
     def browse_bortle_file(self):
-        """Ouvre un fichier GeoTIFF contenant la carte Bortle."""
-        path = filedialog.askopenfilename(parent=self.root, title=self._('bortle_file_label'), filetypes=[('GeoTIFF', '*.tif *.tiff *.tpk'), (self._('Tous les fichiers'), '*.*')])
+        """Ouvre un fichier GeoTIFF ou KMZ contenant la carte Bortle."""
+        path = filedialog.askopenfilename(
+            parent=self.root,
+            title=self._('bortle_file_label'),
+            filetypes=[('GeoTIFF/KMZ', '*.tif *.tiff *.tpk *.kmz'), (self._('Tous les fichiers'), '*.*')]
+        )
         if path:
             if os.path.isdir(path):
-                files = [f for f in os.listdir(path) if f.lower().endswith(('.tif', '.tiff', '.tpk'))]
+                files = [f for f in os.listdir(path) if f.lower().endswith(('.tif', '.tiff', '.tpk', '.kmz'))]
                 if len(files) == 1:
                     path = os.path.join(path, files[0])
                 elif len(files) > 1:
                     # Simplified selection: take first file
                     path = os.path.join(path, files[0])
-            if not path.lower().endswith(('.tif', '.tiff')):
+            if not path.lower().endswith(('.tif', '.tiff', '.kmz')):
                 messagebox.showerror(
                     self._("msg_error"),
-                    "Fichier Bortle non pris en charge : choisissez un GeoTIFF (.tif)",
+                    "Fichier Bortle non pris en charge : choisissez un GeoTIFF (.tif) ou KMZ",
                     parent=self.root
                 )
                 return
