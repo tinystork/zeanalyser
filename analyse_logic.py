@@ -1242,45 +1242,47 @@ def perform_analysis(input_dir, output_log, options, callbacks):
 
     # --- Étape 8: Écrire les résultats détaillés FINALS dans le log ---
     try:
-         with open(output_log, 'a', encoding='utf-8') as log_file: # Mode 'a' pour ajouter au log existant
+        with open(output_log, 'a', encoding='utf-8') as log_file:  # Mode 'a' pour ajouter au log existant
             log_file.write("\n--- Analyse individuelle des fichiers (État final après actions) ---\n")
+
             header_parts = ["Fichier (Relatif)", "Statut", "SNR", "Fond", "Bruit", "PixSig", "Starcount"]
             if options.get('detect_trails') and SATDET_AVAILABLE:
                 header_parts.extend(["Traînée", "NbSeg"])
             header_parts.extend(["Expo", "Filtre", "Temp", "Monture", "Bortle", "Dest", "Action Finale", "Rejet", "Commentaire"])
-            header = "\t".join(header_parts) + "\n"; log_file.write(header)
-            
+
+            header = "\t".join(header_parts) + "\n"
+            log_file.write(header)
+
             for r in all_results_list:
-                 log_line_parts = [
-                     str(r.get('rel_path','?')),
-                     str(r.get('status','?')),
+                log_line_parts = [
+                    str(r.get('rel_path', '?')),
+                    str(r.get('status', '?')),
                     f"{r.get('snr', np.nan):.2f}",
                     f"{r.get('sky_bg', np.nan):.2f}",
                     f"{r.get('sky_noise', np.nan):.2f}",
-                    str(r.get('signal_pixels',0)),
+                    str(r.get('signal_pixels', 0)),
                     str(r.get('starcount', 'N/A'))
-                 ]
-                 if options.get('detect_trails') and SATDET_AVAILABLE:
-                     trail_status = 'N/A'
-                     if 'has_trails' in r: 
-                         # --- CORRECTION ICI ---
-                         trail_status = 'Oui' if r['has_trails'] else 'Non' 
-                         # --- FIN CORRECTION ---
-                     log_line_parts.extend([trail_status, str(r.get('num_trails',0))])
-                 
+                ]
+                if options.get('detect_trails') and SATDET_AVAILABLE:
+                    trail_status = 'N/A'
+                    if 'has_trails' in r:
+                        trail_status = 'Oui' if r['has_trails'] else 'Non'
+                    log_line_parts.extend([trail_status, str(r.get('num_trails', 0))])
+
                 log_line_parts.extend([
-                    str(r.get('exposure','N/A')),
-                    str(r.get('filter','N/A')),
-                    str(r.get('temperature','N/A')),
-                    str(r.get('mount','')),
-                    str(r.get('bortle','')),
-                    str(r.get('filepath_dst','')),
-                    str(r.get('action','?')),
+                    str(r.get('exposure', 'N/A')),
+                    str(r.get('filter', 'N/A')),
+                    str(r.get('temperature', 'N/A')),
+                    str(r.get('mount', '')),
+                    str(r.get('bortle', '')),
+                    str(r.get('filepath_dst', '')),
+                    str(r.get('action', '?')),
                     str(r.get('rejected_reason') or ''),
                     (str(r.get('error_message') or '') + " " + str(r.get('action_comment') or '')).strip()
                 ])
-                 log_line = "\t".join(log_line_parts) + "\n"
-                 log_file.write(log_line.replace('\tnan','\tN/A').replace('\tN/A','\t-'))
+                log_line = "\t".join(log_line_parts) + "\n"
+                log_file.write(log_line.replace('\tnan', '\tN/A').replace('\tN/A', '\t-'))
+
     except IOError as e: 
         # Utiliser le callback _log s'il est disponible, sinon print
         _log_func = _log if callable(_log) else print
