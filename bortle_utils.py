@@ -35,6 +35,8 @@ THRESHOLDS = _load_thresholds()
 
 def load_bortle_raster(path: str):
     """Open and return a rasterio dataset for the Bortle atlas."""
+    if not path.lower().endswith(('.tif', '.tiff')):
+        raise ValueError("Seuls les fichiers GeoTIFF (.tif/.tiff) sont pris en charge")
     return rasterio.open(path, 'r')
 
 

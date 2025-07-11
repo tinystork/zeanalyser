@@ -990,9 +990,19 @@ class AstroImageAnalyzerGUI:
         options['apply_snr_action_immediately'] = False # On veut toujours différer l'action SNR depuis le GUI
         # --- FIN NOUVEAU ---
 
+        if options.get('use_bortle'):
+            bp = options.get('bortle_path', '')
+            if not bp or not bp.lower().endswith(('.tif', '.tiff')):
+                messagebox.showwarning(
+                    self._("msg_warning"),
+                    "Sélectionnez un GeoTIFF Bortle valide avant de lancer l\u2019analyse.",
+                    parent=self.root
+                )
+                return False
+
         if not input_dir or not os.path.isdir(input_dir):
             messagebox.showerror(self._("msg_error"), self._("msg_input_dir_invalid"), parent=self.root)
-            self.stack_after_analysis = False 
+            self.stack_after_analysis = False
             return False
         if not output_log:
             messagebox.showerror(self._("msg_error"), self._("msg_log_file_missing"), parent=self.root)
@@ -2612,6 +2622,13 @@ class AstroImageAnalyzerGUI:
                 elif len(files) > 1:
                     # Simplified selection: take first file
                     path = os.path.join(path, files[0])
+            if not path.lower().endswith(('.tif', '.tiff')):
+                messagebox.showerror(
+                    self._("msg_error"),
+                    "Fichier Bortle non pris en charge : choisissez un GeoTIFF (.tif)",
+                    parent=self.root
+                )
+                return
             self.bortle_path.set(path)
         self.root.after(50, self.root.focus_force)
         self.root.after(100, self.root.lift)
