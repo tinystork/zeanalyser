@@ -1846,7 +1846,11 @@ class AstroImageAnalyzerGUI:
                 return
 
             # Confirmer suppression
-            confirm_msg = self._("marker_confirm_delete_selected", default="Supprimer les marqueurs pour les {count} dossiers sélectionnés ?\nCela forcera leur ré-analyse au prochain lancement.").format(count=len(selected_indices))
+            confirm_msg = self._(
+                "marker_confirm_delete_selected",
+                default="Supprimer les marqueurs pour les {count} dossiers sélectionnés ?\nCela forcera leur ré-analyse au prochain lancement.",
+                count=len(selected_indices),
+            )
             if messagebox.askyesno(self._("msg_warning"), confirm_msg, parent=marker_window):
                 deleted_count = 0; errors = []
                 paths_to_delete_rel = [listbox.get(i) for i in selected_indices]
@@ -1888,7 +1892,16 @@ class AstroImageAnalyzerGUI:
 
                 # Message final
                 if errors: messagebox.showerror(self._("msg_error"), self._("marker_delete_errors", default="Erreurs lors de la suppression de certains marqueurs:\n") + "\n".join(errors), parent=marker_window)
-                elif deleted_count > 0: messagebox.showinfo(self._("msg_info"), self._("marker_delete_selected_success", default="{count} marqueur(s) supprimé(s).").format(count=deleted_count), parent=marker_window)
+                elif deleted_count > 0:
+                    messagebox.showinfo(
+                        self._("msg_info"),
+                        self._(
+                            "marker_delete_selected_success",
+                            default="{count} marqueur(s) supprimé(s).",
+                            count=deleted_count,
+                        ),
+                        parent=marker_window,
+                    )
 ####################################################################################################################
 
 
@@ -1900,7 +1913,12 @@ class AstroImageAnalyzerGUI:
                 return
 
             # Confirmer suppression totale
-            confirm_msg = self._("marker_confirm_delete_all", default="Supprimer TOUS les marqueurs ({count}) dans le dossier '{folder}' et ses sous-dossiers analysables ?\nCela forcera une ré-analyse complète.").format(count=len(abs_paths_to_clear), folder=os.path.basename(abs_input_dir))
+            confirm_msg = self._(
+                "marker_confirm_delete_all",
+                default="Supprimer TOUS les marqueurs ({count}) dans le dossier '{folder}' et ses sous-dossiers analysables ?\nCela forcera une ré-analyse complète.",
+                count=len(abs_paths_to_clear),
+                folder=os.path.basename(abs_input_dir),
+            )
             if messagebox.askyesno(self._("msg_warning"), confirm_msg, parent=marker_window):
                 deleted_count = 0; errors = []
                 # Supprimer tous les marqueurs
@@ -1922,7 +1940,16 @@ class AstroImageAnalyzerGUI:
 
                 # Message final
                 if errors: messagebox.showerror(self._("msg_error"), self._("marker_delete_errors", default="Erreurs lors de la suppression de certains marqueurs:\n") + "\n".join(errors), parent=marker_window)
-                elif deleted_count > 0: messagebox.showinfo(self._("msg_info"), self._("marker_delete_all_success", default="Tous les {count} marqueur(s) trouvés ont été supprimés.").format(count=deleted_count), parent=marker_window)
+                elif deleted_count > 0:
+                    messagebox.showinfo(
+                        self._("msg_info"),
+                        self._(
+                            "marker_delete_all_success",
+                            default="Tous les {count} marqueur(s) trouvés ont été supprimés.",
+                            count=deleted_count,
+                        ),
+                        parent=marker_window,
+                    )
 
 
 
@@ -3553,8 +3580,17 @@ class AstroImageAnalyzerGUI:
 
         self.update_progress(100.0)
         if apply_success:
-            self.update_status("status_custom", text=self._("{count} actions SNR appliquées.", default="{count} SNR actions applied.").format(count=actions_done_count))
-            self.update_results_text(f"--- {self._('Fin application rejets SNR. {count} actions effectuées.', default='End applying SNR rejections. {count} actions performed.').format(count=actions_done_count)} ---")
+            self.update_status(
+                "status_custom",
+                text=self._(
+                    "{count} actions SNR appliquées.",
+                    default="{count} SNR actions applied.",
+                    count=actions_done_count,
+                ),
+            )
+            self.update_results_text(
+                f"--- {self._('Fin application rejets SNR. {count} actions effectuées.', default='End applying SNR rejections. {count} actions performed.', count=actions_done_count)} ---"
+            )
             
             # Réécrire le résumé du log pour refléter les actions maintenant effectuées
             # et mettre à jour les données de visualisation dans le log.
@@ -3610,7 +3646,14 @@ class AstroImageAnalyzerGUI:
 
                 except Exception as e_log_update:
                     print(f"Erreur mise à jour log après actions SNR: {e_log_update}")
-                    self.update_results_text("logic_error_prefix", text=self._("Erreur mise à jour fichier log: {e}", default="Error updating log file: {e}").format(e=e_log_update))
+                    self.update_results_text(
+                        "logic_error_prefix",
+                        text=self._(
+                            "Erreur mise à jour fichier log: {e}",
+                            default="Error updating log file: {e}",
+                            e=e_log_update,
+                        ),
+                    )
         else: # apply_success is False
             self.update_status("status_custom", text=self._("Échec de l'application des actions SNR.", default="Failed to apply SNR actions."))
             self.update_results_text(f"--- {self._('Échec application rejets SNR.', default='Failed applying SNR rejections.')} ---")
