@@ -403,9 +403,19 @@ def build_recommended_images(results):
     """Return list of files meeting SNR/FWHM/Ecc criteria."""
     kept = [r for r in results if r.get('action') == 'kept']
 
-    snrs = np.array([r.get('snr', np.nan) for r in kept], dtype=float)
-    fwhms = np.array([r.get('fwhm', np.nan) for r in kept], dtype=float)
-    eccs = np.array([r.get('ecc', r.get('e', np.nan)) for r in kept], dtype=float)
+    snrs = np.array([
+        r.get('snr') if r.get('snr') is not None else np.nan
+        for r in kept
+    ], dtype=float)
+    fwhms = np.array([
+        r.get('fwhm') if r.get('fwhm') is not None else np.nan
+        for r in kept
+    ], dtype=float)
+    eccs = np.array([
+        r.get('ecc') if r.get('ecc') is not None
+        else (r.get('e') if r.get('e') is not None else np.nan)
+        for r in kept
+    ], dtype=float)
 
     if kept:
         snr_min = float(np.nanpercentile(snrs, 25))
@@ -416,9 +426,21 @@ def build_recommended_images(results):
 
     reco = [
         r for r in kept
-        if (r.get('snr') is not None and float(r.get('snr', np.nan)) >= snr_min)
-        and (float(r.get('fwhm', np.nan)) <= fwhm_max)
-        and (float(r.get('ecc', r.get('e', np.nan))) <= ecc_max)
+        if (
+            r.get('snr') is not None
+            and float(r.get('snr') if r.get('snr') is not None else np.nan) >= snr_min
+        )
+        and (
+            float(r.get('fwhm') if r.get('fwhm') is not None else np.nan)
+            <= fwhm_max
+        )
+        and (
+            float(
+                r.get('ecc') if r.get('ecc') is not None
+                else (r.get('e') if r.get('e') is not None else np.nan)
+            )
+            <= ecc_max
+        )
     ]
     return reco, snr_min, fwhm_max, ecc_max
 
