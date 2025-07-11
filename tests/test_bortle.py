@@ -6,7 +6,7 @@ from rasterio.transform import from_origin
 from tempfile import NamedTemporaryFile
 import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from bortle_utils import load_bortle_raster, sqm_to_bortle
+from bortle_utils import load_bortle_raster, sqm_to_bortle, ucd_to_sqm
 
 def test_sqm_to_bortle(tmp_path):
     data = np.full((2, 2), 22.0, dtype=np.float32)
@@ -18,6 +18,11 @@ def test_sqm_to_bortle(tmp_path):
     val = list(ds.sample([(0, 0)]))[0][0]
     cls = sqm_to_bortle(float(val))
     assert cls == 1
+
+
+def test_ucd_to_sqm():
+    # 174 µcd/m² corresponds roughly to 22 mag/arcsec²
+    assert abs(ucd_to_sqm(174.0) - 22.0) < 1e-6
 
 
 def test_load_bortle_raster_invalid_extension(tmp_path):
