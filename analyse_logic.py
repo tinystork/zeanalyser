@@ -11,10 +11,79 @@ import warnings
 import json
 import concurrent.futures
 import threading
+import zipfile
+import xml.etree.ElementTree as ET
+
+from rasterio.io import MemoryFile
+from rasterio.transform import from_bounds
 
 import bortle_utils
 
 NATURAL_SKY = 174.0  # µcd/m² ≈ 22 mag/arcsec²
+
+
+def _load_bortle_raster(path):
+    """Load a Bortle raster dataset, supporting KMZ ground overlays."""
+    if path.lower().endswith('.kmz'):
+        with zipfile.ZipFile(path, 'r') as zf:
+            kml_name = next((n for n in zf.namelist() if n.lower().endswith('.kml')), None)
+            if not kml_name:
+                raise ValueError('KMZ missing KML file')
+            kml_bytes = zf.read(kml_name)
+            root = ET.fromstring(kml_bytes)
+            ns = ''
+            if root.tag.startswith('{'):
+                ns = root.tag[: root.tag.index('}') + 1]
+            go = root.find('.//' + ns + 'GroundOverlay')
+            if go is None:
+                raise ValueError('KMZ missing GroundOverlay')
+            href_el = go.find('.//' + ns + 'href')
+            if href_el is None or not href_el.text:
+                raise ValueError('KMZ GroundOverlay missing href')
+            image_name = href_el.text.strip()
+            if image_name not in zf.namelist():
+                raise ValueError('Referenced image not found in KMZ')
+            llbox = go.find('.//' + ns + 'LatLonBox')
+            if llbox is None:
+                raise ValueError('KMZ GroundOverlay missing LatLonBox')
+
+            def _read_val(tag):
+                el = llbox.find(ns + tag)
+                if el is None or el.text is None:
+                    raise ValueError(f'LatLonBox missing {tag}')
+                return float(el.text)
+
+            north = _read_val('north')
+            south = _read_val('south')
+            east = _read_val('east')
+            west = _read_val('west')
+
+            img_bytes = zf.read(image_name)
+
+        with MemoryFile(img_bytes) as mem_src:
+            with mem_src.open() as src:
+                data = src.read()
+                height = src.height
+                width = src.width
+                count = src.count
+                dtype = src.dtypes[0]
+
+        transform = from_bounds(west, south, east, north, width, height)
+        profile = {
+            'driver': 'GTiff',
+            'height': height,
+            'width': width,
+            'count': count,
+            'dtype': dtype,
+            'crs': 'EPSG:4326',
+            'transform': transform,
+        }
+        mem_out = MemoryFile()
+        ds = mem_out.open(**profile)
+        ds.write(data)
+        return ds
+    else:
+        return bortle_utils.load_bortle_raster(path)
 
 try:
     import starcount_module
@@ -561,7 +630,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     bortle_lock = threading.Lock()
     if options.get('use_bortle') and options.get('bortle_path'):
         try:
-            bortle_dataset = bortle_utils.load_bortle_raster(options['bortle_path'])
+            bortle_dataset = _load_bortle_raster(options['bortle_path'])
         except Exception as e:
             _log('logic_warn_prefix', text=f'Bortle raster load error: {e}')
 
