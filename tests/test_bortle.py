@@ -6,19 +6,35 @@ from rasterio.transform import from_origin
 import zipfile
 import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from bortle_utils import load_bortle_raster, sqm_to_bortle, ucd_to_sqm, sample_bortle_dataset
+from bortle_utils import (
+    load_bortle_raster,
+    ucd_to_sqm,
+    sqm_to_bortle,
+    sample_bortle_dataset,
+    ucd_to_bortle,
+)
 from analyse_logic import _load_bortle_raster
 
 def test_sqm_to_bortle(tmp_path):
-    data = np.full((2, 2), 22.0, dtype=np.float32)
+    data = np.full((2, 2), 1.0, dtype=np.float32)
     transform = from_origin(0, 0, 1, 1)
     tif = tmp_path / "bortle.tif"
-    with rasterio.open(tif, 'w', driver='GTiff', height=2, width=2, count=1, dtype='float32', transform=transform) as dst:
+    with rasterio.open(
+        tif,
+        'w',
+        driver='GTiff',
+        height=2,
+        width=2,
+        count=1,
+        dtype='float32',
+        transform=transform,
+    ) as dst:
         dst.write(data, 1)
+        dst.update_tags(units='mcd/m2')
     ds = load_bortle_raster(str(tif))
-    val = sample_bortle_dataset(ds, 0.0, 0.0)
-    cls = sqm_to_bortle(float(val))
-    assert cls == 1
+    l_ucd = sample_bortle_dataset(ds, 0.0, 0.0)
+    cls = ucd_to_bortle(l_ucd)
+    assert cls == 6
 
 
 def test_ucd_to_sqm():
