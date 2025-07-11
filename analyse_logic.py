@@ -13,6 +13,7 @@ import concurrent.futures
 import threading
 import zipfile
 import xml.etree.ElementTree as ET
+import csv
 
 from rasterio.io import MemoryFile
 from rasterio.transform import from_bounds
@@ -524,6 +525,54 @@ def debug_counts(results):
     ecc = sum(r.get('rejected_reason') == 'high_eccentricity' for r in results)
     pending = sum(str(r.get('action', '')).startswith('pending') for r in results)
     print(f"total={total} | snr={low_snr} | fwhm={high_fwhm} | stars={starcount} | e={ecc} | pending={pending}")
+
+
+def write_telescope_pollution_csv(csv_path, results_list, bortle_dataset=None):
+    """Write per-telescope light pollution info to a CSV file."""
+    telescopes = {}
+    for r in results_list:
+        if r.get('status') != 'ok':
+            continue
+        tele = r.get('telescope') or 'Unknown'
+        if tele in telescopes:
+            continue
+        lon = r.get('sitelong')
+        lat = r.get('sitelat')
+        try:
+            lon = float(lon) if lon is not None else None
+            lat = float(lat) if lat is not None else None
+        except Exception:
+            lon = lat = None
+        l_ucd = None
+        sqm = None
+        if bortle_dataset and lon is not None and lat is not None:
+            try:
+                l_ucd = bortle_utils.sample_bortle_dataset(bortle_dataset, lon, lat)
+                sqm = bortle_utils.ucd_to_sqm(l_ucd + NATURAL_SKY)
+            except Exception:
+                l_ucd = None
+                sqm = None
+        telescopes[tele] = {
+            'lon': lon,
+            'lat': lat,
+            'l_ucd_artif': l_ucd,
+            'sqm': sqm,
+        }
+
+    try:
+        with open(csv_path, 'w', encoding='utf-8', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['telescope', 'longitude', 'latitude', 'l_ucd_artif', 'sqm'])
+            for tele, data in telescopes.items():
+                writer.writerow([
+                    tele,
+                    '' if data['lon'] is None else data['lon'],
+                    '' if data['lat'] is None else data['lat'],
+                    '' if data['l_ucd_artif'] is None else f"{data['l_ucd_artif']:.2f}",
+                    '' if data['sqm'] is None else f"{data['sqm']:.2f}",
+                ])
+    except Exception:
+        raise
 
 
 
@@ -1283,7 +1332,14 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     bortle_class = str(bortle_utils.sqm_to_bortle(float(sqm)))
                 except Exception:
                     bortle_class = 'Unknown'
+                    l_ucd = None
+                    sqm = None
+            else:
+                l_ucd = None
+                sqm = None
             r['bortle'] = bortle_class
+            r['l_ucd_artif'] = l_ucd
+            r['sqm'] = sqm
             tele = r.get('telescope') or 'Unknown'
             date_obs = r.get('date_obs')
             date_obj = None
@@ -1392,6 +1448,13 @@ def perform_analysis(input_dir, output_log, options, callbacks):
             log_file.write(f"\nDurée totale de l'analyse: {duration:.2f} secondes\n")
             log_file.write("="*80 + "\nFin du log.\n")
     except IOError: pass # Ignorer si erreur ici, le principal est déjà écrit
+
+    csv_path = os.path.join(os.path.dirname(output_log), 'telescopes_pollution.csv')
+    try:
+        write_telescope_pollution_csv(csv_path, all_results_list, bortle_dataset if options.get('use_bortle') else None)
+        _log('logic_info_prefix', text=f"CSV pollution écrit: {os.path.basename(csv_path)}")
+    except Exception as csv_e:
+        _log('logic_error_prefix', text=f"Erreur écriture CSV pollution: {csv_e}")
 
     if bortle_dataset:
         try:
