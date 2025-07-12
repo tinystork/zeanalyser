@@ -3844,7 +3844,7 @@ class AstroImageAnalyzerGUI:
 
             messagebox.showinfo(
                 "Organisation",
-                f"{total} fichiers déplacés ou supprimés.",
+                f"{total} fichiers organisés.",
             )
         except Exception as e:
             messagebox.showerror("Erreur", f"Organisation échouée: {e}")
