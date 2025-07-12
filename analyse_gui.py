@@ -859,6 +859,9 @@ class AstroImageAnalyzerGUI:
         options['bortle_path'] = self.bortle_path.get()
         options['use_bortle'] = self.use_bortle.get()
 
+        options['apply_snr_action_immediately'] = False
+        options['apply_trail_action_immediately'] = False
+
         # Vérifier chemins entrée/log (identique)
         if not input_dir or not os.path.isdir(input_dir):
             messagebox.showerror(self._("msg_error"), self._("msg_input_dir_invalid"), parent=self.root)
@@ -1008,8 +1011,9 @@ class AstroImageAnalyzerGUI:
         options['bortle_path'] = self.bortle_path.get()
         options['use_bortle'] = self.use_bortle.get()
 
-        # --- NOUVEAU : Définir l'option pour l'action SNR différée ---
-        options['apply_snr_action_immediately'] = False # On veut toujours différer l'action SNR depuis le GUI
+        # --- NOUVEAU : Définir les options pour les actions différées ---
+        options['apply_snr_action_immediately'] = False  # Toujours différé depuis le GUI
+        options['apply_trail_action_immediately'] = False
         # --- FIN NOUVEAU ---
 
         if options.get('use_bortle'):
@@ -2279,11 +2283,12 @@ class AstroImageAnalyzerGUI:
         # Ligne 4: Bouton organiser fichiers
         self.organize_button = ttk.Button(
             config_frame,
-            text="Organiser fichiers",
+            text=self._('organize_files_button'),
             command=self.organize_files,
             state=tk.DISABLED,
         )
         self.organize_button.grid(row=4, column=0, columnspan=3, sticky=tk.W, padx=5, pady=2)
+        self.widgets_refs['organize_files_button'] = self.organize_button
 
         # Ligne 5: Sélection Langue (Aligné à droite)
         if not self.lock_language:
@@ -2596,12 +2601,15 @@ class AstroImageAnalyzerGUI:
             if self.send_reference_button: self.send_reference_button.config(text=self._("use_best_reference_button"))
             if self.visualize_button: self.visualize_button.config(text=self._("visualize_button"))
             if self.open_log_button: self.open_log_button.config(text=self._("open_log_button"))
+            if self.organize_button: self.organize_button.config(text=self._("organize_files_button"))
             if self.apply_snr_button:
                 self.apply_snr_button.config(text=self._("apply_snr_rejection_button"))
             # Texte du bouton Quitter/Retour dépend si un callback est fourni
             if self.return_button:
                 btn_text = self._("return_button_text") if self.main_app_callback else self._("quit_button")
                 self.return_button.config(text=btn_text)
+            if self.apply_reco_button:
+                self.apply_reco_button.config(text=self._("apply_reco_button"))
         except tk.TclError as e:
             print(f"WARN: Erreur Tcl mise à jour texte bouton principal: {e}")
         except KeyError as e:
@@ -3741,6 +3749,18 @@ class AstroImageAnalyzerGUI:
                 progress_callback=callbacks['progress'],
                 input_dir_abs=input_dir,
             )
+
+            if hasattr(analyse_logic, 'apply_pending_trail_actions'):
+                total += analyse_logic.apply_pending_trail_actions(
+                    self.analysis_results,
+                    self.trail_reject_dir.get(),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
 
             if hasattr(analyse_logic, 'apply_pending_starcount_actions'):
                 total += analyse_logic.apply_pending_starcount_actions(
