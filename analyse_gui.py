@@ -678,6 +678,7 @@ class AstroImageAnalyzerGUI:
         self.analysis_results = []
         self.analysis_running = False
         self.analysis_completed_successfully = False
+        self.analysis_thread = None
         self.best_reference_path = None
         self.tooltips = {}
         self.timer_running = False 
@@ -935,12 +936,11 @@ class AstroImageAnalyzerGUI:
         self.update_progress(0.0)
 
         # --- Lancer le thread d'analyse --- (identique)
-        analysis_thread = threading.Thread(
+        self.analysis_thread = threading.Thread(
             target=self.run_analysis_thread,
             args=(input_dir, output_log, options, callbacks),
-            daemon=True
         )
-        analysis_thread.start()
+        self.analysis_thread.start()
 
 
     def _update_log_and_vis_buttons_state(self):
@@ -1103,13 +1103,12 @@ class AstroImageAnalyzerGUI:
         self.update_results_text(log_start_msg, clear=True)
         self.update_progress(0.0)
 
-        analysis_thread = threading.Thread(
+        self.analysis_thread = threading.Thread(
             target=self.run_analysis_thread,
             args=(input_dir, output_log, options, callbacks),
-            daemon=True
         )
-        analysis_thread.start()
-        return True 
+        self.analysis_thread.start()
+        return True
     
     def visualize_results(self):
         """Affiche les graphiques de visualisation dans une nouvelle fenêtre."""
@@ -2041,15 +2040,15 @@ class AstroImageAnalyzerGUI:
         print("DEBUG AG: Début return_or_quit.") # Log début
         # --------------------
 
-        # Confirmer si analyse en cours (inchangé)
+        # Ne pas permettre la fermeture si une analyse est en cours
         if self.analysis_running:
-            title = self._("msg_warning")
-            message = self._("Analyse en cours, quitter quand même?")
-            if not messagebox.askyesno(title, message, parent=self.root):
-                # --- Ajout Debug ---
-                print("DEBUG AG: return_or_quit annulé par l'utilisateur (analyse en cours).")
-                # --------------------
-                return # Ne pas quitter si l'utilisateur annule
+            messagebox.showwarning(
+                self._("msg_warning"),
+                self._("Analyse en cours, veuillez patienter."),
+                parent=self.root,
+            )
+            print("DEBUG AG: Fermeture bloquée car analyse en cours.")
+            return
 
         # --- Ajout Debug ---
         print("DEBUG AG: Fermeture du GUI de l'analyseur...")
@@ -3073,6 +3072,7 @@ class AstroImageAnalyzerGUI:
         self._stop_timer()
         self.analysis_running = False
         self.has_pending_snr_actions = False # Réinitialiser par défaut
+        self.analysis_thread = None
 
         folder_to_stack = None
         should_write_command = False 
