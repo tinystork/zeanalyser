@@ -95,6 +95,7 @@ translations = {
         'apply_snr_rejection_button': "Appliquer Rejet SNR",
         'visual_apply_snr_button': "Appliquer Rejet SNR",
         'apply_starcount_rejection': "Appliquer Rejet Starcount",
+        'organize_files_button': "Organiser fichiers",
         'apply_reco_button': "Appliquer Recommandations",
         'visual_apply_reco_button': "Appliquer Recommandations",
 
@@ -315,6 +316,7 @@ translations = {
         'marker_delete_selected_success': "{count} marker(s) deleted.",
         'marker_delete_all_success': "All {count} found marker(s) deleted.",
         'apply_starcount_rejection': "Apply Starcount Rejection",
+        'organize_files_button': "Organize Files",
         'apply_reco_button': "Apply Recommendations",
         'visual_apply_reco_button': "Apply Recommendations",
 

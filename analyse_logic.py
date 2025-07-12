@@ -394,6 +394,110 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
     return actions_count
 
 
+def apply_pending_trail_actions(results_list, trail_reject_abs_path,
+                                delete_rejected_flag, move_rejected_flag,
+                                log_callback, status_callback, progress_callback,
+                                input_dir_abs):
+    """Apply deferred actions for trail-rejected files."""
+    actions_count = 0
+    if not results_list:
+        return actions_count
+
+    _log = log_callback if callable(log_callback) else lambda k, **kw: None
+    _status = status_callback if callable(status_callback) else lambda k, **kw: None
+    _progress = progress_callback if callable(progress_callback) else lambda v: None
+
+    to_process = [r for r in results_list if r.get('rejected_reason') == 'trail_pending_action' and r.get('status') == 'ok']
+    total = len(to_process)
+    if total == 0:
+        _log('logic_info_prefix', text='Aucune action Traînées en attente.')
+        return 0
+
+    _status('status_custom', text=f'Application des actions Traînées différées sur {total} fichiers...')
+    _progress(0)
+
+    for i, r in enumerate(to_process):
+        _progress(((i + 1) / total) * 100)
+        try:
+            rel_path = os.path.relpath(r.get('path'), input_dir_abs) if r.get('path') and input_dir_abs else r.get('file', 'N/A')
+        except ValueError:
+            rel_path = r.get('file', 'N/A')
+
+        _status('status_custom', text=f'Action Traînées sur {rel_path} ({i+1}/{total})')
+
+        current_path = r.get('path')
+        if not current_path or not os.path.exists(current_path):
+            _log('logic_move_skipped', file=rel_path, e='Fichier source introuvable pour action Traînées différée.')
+            r['action_comment'] = r.get('action_comment', '') + ' Source non trouvée pour action différée.'
+            r['action'] = 'error_action_deferred'
+            r['status'] = 'error'
+            continue
+
+        action_done = False
+        original_reason = r['rejected_reason']
+
+        if delete_rejected_flag:
+            try:
+                os.remove(current_path)
+                _log('logic_info_prefix', text=f'Fichier supprimé (Traînées différé): {rel_path}')
+                r['path'] = None
+                r['action'] = 'deleted_trail'
+                r['rejected_reason'] = 'trail'
+                r['status'] = 'processed_action'
+                actions_count += 1
+                action_done = True
+            except Exception as del_e:
+                _log('logic_error_prefix', text=f'Erreur suppression Traînées différé {rel_path}: {del_e}')
+                r['action_comment'] = r.get('action_comment', '') + f' Erreur suppression différée: {del_e}'
+                r['action'] = 'error_delete'
+                r['rejected_reason'] = original_reason
+        elif move_rejected_flag and trail_reject_abs_path:
+            if not os.path.isdir(trail_reject_abs_path):
+                try:
+                    os.makedirs(trail_reject_abs_path)
+                    _log('logic_dir_created', path=trail_reject_abs_path)
+                except OSError as e_mkdir:
+                    _log('logic_dir_create_error', path=trail_reject_abs_path, e=e_mkdir)
+                    r['action_comment'] = r.get('action_comment', '') + f' Dossier rejet Traînées inaccessible: {e_mkdir}'
+                    r['action'] = 'error_move'
+                    r['rejected_reason'] = original_reason
+                    continue
+
+            dest_path = os.path.join(trail_reject_abs_path, os.path.basename(current_path))
+            try:
+                if os.path.normpath(current_path) != os.path.normpath(dest_path):
+                    shutil.move(current_path, dest_path)
+                    _log('logic_moved_info', folder=os.path.basename(trail_reject_abs_path), text_key_suffix='_deferred_trail', file_rel_path=rel_path)
+                    r['path'] = dest_path
+                    r['action'] = 'moved_trail'
+                    r['rejected_reason'] = 'trail'
+                    r['status'] = 'processed_action'
+                    actions_count += 1
+                    action_done = True
+                else:
+                    r['action_comment'] = r.get('action_comment', '') + ' Déjà dans dossier cible (différé)?'
+                    r['action'] = 'kept'
+                    r['rejected_reason'] = 'trail'
+                    r['status'] = 'processed_action'
+                    action_done = True
+            except Exception as move_e:
+                _log('logic_move_error', file=rel_path, e=move_e)
+                r['action_comment'] = r.get('action_comment', '') + f' Erreur déplacement différé: {move_e}'
+                r['action'] = 'error_move'
+                r['rejected_reason'] = original_reason
+
+        if not action_done and not delete_rejected_flag and not move_rejected_flag:
+            r['action'] = 'kept_pending_trail_no_action'
+            r['rejected_reason'] = 'trail'
+            r['status'] = 'processed_action'
+            r['action_comment'] = r.get('action_comment', '') + ' Action Traînées différée mais aucune opération configurée.'
+
+    _progress(100)
+    _status('status_custom', text=f'{actions_count} actions Traînées différées appliquées.')
+    _log('logic_info_prefix', text=f'{actions_count} actions Traînées différées appliquées.')
+    return actions_count
+
+
 def apply_pending_reco_actions(results_list, reject_abs_path,
                                delete_rejected_flag, move_rejected_flag,
                                log_callback, status_callback, progress_callback,
@@ -709,8 +813,9 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         except Exception as e:
             _log('logic_warn_prefix', text=f'Bortle raster load error: {e}')
 
-    # --- NOUVEAU : Extraire l'option pour l'application immédiate des actions SNR ---
+    # --- NOUVEAU : Extraire les options pour l'application immédiate des actions ---
     apply_snr_action_immediately = options.get('apply_snr_action_immediately', True)
+    apply_trail_action_immediately = options.get('apply_trail_action_immediately', True)
     # --- FIN NOUVEAU ---
 
     # --- Validation chemins & Création dossiers ---
@@ -1274,42 +1379,58 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     if isinstance(trail_segments, (list, np.ndarray)) and len(trail_segments) > 0:
                         r['has_trails'] = True
                         r['num_trails'] = len(trail_segments)
-                        # Si le fichier était en attente pour SNR, le rejet trail prend priorité
-                        r['rejected_reason'] = 'trail' 
                         _log("logic_info_prefix", text=f"Trail Rejet: {r['rel_path']} ({len(trail_segments)} segments)")
-                        
-                        action_to_take_trail = 'kept'
-                        reject_dir_trail_option = options.get('trail_reject_dir')
-                        if options.get('delete_rejected'): action_to_take_trail = 'deleted_trail'
-                        elif options.get('move_rejected') and reject_dir_trail_option and trail_reject_abs: action_to_take_trail = 'moved_trail'
-                        
-                        if action_to_take_trail != 'kept':
-                            if os.path.exists(current_path): # Vérifier à nouveau si le fichier existe
-                                if action_to_take_trail == 'moved_trail':
-                                    dest_path_trail = os.path.join(trail_reject_abs, os.path.basename(current_path))
-                                    try:
-                                        if os.path.normpath(current_path) != os.path.normpath(dest_path_trail):
-                                            shutil.move(current_path, dest_path_trail)
-                                            _log("logic_moved_info", folder=os.path.basename(trail_reject_abs), text_key_suffix="_trail", file_rel_path=r['rel_path'])
-                                            r['path'] = dest_path_trail; r['action'] = 'moved_trail'
-                                        else: r['action_comment'] += " Déjà dans dossier cible Trail?"; r['action'] = 'kept'
-                                    except Exception as move_e_tr:
-                                        _log("logic_move_error", file=r['rel_path'], e=move_e_tr)
-                                        r['action_comment'] += f" Erreur déplacement Trail: {move_e_tr}"; r['action'] = 'error_move'; r['rejected_reason'] = None 
-                                elif action_to_take_trail == 'deleted_trail':
-                                    try:
-                                        os.remove(current_path)
-                                        _log("logic_info_prefix", text=f"Fichier supprimé (Trail): {r['rel_path']}")
-                                        r['path'] = None; r['action'] = 'deleted_trail'
-                                    except Exception as del_e_tr:
-                                        _log("logic_error_prefix", text=f"Erreur suppression Trail {r['rel_path']}: {del_e_tr}")
-                                        r['action_comment'] += f" Erreur suppression Trail: {del_e_tr}"; r['action'] = 'error_delete'; r['rejected_reason'] = None
+
+                        if apply_trail_action_immediately:
+                            r['rejected_reason'] = 'trail'
+                            action_to_take_trail = 'kept'
+                            reject_dir_trail_option = options.get('trail_reject_dir')
+                            if options.get('delete_rejected'):
+                                action_to_take_trail = 'deleted_trail'
+                            elif options.get('move_rejected') and reject_dir_trail_option and trail_reject_abs:
+                                action_to_take_trail = 'moved_trail'
+
+                            if action_to_take_trail != 'kept':
+                                if os.path.exists(current_path):
+                                    if action_to_take_trail == 'moved_trail':
+                                        dest_path_trail = os.path.join(trail_reject_abs, os.path.basename(current_path))
+                                        try:
+                                            if os.path.normpath(current_path) != os.path.normpath(dest_path_trail):
+                                                shutil.move(current_path, dest_path_trail)
+                                                _log("logic_moved_info", folder=os.path.basename(trail_reject_abs), text_key_suffix="_trail", file_rel_path=r['rel_path'])
+                                                r['path'] = dest_path_trail
+                                                r['action'] = 'moved_trail'
+                                            else:
+                                                r['action_comment'] += " Déjà dans dossier cible Trail?"
+                                                r['action'] = 'kept'
+                                        except Exception as move_e_tr:
+                                            _log("logic_move_error", file=r['rel_path'], e=move_e_tr)
+                                            r['action_comment'] += f" Erreur déplacement Trail: {move_e_tr}"
+                                            r['action'] = 'error_move'
+                                            r['rejected_reason'] = None
+                                    elif action_to_take_trail == 'deleted_trail':
+                                        try:
+                                            os.remove(current_path)
+                                            _log("logic_info_prefix", text=f"Fichier supprimé (Trail): {r['rel_path']}")
+                                            r['path'] = None
+                                            r['action'] = 'deleted_trail'
+                                        except Exception as del_e_tr:
+                                            _log("logic_error_prefix", text=f"Erreur suppression Trail {r['rel_path']}: {del_e_tr}")
+                                            r['action_comment'] += f" Erreur suppression Trail: {del_e_tr}"
+                                            r['action'] = 'error_delete'
+                                            r['rejected_reason'] = None
+                                else:
+                                    _log("logic_move_skipped", file=r['rel_path'], e="Fichier source non trouvé pour action Trail.")
+                                    r['action_comment'] += " Ignoré action Trail (source non trouvée)."
+                                    r['action'] = 'error_action'
+                                    r['rejected_reason'] = None
                             else:
-                                _log("logic_move_skipped", file=r['rel_path'], e="Fichier source non trouvé pour action Trail.")
-                                r['action_comment'] += " Ignoré action Trail (source non trouvée)."; r['action'] = 'error_action'; r['rejected_reason'] = None
-                        else: # action_to_take_trail == 'kept'
-                            r['action'] = 'kept' # Même si raison rejet = trail
-                            r['action_comment'] += " Rejeté (traînée) mais action=none."
+                                r['action'] = 'kept'
+                                r['action_comment'] += " Rejeté (traînée) mais action=none."
+                        else:
+                            r['rejected_reason'] = 'trail_pending_action'
+                            r['action'] = 'pending_trail_action'
+                            r['action_comment'] += ' Action Trail différée.'
                     else: # Pas de traînées trouvées pour ce fichier
                         r['has_trails'] = False; r['num_trails'] = 0
                 else:  # Pas de résultat de trail_module pour ce fichier, vérifier les erreurs
