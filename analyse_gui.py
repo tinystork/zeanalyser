@@ -3775,6 +3775,17 @@ class AstroImageAnalyzerGUI:
                 input_dir_abs=input_dir,
             )
 
+            total += analyse_logic.apply_pending_reco_actions(
+                self.analysis_results,
+                self.snr_reject_dir.get(),
+                delete_rejected_flag=delete_flag,
+                move_rejected_flag=move_flag,
+                log_callback=callbacks['log'],
+                status_callback=callbacks['status'],
+                progress_callback=callbacks['progress'],
+                input_dir_abs=input_dir,
+            )
+
             if hasattr(analyse_logic, 'apply_pending_trail_actions'):
                 total += analyse_logic.apply_pending_trail_actions(
                     self.analysis_results,
@@ -3823,11 +3834,8 @@ class AstroImageAnalyzerGUI:
                     input_dir_abs=input_dir,
                 )
 
-            total += analyse_logic.apply_pending_reco_actions(
+            total += analyse_logic.apply_pending_organization(
                 self.analysis_results,
-                self.snr_reject_dir.get(),
-                delete_rejected_flag=delete_flag,
-                move_rejected_flag=move_flag,
                 log_callback=callbacks['log'],
                 status_callback=callbacks['status'],
                 progress_callback=callbacks['progress'],

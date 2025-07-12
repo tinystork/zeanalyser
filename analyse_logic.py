@@ -705,6 +705,54 @@ def write_telescope_pollution_csv(csv_path, results_list, bortle_dataset=None):
         raise
 
 
+def apply_pending_organization(results_list, log_callback=None,
+                               status_callback=None, progress_callback=None,
+                               input_dir_abs=None):
+    """Move kept images to their destination folders."""
+    actions_count = 0
+    if not results_list:
+        return actions_count
+
+    _log = log_callback if callable(log_callback) else lambda k, **kw: None
+    _status = status_callback if callable(status_callback) else lambda k, **kw: None
+    _progress = progress_callback if callable(progress_callback) else lambda v: None
+
+    to_process = [
+        r for r in results_list
+        if r.get('status') == 'ok' and r.get('action') == 'kept'
+        and r.get('path') and r.get('filepath_dst')
+    ]
+    total = len(to_process)
+    if total == 0:
+        _log('logic_info_prefix', text='Aucun fichier à organiser.')
+        return 0
+
+    _status('status_custom', text=f'Organisation de {total} fichiers...')
+    for i, r in enumerate(to_process):
+        _progress(((i + 1) / total) * 100)
+        current_path = r.get('path')
+        dest_path = r.get('filepath_dst')
+        try:
+            rel_path = os.path.relpath(current_path, input_dir_abs) if current_path and input_dir_abs else os.path.basename(current_path)
+        except ValueError:
+            rel_path = os.path.basename(current_path)
+
+        if not dest_path or os.path.normpath(current_path) == os.path.normpath(dest_path):
+            continue
+        try:
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            shutil.move(current_path, dest_path)
+            r['path'] = dest_path
+            actions_count += 1
+            _log('logic_moved_info', folder=os.path.basename(os.path.dirname(dest_path)), text_key_suffix='_organize', file_rel_path=rel_path)
+        except Exception as e:
+            _log('logic_move_error', file=rel_path, e=e)
+    _progress(100)
+    _status('status_custom', text=f'{actions_count} fichiers organisés.')
+    _log('logic_info_prefix', text=f'{actions_count} fichiers organisés.')
+    return actions_count
+
+
 
 # --- Helpers for parallel processing ---
 
@@ -1503,18 +1551,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 parts.append(date_obj.strftime('%Y-%m-%d'))
             parts.append(f"Filter_{r.get('filter') or 'Unknown'}")
             dest_dir = os.path.join(*filter(None, parts))
-            try:
-                os.makedirs(dest_dir, exist_ok=True)
-            except Exception as e:
-                _log('logic_dir_create_error', path=dest_dir, e=e)
             dest_path = os.path.join(dest_dir, os.path.basename(r['path']))
-            try:
-                if os.path.normpath(r['path']) != os.path.normpath(dest_path):
-                    shutil.move(r['path'], dest_path)
-                r['path'] = dest_path
-                r['filepath_dst'] = dest_path
-            except Exception as e:
-                _log('logic_move_error', file=r.get('rel_path','?'), e=e)
+            r['filepath_dst'] = dest_path
     
 
     # --- Étape 7: Création des fichiers marqueurs ---
