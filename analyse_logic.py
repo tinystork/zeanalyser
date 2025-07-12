@@ -40,6 +40,7 @@ from rasterio.io import MemoryFile
 from rasterio.transform import from_bounds
 
 import bortle_utils
+from zone import _
 
 
 def artif_ratio_to_sqm(ratio_artif, mag_naturel=21.6):
@@ -724,10 +725,10 @@ def apply_pending_organization(results_list, log_callback=None,
     ]
     total = len(to_process)
     if total == 0:
-        _log('logic_info_prefix', text='Aucun fichier à organiser.')
+        _log('logic_info_prefix', text=_('logic_no_files_to_organize'))
         return 0
 
-    _status('status_custom', text=f'Organisation de {total} fichiers...')
+    _status('status_organizing_files', total=total)
     for i, r in enumerate(to_process):
         _progress(((i + 1) / total) * 100)
         current_path = r.get('path')
@@ -748,8 +749,8 @@ def apply_pending_organization(results_list, log_callback=None,
         except Exception as e:
             _log('logic_move_error', file=rel_path, e=e)
     _progress(100)
-    _status('status_custom', text=f'{actions_count} fichiers organisés.')
-    _log('logic_info_prefix', text=f'{actions_count} fichiers organisés.')
+    _status('status_organized_files', count=actions_count)
+    _log('logic_info_prefix', text=_('logic_files_organized').format(count=actions_count))
     return actions_count
 
 

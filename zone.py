@@ -44,6 +44,8 @@ translations = {
         'status_analysis_done_errors': "Analyse terminée avec des erreurs critiques.",
         'status_log_error': "Erreur écriture log",
         'status_dir_create_error': "Erreur création dossier: {e}",
+        'status_organizing_files': "Organisation de {total} fichiers...",
+        'status_organized_files': "{count} fichiers organisés.",
         'status_custom': "{text}",
 
         # --- Cadres ---
@@ -159,6 +161,8 @@ translations = {
         'logic_no_fits_satdet': "Aucun fichier FITS trouvé dans {path} pour détection.", 'logic_no_fits_snr': "Aucun fichier FITS (.fit, .fits) trouvé pour l'analyse SNR.",
         'logic_snr_start': "Démarrage de l'analyse individuelle...", 'logic_fits_no_data': "{file} - Pas de données image dans HDU 0.", 'logic_snr_info': "  {file}: SNR={snr:.2f}, Fond={bg:.2f}", 'logic_trail_info': "    Traînées (segments): {status} ({count})", 'logic_trail_yes': "Oui", 'logic_trail_no': "Non",
         'logic_moved_info': "-> Déplacé vers {folder}", 'logic_move_skipped': "    Info: {file} n'existait plus à l'emplacement source pour action.", 'logic_move_error': "    Erreur déplacement {file}: {e}", 'logic_file_error': "Erreur analyse fichier {file}: {e}",
+        'logic_no_files_to_organize': "Aucun fichier à organiser.",
+        'logic_files_organized': "{count} fichiers organisés.",
         'logic_log_summary_error': "Erreur lors de l'écriture du résumé du log ({path}): {e}", 'logic_final_snr': "SNR moyen global: {mean:.2f}", 'logic_final_trails': "Images avec traînées détectées: {count} ({percent:.1f}%)", 'logic_final_no_success': "Aucune image n'a pu être traitée avec succès.",
         'Liste dimages recommandées': "Liste d'images recommandées", 'Critère': "Critère", 'Généré le': "Généré le", 'Nombre dimages': "Nombre d'images",
         'Fichiers log': "Fichiers log", 'Tous les fichiers': "Tous les fichiers", 'Fichiers Texte': "Fichiers Texte",
@@ -179,6 +183,7 @@ translations = {
         #--- texte actions SNR
         'Aucune action SNR en attente à appliquer.': "Aucune action SNR en attente à appliquer.",
         "L'action sur rejet est 'Ne Rien Faire'. Aucune action ne sera appliquée.": "L'action sur rejet est 'Ne Rien Faire'. Aucune action ne sera appliquée.",
+        'Des actions SNR sont en attente.': 'Des actions SNR sont en attente.',
         " pour le déplacement des rejets SNR.": " pour le déplacement des rejets SNR.",
         "\nCeci s'appliquera aux fichiers marqués pour faible SNR.": "\nCeci s'appliquera aux fichiers marqués pour faible SNR.",
         "Application des rejets SNR...": "Application des rejets SNR...",
@@ -205,6 +210,8 @@ translations = {
         'status_analysis_done_no_valid': "Analysis finished. No processable images found or all folders were skipped.", # Modified
         'status_analysis_done_errors': "Analysis finished with critical errors.",
         'status_log_error': "Log writing error", 'status_dir_create_error': "Folder creation error: {e}",
+        'status_organizing_files': "Organizing {total} files...",
+        'status_organized_files': "{count} files organized.",
         'status_custom': "{text}",
 
         # --- Frames ---
@@ -300,6 +307,8 @@ translations = {
         'logic_snr_start': "Starting individual file analysis...", 'logic_fits_no_data': "{file} - No image data in HDU 0.", 'logic_snr_info': "  {file}: SNR={snr:.2f}, Background={bg:.2f}", 'logic_trail_info': "    Trails (segments): {status} ({count})", 'logic_trail_yes': "Yes", 'logic_trail_no': "No",
         'logic_moved_info': "-> Moved to {folder}", 'logic_move_skipped': "    Info: {file} no longer existed at source location for action.", 'logic_move_error': "    Error moving {file}: {e}", 'logic_file_error': "Error analyzing file {file}: {e}",
         'logic_log_summary_error': "Error writing log summary ({path}): {e}", 'logic_final_snr': "Overall average SNR: {mean:.2f}", 'logic_final_trails': "Images with detected trails: {count} ({percent:.1f}%)", 'logic_final_no_success': "No images could be processed successfully.",
+        'logic_no_files_to_organize': 'No files to organize.',
+        'logic_files_organized': '{count} files organized.',
         'Liste dimages recommandées': "Recommended image list", 'Critère': "Criterion", 'Généré le': "Generated on", 'Nombre dimages': "Number of images",
         'Fichiers log': "Log Files", 'Tous les fichiers': "All Files", 'Fichiers Texte': "Text Files",
 
