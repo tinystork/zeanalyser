@@ -2054,6 +2054,8 @@ class AstroImageAnalyzerGUI:
         # --- Ajout Debug ---
         print("DEBUG AG: Fermeture du GUI de l'analyseur...")
         # --------------------
+        # Sauvegarder la configuration GUI avant de supprimer les variables Tkinter
+        self._save_gui_config()
         print("  Nettoyage explicite des ressources Tkinter...")
         # Cacher et annuler les infobulles actives (inchangé)
         for tt_key in list(self.tooltips.keys()):
@@ -2093,9 +2095,6 @@ class AstroImageAnalyzerGUI:
         print("  Forçage du Garbage Collector...")
         collected_count = gc.collect()
         print(f"    Garbage Collector a collecté {collected_count} objets.")
-
-        # Sauvegarder la configuration GUI
-        self._save_gui_config()
 
         # Détruire la fenêtre Toplevel
         try:
