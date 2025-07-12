@@ -43,6 +43,7 @@ import argparse # Pour gérer les arguments de ligne de commande
 from PIL import Image, ImageTk
 # L'import de ToolTip est déplacé APRES l'ajustement de sys.path
 import json
+import settings_utils
 import importlib.util
 import numbers
 
@@ -631,6 +632,7 @@ class AstroImageAnalyzerGUI:
 
         self.config_path = os.path.join(os.path.expanduser('~'), 'zeanalyser_gui_config.json')
         self._config_data = self._load_gui_config()
+        self._settings = settings_utils.load_settings()
 
         # Variables Tkinter pour lier les widgets aux données
         self.current_lang = tk.StringVar(value=initial_lang)
@@ -654,7 +656,8 @@ class AstroImageAnalyzerGUI:
         self.detect_trails = tk.BooleanVar(value=False)
         self.sort_by_snr = tk.BooleanVar(value=True)
         self.include_subfolders = tk.BooleanVar(value=False)
-        self.bortle_path = tk.StringVar(value=self._config_data.get('bortle_path', ''))
+        bortle_default = self._settings.get('bortle_path', self._config_data.get('bortle_path', ''))
+        self.bortle_path = tk.StringVar(value=bortle_default)
         self.use_bortle = tk.BooleanVar(value=self._config_data.get('use_bortle', False))
 
         # Paramètres Sélection SNR
@@ -985,6 +988,7 @@ class AstroImageAnalyzerGUI:
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
+            settings_utils.save_settings({'bortle_path': self.bortle_path.get()})
         except Exception:
             pass
 
@@ -2683,6 +2687,7 @@ class AstroImageAnalyzerGUI:
                 )
                 return
             self.bortle_path.set(path)
+            settings_utils.save_settings({'bortle_path': path})
         self.root.after(50, self.root.focus_force)
         self.root.after(100, self.root.lift)
 

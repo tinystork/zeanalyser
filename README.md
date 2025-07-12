@@ -64,6 +64,8 @@ The Bortle analysis relies on the dataset by:
 Falchi, Fabio; Cinzano, Pierantonio; Duriscoe, Dan; Kyba, Christopher C. M.; Elvidge, Christopher D.; Baugh, Kimberly; Portnov, Boris; Rybnikova, Nataliya A.; Furgoni, Riccardo (2016): *Supplement to: The New World Atlas of Artificial Night Sky Brightness. V. 1.1.* GFZ Data Services. <https://doi.org/10.5880/GFZ.1.4.2016.001>
 (study: <https://www.science.org/doi/10.1126/sciadv.1600377>). Download their raster to classify your data by Bortle.
 
+Store the location of this raster in a `settings.json` file at the project root. The application will update this file automatically when you select the raster in the GUI.
+
 L'analyse Bortle repose sur le jeu de données de :
 Falchi, Fabio; Cinzano, Pierantonio; Duriscoe, Dan; Kyba, Christopher C. M.; Elvidge, Christopher D.; Baugh, Kimberly; Portnov, Boris; Rybnikova, Nataliya A.; Furgoni, Riccardo (2016) : *Supplement to: The New World Atlas of Artificial Night Sky Brightness. V. 1.1.* GFZ Data Services. <https://doi.org/10.5880/GFZ.1.4.2016.001>
 (étude : <https://www.science.org/doi/10.1126/sciadv.1600377>). Il faut télécharger ce raster pour pouvoir classer les données par Bortle.
