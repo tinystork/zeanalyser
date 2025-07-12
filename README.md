@@ -24,6 +24,8 @@ Gui based Zesee Star Zenalalyser is a standalone analysis module for a lot of li
    python analyse_gui.py
    ```
 
+For details on the result viewer interface, see [docs/visualisation.md](docs/visualisation.md).
+
 **Français**
 
 1. Créez un environnement virtuel et activez-le&nbsp;:
