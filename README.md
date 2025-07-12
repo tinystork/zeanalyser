@@ -73,9 +73,9 @@ Falchi, Fabio; Cinzano, Pierantonio; Duriscoe, Dan; Kyba, Christopher C. M.; Elv
 
 **Français**
 
-Je remercie chaleureusement **Astrobider**, rencontré sur Discord, à l'origine de l'idée de classement par télescope et Bortle. Merci également aux concepteurs de toutes les bibliothèques utilisées dans ce projet. Vous pouvez l'utiliser en accord avec la licence, mais j'apprécierais d'être cité si mon travail vous sert de base.
+Je remercie chaleureusement **Astrobirder**, rencontré sur Discord, à l'origine de l'idée de classement par télescope et Bortle. Merci également aux concepteurs de toutes les bibliothèques utilisées dans ce projet. Vous pouvez l'utiliser en accord avec la licence, mais j'apprécierais d'être cité si mon travail vous sert de base.
 
 **English**
 
-Many thanks to **Astrobider**, whom I met on Discord, for inspiring the idea of sorting by telescope and Bortle class. I also want to thank the authors of all the libraries used in this project. Feel free to use it in compliance with the license, but I would appreciate a citation if you reuse my work.
+Many thanks to **Astrobirder**, whom I met on Discord, for inspiring the idea of sorting by telescope and Bortle class. I also want to thank the authors of all the libraries used in this project. Feel free to use it in compliance with the license, but I would appreciate a citation if you reuse my work.
 
