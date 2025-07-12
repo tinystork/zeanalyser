@@ -112,6 +112,8 @@ translations = {
         'msg_log_not_exist': "Le fichier log n'existe pas ou n'est pas spécifié.", 'msg_log_open_error': "Impossible d'ouvrir '{path}':\n{e}", 'msg_export_no_images': "Aucune image à exporter.", 'msg_export_success': "Liste de {count} fichiers exportée vers:\n{path}", 'msg_export_error': "Erreur écriture fichier:\n{e}",
         'msg_dep_missing_title': "Dépendances Manquantes", 'msg_dep_missing_text': "Bibliothèques manquantes:\n- {deps}\n\nInstaller via pip ?", 'msg_dep_installing': "Installation dépendances...", 'msg_dep_install_pkg': "Installation de {package}...", 'msg_dep_install_success': " -> Succès.", 'msg_dep_install_fail': " -> ÉCHEC: {e}", 'msg_dep_install_error': "Impossible d'installer {package}.\n{e}", 'msg_dep_install_done': "Dépendances installées. Redémarrez l'application.", 'msg_dep_install_partial': "Certaines dépendances n'ont pu être installées.", 'msg_dep_error_continue': "Dépendances manquantes. L'application pourrait mal fonctionner.",
         'msg_tkinter_error': "Erreur Tkinter:\n{e}", 'msg_unexpected_error': "Erreur inattendue:\n{e}",
+        'msg_organize_done': "{count} fichiers organisés.",
+        'msg_organize_failed': "Organisation échouée: {e}",
 
         # --- Fenêtre Visualisation ---
         'visu_window_title': "Visualisation des résultats", 'visu_tab_snr_dist': "Distribution SNR", 'visu_tab_snr_comp': "Comparaison SNR", 'visu_tab_sat_trails': "Traînées Détectées", 'visu_tab_raw_data': "Données Détaillées", 'visu_tab_recom': "Recommandations Stacking",
@@ -189,6 +191,7 @@ translations = {
         "Le fichier log a été mis à jour avec les actions SNR.": "Le fichier log a été mis à jour avec les actions SNR.",
         "Échec de l'application des actions SNR.": "Échec de l'application des actions SNR.",
         "Échec application rejets SNR.": "Échec application rejets SNR.",
+        'Des actions SNR sont en attente.': "Des actions SNR sont en attente.",
 
 
     },
@@ -252,6 +255,8 @@ translations = {
         'msg_dep_missing_title': "Missing Dependencies", 'msg_dep_missing_text': "Missing libraries:\n- {deps}\n\nInstall via pip?", 'msg_dep_installing': "Installing dependencies...", 'msg_dep_install_pkg': "Installing {package}...", 'msg_dep_install_success': " -> Success.", 'msg_dep_install_fail': " -> FAILED: {e}", 'msg_dep_install_error': "Could not install {package}.\n{e}",
         'msg_dep_install_done': "Dependencies installed. Please restart the application.", 'msg_dep_install_partial': "Some dependencies failed to install.", 'msg_dep_error_continue': "Missing dependencies. The application might not work correctly.",
         'msg_tkinter_error': "Tkinter Error:\n{e}", 'msg_unexpected_error': "Unexpected error:\n{e}",
+        'msg_organize_done': "{count} files organized.",
+        'msg_organize_failed': "Organization failed: {e}",
 
         # --- Visualization Window ---
         'visu_window_title': "Results Visualization", 'visu_tab_snr_dist': "SNR Distribution", 'visu_tab_snr_comp': "SNR Comparison", 'visu_tab_sat_trails': "Detected Trails", 'visu_tab_raw_data': "Detailed Data", 'visu_tab_recom': "Stacking Recommendations",
