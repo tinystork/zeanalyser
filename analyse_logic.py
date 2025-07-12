@@ -1543,7 +1543,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     date_obj = datetime.datetime.fromisoformat(str(date_obs).split('T')[0])
                 except Exception:
                     pass
-            parts = [output_root, group]
+            filename_lower = os.path.basename(r['path']).lower()
+            if 'mosaic' in filename_lower:
+                parts = [output_root, 'mosaic', group]
+            else:
+                parts = [output_root, group]
             if options.get('use_bortle'):
                 parts.append(f"Bortle_{bortle_class}")
             parts.append(tele)
