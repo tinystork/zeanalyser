@@ -3843,11 +3843,14 @@ class AstroImageAnalyzerGUI:
             )
 
             messagebox.showinfo(
-                "Organisation",
-                f"{total} fichiers organisés.",
+                self._("msg_info"),
+                self._("msg_organize_done", count=total),
             )
         except Exception as e:
-            messagebox.showerror("Erreur", f"Organisation échouée: {e}")
+            messagebox.showerror(
+                self._("msg_error"),
+                self._("msg_organize_failed", e=e),
+            )
         finally:
             self._update_log_and_vis_buttons_state()
 
