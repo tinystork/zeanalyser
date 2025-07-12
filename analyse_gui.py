@@ -726,6 +726,7 @@ class AstroImageAnalyzerGUI:
         self.apply_ecc_button = None
         self.apply_reco_button = None
         self.visual_apply_reco_button = None
+        self.organize_button = None
         
         # Vérifier si les traductions ont été chargées
         if 'translations' not in globals() or not translations:
@@ -2275,10 +2276,19 @@ class AstroImageAnalyzerGUI:
         self.use_bortle_check.grid(row=3, column=3, sticky=tk.W)
         self.widgets_refs['use_bortle_check_label'] = self.use_bortle_check
 
-        # Ligne 4: Sélection Langue (Aligné à droite)
+        # Ligne 4: Bouton organiser fichiers
+        self.organize_button = ttk.Button(
+            config_frame,
+            text="Organiser fichiers",
+            command=self.organize_files,
+            state=tk.DISABLED,
+        )
+        self.organize_button.grid(row=4, column=0, columnspan=3, sticky=tk.W, padx=5, pady=2)
+
+        # Ligne 5: Sélection Langue (Aligné à droite)
         if not self.lock_language:
             lang_frame = ttk.Frame(config_frame)
-            lang_frame.grid(row=4, column=0, columnspan=3, sticky=tk.E, pady=5, padx=5)
+            lang_frame.grid(row=5, column=0, columnspan=3, sticky=tk.E, pady=5, padx=5)
             lang_label = ttk.Label(lang_frame, text="")
             lang_label.pack(side=tk.LEFT, padx=(0, 5))
             self.widgets_refs['lang_label'] = lang_label
@@ -3209,6 +3219,8 @@ class AstroImageAnalyzerGUI:
                      self._set_widget_state(self.apply_snr_button, tk.DISABLED)
 
         self.update_status("status_analysis_done")
+        if success and self.organize_button:
+            self.root.after(0, lambda: self.organize_button.config(state=tk.NORMAL))
         print("DEBUG (analyse_gui): Appel final à gc.collect()")
         gc.collect()
         print("DEBUG (analyse_gui): Sortie de finalize_analysis.")
@@ -3700,6 +3712,91 @@ class AstroImageAnalyzerGUI:
             self._set_widget_state(self.apply_snr_button, tk.DISABLED)
 
         gc.collect()
+
+    def organize_files(self):
+        """Applique toutes les actions différées sur les fichiers."""
+        if self.organize_button:
+            self.organize_button.config(state=tk.DISABLED)
+
+        delete_flag = self.reject_action.get() == 'delete'
+        move_flag = self.reject_action.get() == 'move'
+
+        callbacks = {
+            'log': self.update_results_text,
+            'status': self.update_status,
+            'progress': self.update_progress,
+        }
+
+        input_dir = self.input_dir.get()
+
+        total = 0
+        try:
+            total += analyse_logic.apply_pending_snr_actions(
+                self.analysis_results,
+                self.snr_reject_dir.get(),
+                delete_rejected_flag=delete_flag,
+                move_rejected_flag=move_flag,
+                log_callback=callbacks['log'],
+                status_callback=callbacks['status'],
+                progress_callback=callbacks['progress'],
+                input_dir_abs=input_dir,
+            )
+
+            if hasattr(analyse_logic, 'apply_pending_starcount_actions'):
+                total += analyse_logic.apply_pending_starcount_actions(
+                    self.analysis_results,
+                    self.starcount_reject_dir.get(),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
+
+            if hasattr(analyse_logic, 'apply_pending_fwhm_actions'):
+                total += analyse_logic.apply_pending_fwhm_actions(
+                    self.analysis_results,
+                    self.starcount_reject_dir.get(),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
+
+            if hasattr(analyse_logic, 'apply_pending_ecc_actions'):
+                total += analyse_logic.apply_pending_ecc_actions(
+                    self.analysis_results,
+                    self.starcount_reject_dir.get(),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
+
+            total += analyse_logic.apply_pending_reco_actions(
+                self.analysis_results,
+                self.snr_reject_dir.get(),
+                delete_rejected_flag=delete_flag,
+                move_rejected_flag=move_flag,
+                log_callback=callbacks['log'],
+                status_callback=callbacks['status'],
+                progress_callback=callbacks['progress'],
+                input_dir_abs=input_dir,
+            )
+
+            messagebox.showinfo(
+                "Organisation",
+                f"{total} fichiers déplacés ou supprimés.",
+            )
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Organisation échouée: {e}")
+        finally:
+            self._update_log_and_vis_buttons_state()
 
     def _refresh_treeview(self):
         """Placeholder for treeview refresh if implemented."""
