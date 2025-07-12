@@ -1474,8 +1474,21 @@ class AstroImageAnalyzerGUI:
                     fwhm_p75 = np.percentile(fwhm_vals, 75)
                     ecc_p75 = np.percentile(ecc_vals, 75)
                     good_img = [
-                        r for r in valid_kept_results
-                        if r['snr'] >= snr_p25 and r.get('fwhm', np.inf) <= fwhm_p75 and r.get('ecc', np.inf) <= ecc_p75
+                        r
+                        for r in valid_kept_results
+                        if r['snr'] >= snr_p25
+                        and (
+                            r.get('fwhm')
+                            if is_finite_number(r.get('fwhm'))
+                            else np.inf
+                        )
+                        <= fwhm_p75
+                        and (
+                            r.get('ecc')
+                            if is_finite_number(r.get('ecc'))
+                            else np.inf
+                        )
+                        <= ecc_p75
                     ]
                     ttk.Label(
                         recom_frame,
@@ -3256,7 +3269,19 @@ class AstroImageAnalyzerGUI:
             snr_p25 = np.percentile(snrs, 25)
             fwhm_p75 = np.percentile(fwhm_vals, 75)
             ecc_p75 = np.percentile(ecc_vals, 75)
-            return [r for r in valid_kept if r['snr'] >= snr_p25 and r.get('fwhm', np.inf) <= fwhm_p75 and r.get('ecc', np.inf) <= ecc_p75]
+            return [
+                r
+                for r in valid_kept
+                if r['snr'] >= snr_p25
+                and (
+                    r.get('fwhm') if is_finite_number(r.get('fwhm')) else np.inf
+                )
+                <= fwhm_p75
+                and (
+                    r.get('ecc') if is_finite_number(r.get('ecc')) else np.inf
+                )
+                <= ecc_p75
+            ]
         if len(snrs) >= 5 and len(sc_vals) >= 5:
             snr_p25 = np.percentile(snrs, 25)
             sc_p25 = np.percentile(sc_vals, 25)
