@@ -3476,10 +3476,18 @@ class AstroImageAnalyzerGUI:
 
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
-        if hasattr(self, 'apply_reco_button') and self.apply_reco_button:
-            self.apply_reco_button.config(state=tk.DISABLED)
-        if hasattr(self, 'visual_apply_reco_button') and self.visual_apply_reco_button:
-            self.visual_apply_reco_button.config(state=tk.DISABLED)
+        if getattr(self, 'apply_reco_button', None):
+            try:
+                if self.apply_reco_button.winfo_exists():
+                    self.apply_reco_button.config(state=tk.DISABLED)
+            except tk.TclError:
+                self.apply_reco_button = None
+        if getattr(self, 'visual_apply_reco_button', None):
+            try:
+                if self.visual_apply_reco_button.winfo_exists():
+                    self.visual_apply_reco_button.config(state=tk.DISABLED)
+            except tk.TclError:
+                self.visual_apply_reco_button = None
 
     def _on_visual_apply_snr(self):
         """Handler pour le bouton d'application SNR de la fenêtre de visualisation."""
