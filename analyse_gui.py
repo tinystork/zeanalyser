@@ -58,6 +58,11 @@ def is_finite_number(value):
     """Return True if value is a real number and finite."""
     return isinstance(value, numbers.Number) and np.isfinite(value)
 
+# Helper that returns np.inf for non-finite values
+def finite_or_inf(value):
+    """Return value if it is finite, else np.inf."""
+    return value if is_finite_number(value) else np.inf
+
 # --- AJUSTEMENT DE SYS.PATH POUR PERMETTRE LES IMPORTS DEPUIS LA RACINE DU PROJET ---
 # Ceci est crucial lorsque ce script (analyse_gui.py) est exécuté directement
 # ou via subprocess, car Python a besoin de savoir où se trouve le package 'seestar'.
@@ -1472,8 +1477,11 @@ class AstroImageAnalyzerGUI:
                     fwhm_p75 = np.percentile(fwhm_vals, 75)
                     ecc_p75 = np.percentile(ecc_vals, 75)
                     good_img = [
-                        r for r in valid_kept_results
-                        if r['snr'] >= snr_p25 and r.get('fwhm', np.inf) <= fwhm_p75 and r.get('ecc', np.inf) <= ecc_p75
+                        r
+                        for r in valid_kept_results
+                        if r['snr'] >= snr_p25
+                        and finite_or_inf(r.get('fwhm')) <= fwhm_p75
+                        and finite_or_inf(r.get('ecc')) <= ecc_p75
                     ]
                     ttk.Label(
                         recom_frame,
