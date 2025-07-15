@@ -3177,11 +3177,11 @@ class AstroImageAnalyzerGUI:
         if success:
             processed_count = len(self.analysis_results)
             if processed_count > 0:
-                 errors_count = sum(1 for r in self.analysis_results if r.get('status') == 'error')
-                 # L'action_count ici reflète les actions immédiates (ex: pour les traînées)
-                 action_count = sum(1 for r in self.analysis_results if r.get('action','').startswith(('moved_trail', 'deleted_trail')))
-                 final_status_key = "status_analysis_done_some" # Ajuster ce message si besoin pour refléter les actions en attente
-                 self.update_results_text("--- Analyse terminée ---")
+                errors_count = sum(1 for r in self.analysis_results if r.get('status') == 'error')
+                # L'action_count ici reflète les actions immédiates (ex: pour les traînées)
+                action_count = sum(1 for r in self.analysis_results if r.get('action','').startswith(('moved_trail', 'deleted_trail')))
+                final_status_key = "status_analysis_done_some" # Ajuster ce message si besoin pour refléter les actions en attente
+                self.update_results_text("--- Analyse terminée ---")
                 if not should_write_command:
                     self._set_widget_state(self.visualize_button, tk.NORMAL)
                     if self.stack_plan_button:
@@ -3191,14 +3191,14 @@ class AstroImageAnalyzerGUI:
                     if self.stack_plan_button:
                         self._set_widget_state(self.stack_plan_button, tk.DISABLED)
             else:
-                 final_status_key = "status_analysis_done_no_valid"
-                 self.update_results_text("--- Analyse terminée (aucun fichier traitable trouvé ou tous ignorés) ---")
-                 self._set_widget_state(self.visualize_button, tk.DISABLED)
+                final_status_key = "status_analysis_done_no_valid"
+                self.update_results_text("--- Analyse terminée (aucun fichier traitable trouvé ou tous ignorés) ---")
+                self._set_widget_state(self.visualize_button, tk.DISABLED)
         else: # Echec de l'analyse
-             final_status_key = "status_analysis_done_errors"
-             self.update_results_text("--- Analyse terminée avec erreurs ---")
-             self._set_widget_state(self.visualize_button, tk.DISABLED)
-             self.has_pending_snr_actions = False # Pas d'actions en attente si l'analyse a échoué globalement
+            final_status_key = "status_analysis_done_errors"
+            self.update_results_text("--- Analyse terminée avec erreurs ---")
+            self._set_widget_state(self.visualize_button, tk.DISABLED)
+            self.has_pending_snr_actions = False # Pas d'actions en attente si l'analyse a échoué globalement
 
         if final_status_key:
             print(f"DEBUG (analyse_gui): Affichage statut final (clé: {final_status_key})") 
