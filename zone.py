@@ -167,7 +167,14 @@ translations = {
         'tooltip_apply_starcount_rejection': "Appliquer les actions Starcount différées",
 
         # --- Textes Logique ---
-        'logic_info_prefix': "INFO: ", 'logic_log_prefix': "LOG: ", 'logic_status_prefix': "STATUS: ", 'logic_warn_prefix': "Avertissement: ", 'logic_error_prefix': "Erreur: ",
+        # Prefixes utilisés par la logique d'analyse pour formater les messages
+        # affichés dans la fenêtre de résultats. Ajout de "{text}" pour permettre
+        # l'insertion du contenu fourni par le code appelant.
+        'logic_info_prefix': "INFO: {text}",
+        'logic_log_prefix': "LOG: {text}",
+        'logic_status_prefix': "STATUS: {text}",
+        'logic_warn_prefix': "Avertissement: {text}",
+        'logic_error_prefix': "Erreur: {text}",
         'logic_sat_incomp': "Détection satellites non disponible ou incompatible.", 'logic_sigma_invalid': "Sigma invalide ({e}), utilisation de {default}", 'logic_lowthr_invalid': "Low Thresh invalide ({e}), utilisation de {default}", 'logic_highthr_invalid': "High Thresh invalide ({e}), utilisation de {default}",
         'logic_satdet_params': "Détection avec: sigma={sigma}, low={low_thresh}, high={h_thresh}, chips={chips}, line_len={line_len}, small_edge={small_edge}, line_gap={line_gap}",
         'logic_satdet_errors_title': "Erreurs spécifiques reportées par satdet:", 'logic_satdet_errors_item': "  - {fname} (ext {ext}): {msg}", 'logic_satdet_errors_none': "  (Aucune erreur pertinente à afficher)",
@@ -310,7 +317,14 @@ translations = {
         'tooltip_apply_starcount_rejection': "Apply pending starcount actions",
 
         # --- Logic Texts ---
-        'logic_info_prefix': "INFO: ", 'logic_log_prefix': "LOG: ", 'logic_status_prefix': "STATUS: ", 'logic_warn_prefix': "Warning: ", 'logic_error_prefix': "Error: ",
+        # Prefixes used by the analysis logic to format log lines. Include
+        # "{text}" so the caller supplied message is displayed instead of just
+        # the prefix.
+        'logic_info_prefix': "INFO: {text}",
+        'logic_log_prefix': "LOG: {text}",
+        'logic_status_prefix': "STATUS: {text}",
+        'logic_warn_prefix': "Warning: {text}",
+        'logic_error_prefix': "Error: {text}",
         'logic_sat_incomp': "Satellite detection unavailable or incompatible.", 'logic_sigma_invalid': "Invalid Sigma ({e}), using {default}", 'logic_lowthr_invalid': "Invalid Low Thresh ({e}), using {default}", 'logic_highthr_invalid': "Invalid High Thresh ({e}), using {default}",
         'logic_satdet_params': "Detection with: sigma={sigma}, low={low_thresh}, high={h_thresh}, chips={chips}, line_len={line_len}, small_edge={small_edge}, line_gap={line_gap}",
         'logic_satdet_errors_title': "Specific errors reported by satdet:", 'logic_satdet_errors_item': "  - {fname} (ext {ext}): {msg}", 'logic_satdet_errors_none': "  (No relevant errors to display)",
