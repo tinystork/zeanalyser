@@ -3550,6 +3550,7 @@ class AstroImageAnalyzerGUI:
             self.apply_reco_button.config(state=tk.DISABLED)
         if hasattr(self, 'visual_apply_reco_button') and self.visual_apply_reco_button:
             self.visual_apply_reco_button.config(state=tk.DISABLED)
+        self._regenerate_stack_plan()
 
     def _on_visual_apply_snr(self):
         """Handler pour le bouton d'application SNR de la fenêtre de visualisation."""
@@ -3568,6 +3569,7 @@ class AstroImageAnalyzerGUI:
                 self.snr_range_slider.set_active(False)
         except Exception:
             pass
+        self._regenerate_stack_plan()
 
     def _on_visual_apply_starcount(self):
         """Handler pour le bouton d'application Starcount de la fenêtre de visualisation."""
@@ -3579,6 +3581,7 @@ class AstroImageAnalyzerGUI:
                 self.starcount_range_slider.set_active(False)
         except Exception:
             pass
+        self._regenerate_stack_plan()
 
     def _on_visual_apply_fwhm(self):
         """Handler for FWHM apply button."""
@@ -3590,6 +3593,7 @@ class AstroImageAnalyzerGUI:
                 self.fwhm_range_slider.set_active(False)
         except Exception:
             pass
+        self._regenerate_stack_plan()
 
     def _on_visual_apply_ecc(self):
         """Handler for eccentricity apply button."""
@@ -3601,6 +3605,7 @@ class AstroImageAnalyzerGUI:
                 self.ecc_range_slider.set_active(False)
         except Exception:
             pass
+        self._regenerate_stack_plan()
 
     def _on_starcount_slider_change(self, val, patches):
         """Mise à jour visuelle lors du déplacement du RangeSlider Starcount."""
@@ -3634,6 +3639,38 @@ class AstroImageAnalyzerGUI:
         self.current_ecc_max = hi
         if self.apply_ecc_button:
             self.apply_ecc_button.config(state=tk.NORMAL)
+
+    def _regenerate_stack_plan(self):
+        from stack_plan import generate_stacking_plan, write_stacking_plan_csv
+        import os
+        import tkinter.messagebox as messagebox
+
+        kept = [r for r in self.analysis_results if r.get('status') == 'ok' and r.get('action') == 'kept']
+        if not kept:
+            messagebox.showwarning("Plan de stacking", "Aucune image à empiler après tri.")
+            return
+
+        pending = any(
+            r.get('action', '').startswith('pending') or
+            (r.get('rejected_reason', '') and r.get('action', '').endswith('_pending_action'))
+            for r in self.analysis_results
+        )
+        if pending:
+            if not messagebox.askyesno(
+                "Plan de stacking non à jour",
+                "Attention : certains fichiers sont encore marqués à supprimer/déplacer.\n"
+                "Le plan ne sera pas fidèle à la future organisation.\n"
+                "Voulez-vous appliquer les actions différées maintenant ?"
+            ):
+                return
+
+        plan = generate_stacking_plan(kept)
+        plan_path = os.path.join(os.path.dirname(self.output_log.get()), "stack_plan.csv")
+        write_stacking_plan_csv(plan_path, plan)
+        messagebox.showinfo(
+            "Plan de stacking mis à jour",
+            f"Le plan a été régénéré :\n{plan_path}\n({len(plan)} fichiers)"
+        )
 
     def run_apply_actions_thread(self, results_list, snr_reject_abs, delete_flag, move_flag, callbacks, input_dir_abs):
         """
