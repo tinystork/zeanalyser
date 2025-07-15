@@ -1774,6 +1774,7 @@ class AstroImageAnalyzerGUI:
             self.visual_apply_reco_button = ttk.Button(
                 bottom_frame,
                 text=self._('visual_apply_reco_button'),
+                width=24,
                 state=tk.DISABLED,
                 command=self._apply_recommendations_gui
             )
@@ -2523,7 +2524,7 @@ class AstroImageAnalyzerGUI:
             button_frame,
             text=self._('apply_reco_button'),
             command=self._apply_recommendations_gui,
-            width=18,
+            width=24,
             state=tk.DISABLED
         )
         self.apply_reco_button.pack(side=tk.RIGHT, padx=5)
