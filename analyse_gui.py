@@ -4026,11 +4026,13 @@ class AstroImageAnalyzerGUI:
                 self._("msg_organize_failed", e=e),
             )
         finally:
-            self._update_log_and_vis_buttons_state()
             try:
+                # Mettre à jour le plan de stacking avant de recharger 
+                # éventuellement les résultats depuis le log.
                 self._regenerate_stack_plan()
             except Exception:
                 pass
+            self._update_log_and_vis_buttons_state()
 
     def _refresh_treeview(self):
         """Placeholder for treeview refresh if implemented."""
