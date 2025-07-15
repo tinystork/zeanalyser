@@ -3816,13 +3816,19 @@ class AstroImageAnalyzerGUI:
                                    parent=self.root)
             return
 
+        kept_results = [
+            r
+            for r in self.analysis_results
+            if r.get('status') == 'ok' and r.get('action') == 'kept'
+        ]
+
         unique = {
-            'mount': sorted({r.get('mount', '') for r in self.analysis_results}),
-            'bortle': sorted({str(r.get('bortle', '')) for r in self.analysis_results}),
-            'telescope': sorted({r.get('telescope') or 'Unknown' for r in self.analysis_results}),
-            'session_date': sorted({(r.get('date_obs') or '').split('T')[0] for r in self.analysis_results}),
-            'filter': sorted({r.get('filter', '') for r in self.analysis_results}),
-            'exposure': sorted({str(r.get('exposure', '')) for r in self.analysis_results}),
+            'mount': sorted({r.get('mount', '') for r in kept_results}),
+            'bortle': sorted({str(r.get('bortle', '')) for r in kept_results}),
+            'telescope': sorted({r.get('telescope') or 'Unknown' for r in kept_results}),
+            'session_date': sorted({(r.get('date_obs') or '').split('T')[0] for r in kept_results}),
+            'filter': sorted({r.get('filter', '') for r in kept_results}),
+            'exposure': sorted({str(r.get('exposure', '')) for r in kept_results}),
         }
 
         window = tk.Toplevel(self.root)
@@ -3849,7 +3855,7 @@ class AstroImageAnalyzerGUI:
                 reverse = order == self._('descending')
                 sort_spec.append((cat, reverse))
             rows = generate_stacking_plan(
-                self.analysis_results,
+                kept_results,
                 include_exposure_in_batch=include_expo_var.get(),
                 criteria=criteria,
                 sort_spec=sort_spec,
@@ -3898,7 +3904,7 @@ class AstroImageAnalyzerGUI:
                 reverse = order == self._('descending')
                 sort_spec.append((cat, reverse))
             rows = generate_stacking_plan(
-                self.analysis_results,
+                kept_results,
                 include_exposure_in_batch=include_expo_var.get(),
                 criteria=criteria,
                 sort_spec=sort_spec,
@@ -3906,7 +3912,7 @@ class AstroImageAnalyzerGUI:
             if not rows:
                 messagebox.showwarning(self._('msg_warning'), self._('msg_export_no_images'), parent=window)
                 return
-            csv_path = os.path.join(os.path.dirname(self.output_log.get()), 'plan_stack.csv')
+            csv_path = os.path.join(os.path.dirname(self.output_log.get()), 'stack_plan.csv')
             write_stacking_plan_csv(csv_path, rows)
             messagebox.showinfo(self._('msg_info'), csv_path, parent=window)
             window.destroy()
