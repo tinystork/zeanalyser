@@ -45,6 +45,7 @@ from PIL import Image, ImageTk
 import json
 import importlib.util
 import numbers
+from stack_plan import generate_stacking_plan, write_stacking_plan_csv
 
 # Détection de l'environnement : intégré ou autonome
 try:
@@ -727,6 +728,7 @@ class AstroImageAnalyzerGUI:
         self.apply_reco_button = None
         self.visual_apply_reco_button = None
         self.organize_button = None
+        self.stack_plan_button = None
         
         # Vérifier si les traductions ont été chargées
         if 'translations' not in globals() or not translations:
@@ -972,6 +974,10 @@ class AstroImageAnalyzerGUI:
 
         if hasattr(self, 'visualize_button') and self.visualize_button:
             self._set_widget_state(self.visualize_button, tk.NORMAL if can_visualize else tk.DISABLED)
+
+        if hasattr(self, 'stack_plan_button') and self.stack_plan_button:
+            state = tk.NORMAL if can_visualize else tk.DISABLED
+            self._set_widget_state(self.stack_plan_button, state)
 
 
     def _load_gui_config(self):
@@ -2503,6 +2509,16 @@ class AstroImageAnalyzerGUI:
         self.manage_markers_button.pack(side=tk.LEFT, padx=5)
         self.widgets_refs['manage_markers_button'] = self.manage_markers_button
 
+        self.stack_plan_button = ttk.Button(
+            button_frame,
+            text=self._('create_stack_plan_button'),
+            command=self.open_stack_plan_window,
+            width=18,
+            state=tk.DISABLED
+        )
+        self.stack_plan_button.pack(side=tk.LEFT, padx=5)
+        self.widgets_refs['create_stack_plan_button'] = self.stack_plan_button
+
         self.apply_reco_button = ttk.Button(
             button_frame,
             text=self._('apply_reco_button'),
@@ -2577,6 +2593,8 @@ class AstroImageAnalyzerGUI:
                 # Gérer le bouton "Gérer Marqueurs"
                 elif isinstance(widget, ttk.Button) and key == 'manage_markers_button':
                     widget.config(text=self._('manage_markers_button'))
+                elif isinstance(widget, ttk.Button) and key == 'create_stack_plan_button':
+                    widget.config(text=self._('create_stack_plan_button'))
             except tk.TclError as e:
                 # Ignorer erreurs si widget détruit pendant mise à jour
                 print(f"WARN: Erreur Tcl mise à jour texte widget '{key}' lang {lang}: {e}")
@@ -3164,8 +3182,14 @@ class AstroImageAnalyzerGUI:
                  action_count = sum(1 for r in self.analysis_results if r.get('action','').startswith(('moved_trail', 'deleted_trail')))
                  final_status_key = "status_analysis_done_some" # Ajuster ce message si besoin pour refléter les actions en attente
                  self.update_results_text("--- Analyse terminée ---")
-                 if not should_write_command: self._set_widget_state(self.visualize_button, tk.NORMAL)
-                 else: self._set_widget_state(self.visualize_button, tk.DISABLED)
+                if not should_write_command:
+                    self._set_widget_state(self.visualize_button, tk.NORMAL)
+                    if self.stack_plan_button:
+                        self._set_widget_state(self.stack_plan_button, tk.NORMAL)
+                else:
+                    self._set_widget_state(self.visualize_button, tk.DISABLED)
+                    if self.stack_plan_button:
+                        self._set_widget_state(self.stack_plan_button, tk.DISABLED)
             else:
                  final_status_key = "status_analysis_done_no_valid"
                  self.update_results_text("--- Analyse terminée (aucun fichier traitable trouvé ou tous ignorés) ---")
@@ -3745,6 +3769,112 @@ class AstroImageAnalyzerGUI:
             self._set_widget_state(self.apply_snr_button, tk.DISABLED)
 
         gc.collect()
+
+    def open_stack_plan_window(self):
+        """Open a window to create a stacking plan CSV."""
+        if not self.analysis_results:
+            messagebox.showwarning(self._('msg_warning'),
+                                   self._('stack_plan_alert_no_analysis'),
+                                   parent=self.root)
+            return
+
+        unique = {
+            'mount': sorted({r.get('mount', '') for r in self.analysis_results}),
+            'bortle': sorted({str(r.get('bortle', '')) for r in self.analysis_results}),
+            'telescope': sorted({r.get('telescope') or 'Unknown' for r in self.analysis_results}),
+            'session_date': sorted({(r.get('date_obs') or '').split('T')[0] for r in self.analysis_results}),
+            'filter': sorted({r.get('filter', '') for r in self.analysis_results}),
+            'exposure': sorted({str(r.get('exposure', '')) for r in self.analysis_results}),
+        }
+
+        window = tk.Toplevel(self.root)
+        window.title(self._('stack_plan_window_title'))
+        window.transient(self.root)
+        window.grab_set()
+
+        include_expo_var = tk.BooleanVar(value=False)
+        value_vars = {}
+        sort_order_vars = {}
+
+        total_var = tk.StringVar()
+        batch_var = tk.StringVar()
+
+        def update_preview(*args):
+            criteria = {}
+            for cat, var_map in value_vars.items():
+                selected = [v for v, var in var_map.items() if var.get()]
+                if len(selected) != len(var_map):
+                    criteria[cat] = selected
+            sort_spec = []
+            for cat in ['mount', 'bortle', 'telescope', 'session_date', 'filter', 'exposure']:
+                order = sort_order_vars[cat].get()
+                reverse = order == self._('descending')
+                sort_spec.append((cat, reverse))
+            rows = generate_stacking_plan(
+                self.analysis_results,
+                include_exposure_in_batch=include_expo_var.get(),
+                criteria=criteria,
+                sort_spec=sort_spec,
+            )
+            total_var.set(self._('stack_plan_preview_total', count=len(rows)))
+            batch_var.set(self._('stack_plan_preview_batches', count=len({r['batch_id'] for r in rows})))
+
+        main = ttk.Frame(window, padding=10)
+        main.pack(fill=tk.BOTH, expand=True)
+
+        row = 0
+        for cat, values in unique.items():
+            frame = ttk.LabelFrame(main, text=self._(cat))
+            frame.grid(row=row, column=0, sticky='w', padx=5, pady=5)
+            val_map = {}
+            for val in values:
+                var = tk.BooleanVar(value=True)
+                ttk.Checkbutton(frame, text=str(val), variable=var, command=update_preview).pack(side=tk.LEFT)
+                val_map[val] = var
+            value_vars[cat] = val_map
+            sort_var = tk.StringVar(value=self._('ascending'))
+            sort_order_vars[cat] = sort_var
+            cb = ttk.Combobox(frame, state='readonly', width=10,
+                              values=[self._('ascending'), self._('descending')],
+                              textvariable=sort_var)
+            cb.pack(side=tk.RIGHT)
+            cb.bind('<<ComboboxSelected>>', update_preview)
+            row += 1
+
+        ttk.Checkbutton(main, text=self._('include_exposure_in_batch'),
+                        variable=include_expo_var, command=update_preview).grid(row=row, column=0, sticky='w', pady=5)
+        row += 1
+
+        ttk.Label(main, textvariable=total_var).grid(row=row, column=0, sticky='w'); row += 1
+        ttk.Label(main, textvariable=batch_var).grid(row=row, column=0, sticky='w'); row += 1
+
+        def generate_and_close():
+            criteria = {}
+            for cat, var_map in value_vars.items():
+                selected = [v for v, var in var_map.items() if var.get()]
+                if len(selected) != len(var_map):
+                    criteria[cat] = selected
+            sort_spec = []
+            for cat in ['mount', 'bortle', 'telescope', 'session_date', 'filter', 'exposure']:
+                order = sort_order_vars[cat].get()
+                reverse = order == self._('descending')
+                sort_spec.append((cat, reverse))
+            rows = generate_stacking_plan(
+                self.analysis_results,
+                include_exposure_in_batch=include_expo_var.get(),
+                criteria=criteria,
+                sort_spec=sort_spec,
+            )
+            if not rows:
+                messagebox.showwarning(self._('msg_warning'), self._('msg_export_no_images'), parent=window)
+                return
+            csv_path = os.path.join(os.path.dirname(self.output_log.get()), 'plan_stack.csv')
+            write_stacking_plan_csv(csv_path, rows)
+            messagebox.showinfo(self._('msg_info'), csv_path, parent=window)
+            window.destroy()
+
+        ttk.Button(main, text=self._('generate_plan_button'), command=generate_and_close).grid(row=row, column=0, pady=5)
+        update_preview()
 
     def organize_files(self):
         """Applique toutes les actions différées sur les fichiers."""
