@@ -4021,6 +4021,10 @@ class AstroImageAnalyzerGUI:
             )
         finally:
             self._update_log_and_vis_buttons_state()
+            try:
+                self._regenerate_stack_plan()
+            except Exception:
+                pass
 
     def _refresh_treeview(self):
         """Placeholder for treeview refresh if implemented."""
