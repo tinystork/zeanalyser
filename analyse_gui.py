@@ -3666,7 +3666,14 @@ class AstroImageAnalyzerGUI:
 
         plan = generate_stacking_plan(kept)
         plan_path = os.path.join(os.path.dirname(self.output_log.get()), "stack_plan.csv")
-        write_stacking_plan_csv(plan_path, plan)
+        try:
+            write_stacking_plan_csv(plan_path, plan)
+        except PermissionError as exc:
+            messagebox.showerror(
+                "Erreur de permission",
+                f"Impossible d'écrire le fichier :\n{plan_path}\n{exc}"
+            )
+            return
         messagebox.showinfo(
             "Plan de stacking mis à jour",
             f"Le plan a été régénéré :\n{plan_path}\n({len(plan)} fichiers)"

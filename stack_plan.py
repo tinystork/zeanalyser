@@ -131,34 +131,39 @@ def generate_stacking_plan(
 def write_stacking_plan_csv(csv_path: str, rows: Iterable[Dict[str, str]]) -> None:
     """Write stacking plan rows to ``csv_path`` in UTF-8."""
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
-    with open(csv_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(
-            [
-                "order",
-                "batch_id",
-                "mount",
-                "bortle",
-                "telescope",
-                "session_date",
-                "filter",
-                "exposure",
-                "file_path",
-            ]
-        )
-        for row in rows:
+    try:
+        with open(csv_path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
             writer.writerow(
                 [
-                    row.get("order", ""),
-                    row.get("batch_id", ""),
-                    row.get("mount", ""),
-                    row.get("bortle", ""),
-                    row.get("telescope", ""),
-                    row.get("session_date", ""),
-                    row.get("filter", ""),
-                    row.get("exposure", ""),
-                    row.get("file_path", ""),
+                    "order",
+                    "batch_id",
+                    "mount",
+                    "bortle",
+                    "telescope",
+                    "session_date",
+                    "filter",
+                    "exposure",
+                    "file_path",
                 ]
             )
+            for row in rows:
+                writer.writerow(
+                    [
+                        row.get("order", ""),
+                        row.get("batch_id", ""),
+                        row.get("mount", ""),
+                        row.get("bortle", ""),
+                        row.get("telescope", ""),
+                        row.get("session_date", ""),
+                        row.get("filter", ""),
+                        row.get("exposure", ""),
+                        row.get("file_path", ""),
+                    ]
+                )
+    except PermissionError as exc:
+        raise PermissionError(
+            f"Cannot write to '{csv_path}'. File is in use or the directory is not writable."
+        ) from exc
 
     return None
