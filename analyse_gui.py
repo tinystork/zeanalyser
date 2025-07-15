@@ -4034,9 +4034,31 @@ class AstroImageAnalyzerGUI:
             )
         finally:
             try:
-                # Mettre à jour le plan de stacking avant de recharger 
+                # Mettre à jour le plan de stacking avant de recharger
                 # éventuellement les résultats depuis le log.
                 self._regenerate_stack_plan()
+            except Exception:
+                pass
+            try:
+                if self.output_log.get():
+                    current_options = {
+                        'analyze_snr': self.analyze_snr.get(),
+                        'detect_trails': self.detect_trails.get(),
+                        'include_subfolders': self.include_subfolders.get(),
+                        'move_rejected': (self.reject_action.get() == 'move'),
+                        'delete_rejected': (self.reject_action.get() == 'delete'),
+                        'snr_reject_dir': self.snr_reject_dir.get(),
+                        'trail_reject_dir': self.trail_reject_dir.get(),
+                        'snr_selection_mode': self.snr_selection_mode.get(),
+                        'snr_selection_value': self.snr_selection_value.get(),
+                        'trail_params': {k: self.trail_params[k].get() for k in self.trail_params},
+                    }
+                    analyse_logic.write_log_summary(
+                        self.output_log.get(),
+                        self.input_dir.get(),
+                        current_options,
+                        results_list=self.analysis_results,
+                    )
             except Exception:
                 pass
             self._update_log_and_vis_buttons_state()
