@@ -729,6 +729,7 @@ class AstroImageAnalyzerGUI:
         self.visual_apply_reco_button = None
         self.organize_button = None
         self.stack_plan_button = None
+        self.latest_stack_plan_path = None
         
         # Vérifier si les traductions ont été chargées
         if 'translations' not in globals() or not translations:
@@ -3122,6 +3123,9 @@ class AstroImageAnalyzerGUI:
 
         self._stop_timer()
         self.analysis_running = False
+        self.analysis_completed_successfully = success
+        if self.stack_after_analysis and self.analysis_completed_successfully:
+            self.root.after(0, self._auto_stack_workflow)
         self.has_pending_snr_actions = False # Réinitialiser par défaut
 
         folder_to_stack = None
@@ -3153,7 +3157,6 @@ class AstroImageAnalyzerGUI:
 
         self.update_progress(100.0 if success else 0.0)
         self.analysis_results = results if results else []
-        self.analysis_completed_successfully = success
         self.best_reference_path = self._get_best_reference()
         if success and self.analysis_results:
             (self.recommended_images,
@@ -3468,10 +3471,11 @@ class AstroImageAnalyzerGUI:
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
 
-    def _apply_recommendations_gui(self):
+    def _apply_recommendations_gui(self, *, auto: bool = False):
         """Keep only recommended images and apply reject actions."""
         if not getattr(self, 'recommended_images', None):
-            messagebox.showinfo("Info", "Aucune recommandation calculée.")
+            if not auto:
+                messagebox.showinfo("Info", "Aucune recommandation calculée.")
             return
 
         reco_files = {os.path.abspath(img['file']) for img in self.recommended_images}
@@ -3678,6 +3682,69 @@ class AstroImageAnalyzerGUI:
             "Plan de stacking mis à jour",
             f"Le plan a été régénéré :\n{plan_path}\n({len(plan)} fichiers)"
         )
+
+    def _create_stacking_plan_auto(self) -> str | None:
+        """Create a stacking plan CSV without user interaction."""
+        source = self.recommended_images if getattr(self, 'recommended_images', []) else [
+            r for r in self.analysis_results if r.get('status') == 'ok' and r.get('action') == 'kept'
+        ]
+        if not source:
+            return None
+
+        if self.use_bortle.get():
+            sort_spec = [('bortle', False), ('session_date', False), ('exposure', True)]
+        else:
+            sort_spec = [('session_date', False), ('exposure', True)]
+
+        include_expo = False
+        if hasattr(self, 'include_exposure_in_batch'):
+            try:
+                include_expo = bool(self.include_exposure_in_batch.get())
+            except Exception:
+                include_expo = False
+
+        rows = generate_stacking_plan(
+            source,
+            include_exposure_in_batch=include_expo,
+            sort_spec=sort_spec,
+        )
+        if not rows:
+            return None
+
+        plan_path = os.path.join(self.input_dir.get(), "stack_plan.csv")
+        try:
+            write_stacking_plan_csv(plan_path, rows)
+        except Exception:
+            return None
+
+        self.latest_stack_plan_path = plan_path
+        return plan_path
+
+    def _auto_stack_workflow(self):
+        """Execute analysis post-processing and stacking automatically."""
+        try:
+            self._apply_recommendations_gui(auto=True)
+            self._organize_files_backend(auto=True)
+            try:
+                self.send_reference_to_main()
+            except Exception:
+                pass
+            plan_path = self._create_stacking_plan_auto()
+            if plan_path:
+                self.latest_stack_plan_path = plan_path
+            self._trigger_stack_via_stacker()
+            self.update_status('status_custom', text='Workflow auto-stack terminé.')
+        except Exception as exc:
+            traceback.print_exc()
+            self.update_status('status_custom', text=f'Auto-stack error: {exc}')
+
+    def _trigger_stack_via_stacker(self):
+        """Trigger the stacking process via SeeStar Stacker if available."""
+        try:
+            if hasattr(zeseestarstacker, 'trigger_stack'):
+                zeseestarstacker.trigger_stack(self.latest_stack_plan_path)
+        except Exception as e:
+            print(f"Error triggering stacker: {e}")
 
     def run_apply_actions_thread(self, results_list, snr_reject_abs, delete_flag, move_flag, callbacks, input_dir_abs):
         """
@@ -3927,10 +3994,8 @@ class AstroImageAnalyzerGUI:
         ttk.Button(main, text=self._('generate_plan_button'), command=generate_and_close).grid(row=row, column=0, pady=5)
         update_preview()
 
-    def organize_files(self):
-        """Applique toutes les actions différées sur les fichiers."""
-        if self.organize_button:
-            self.organize_button.config(state=tk.DISABLED)
+    def _organize_files_backend(self, *, auto: bool = False):
+        """Backend pour appliquer les actions différées sur les fichiers."""
 
         delete_flag = self.reject_action.get() == 'delete'
         move_flag = self.reject_action.get() == 'move'
@@ -4023,19 +4088,19 @@ class AstroImageAnalyzerGUI:
                 input_dir_abs=input_dir,
             )
 
-            messagebox.showinfo(
-                self._("msg_info"),
-                self._("msg_organize_done", count=total),
-            )
+            if not auto:
+                messagebox.showinfo(
+                    self._("msg_info"),
+                    self._("msg_organize_done", count=total),
+                )
         except Exception as e:
-            messagebox.showerror(
-                self._("msg_error"),
-                self._("msg_organize_failed", e=e),
-            )
+            if not auto:
+                messagebox.showerror(
+                    self._("msg_error"),
+                    self._("msg_organize_failed", e=e),
+                )
         finally:
             try:
-                # Mettre à jour le plan de stacking avant de recharger
-                # éventuellement les résultats depuis le log.
                 self._regenerate_stack_plan()
             except Exception:
                 pass
@@ -4062,6 +4127,12 @@ class AstroImageAnalyzerGUI:
             except Exception:
                 pass
             self._update_log_and_vis_buttons_state()
+
+    def organize_files(self):
+        """Applique toutes les actions différées sur les fichiers via le GUI."""
+        if self.organize_button:
+            self.organize_button.config(state=tk.DISABLED)
+        self._organize_files_backend(auto=False)
 
     def _refresh_treeview(self):
         """Placeholder for treeview refresh if implemented."""
