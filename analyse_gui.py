@@ -4009,7 +4009,15 @@ class AstroImageAnalyzerGUI:
                 messagebox.showwarning(self._('msg_warning'), self._('msg_export_no_images'), parent=window)
                 return
             csv_path = os.path.join(os.path.dirname(self.output_log.get()), 'stack_plan.csv')
-            write_stacking_plan_csv(csv_path, rows)
+            try:
+                write_stacking_plan_csv(csv_path, rows)
+            except PermissionError as e:
+                messagebox.showerror(
+                    self._('msg_error'),
+                    self._('msg_stack_plan_write_error', path=csv_path, e=e),
+                    parent=window,
+                )
+                return
             messagebox.showinfo(self._('msg_info'), csv_path, parent=window)
             window.destroy()
 
