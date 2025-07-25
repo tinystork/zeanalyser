@@ -25,6 +25,7 @@ import shutil
 import time
 import datetime
 import traceback
+from collections import defaultdict
 import numpy as np
 from astropy.io import fits
 from astropy.utils.exceptions import AstropyWarning
@@ -645,6 +646,82 @@ def build_recommended_images(results):
         )
     ]
     return reco, snr_min, fwhm_max, ecc_max
+
+
+def select_reference_image(results, max_workers=4):
+    """Return the path of the image whose average rotation is
+    closest to the overall mean rotation across sessions."""
+    try:
+        import astroalign
+    except Exception:
+        return None
+
+    # Group images by (telescope, date)
+    sessions = defaultdict(list)
+    for r in results:
+        if r.get('status') != 'ok':
+            continue
+        path = r.get('path')
+        date_obs = r.get('date_obs')
+        if not path or not date_obs:
+            continue
+        try:
+            obs_time = datetime.datetime.fromisoformat(date_obs)
+        except Exception:
+            continue
+        key = (r.get('telescope', 'Unknown'), obs_time.date())
+        sessions[key].append((obs_time, r))
+
+    # Pick representative image (median time) for each session
+    representative = {}
+    for key, imgs in sessions.items():
+        imgs_sorted = sorted(imgs, key=lambda x: x[0])
+        rep = imgs_sorted[len(imgs_sorted)//2][1]
+        representative[key] = rep
+
+    rep_paths = [img['path'] for img in representative.values()]
+    n = len(rep_paths)
+    if n == 0:
+        return None
+
+    rot_mat = np.full((n, n), np.nan)
+
+    def _compute(i, j):
+        try:
+            trans, _ = astroalign.find_transform(rep_paths[i], rep_paths[j])
+            return (i, j, trans.rotation)
+        except Exception:
+            return (i, j, None)
+
+    pairs = [(i, j) for i in range(n) for j in range(i + 1, n)]
+    if len(pairs) > 100:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+            for i, j, rot in ex.map(lambda p: _compute(*p), pairs):
+                if rot is not None:
+                    rot_mat[i, j] = rot
+                    rot_mat[j, i] = -rot
+    else:
+        for i, j in pairs:
+            i_, j_, rot = _compute(i, j)
+            if rot is not None:
+                rot_mat[i_, j_] = rot
+                rot_mat[j_, i_] = -rot
+
+    avg_rot = np.nanmean(rot_mat, axis=1)
+    avg_dict = dict(zip(rep_paths, avg_rot))
+
+    for key, imgs in sessions.items():
+        rep_path = representative[key]['path']
+        av = avg_dict.get(rep_path, np.nan)
+        for _, r in imgs:
+            r['avg_rotation'] = av
+
+    valid = [r for r in results if 'avg_rotation' in r and not np.isnan(r['avg_rotation'])]
+    if not valid:
+        return None
+    global_mean = float(np.mean([r['avg_rotation'] for r in valid]))
+    best = min(valid, key=lambda r: abs(r['avg_rotation'] - global_mean))
+    return best.get('path')
 
 
 def debug_counts(results):
@@ -1653,3 +1730,14 @@ def perform_analysis(input_dir, output_log, options, callbacks):
 
     _status("status_analysis_done") # Statut final générique
     return all_results_list
+
+
+def save_reference(reference_path, save_location="reference_image.txt"):
+    """Save the selected reference path to a text file."""
+    if not reference_path:
+        return
+    try:
+        with open(save_location, "w", encoding="utf-8") as f:
+            f.write(reference_path)
+    except Exception:
+        raise

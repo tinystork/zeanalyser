@@ -2499,6 +2499,16 @@ class AstroImageAnalyzerGUI:
         self.send_reference_button.pack(side=tk.LEFT, padx=5)
         self.widgets_refs['send_reference_button'] = self.send_reference_button
 
+        self.save_reference_button = ttk.Button(
+            button_frame,
+            text='',
+            command=self.save_reference,
+            width=18,
+            state=tk.DISABLED
+        )
+        self.save_reference_button.pack(side=tk.LEFT, padx=5)
+        self.widgets_refs['save_reference_button'] = self.save_reference_button
+
         self.visualize_button = ttk.Button(button_frame, text="", command=self.visualize_results, width=18)
         self.visualize_button.pack(side=tk.LEFT, padx=5); self.visualize_button.config(state=tk.DISABLED) # Désactivé au début
         self.widgets_refs['visualize_button'] = self.visualize_button # Référencer
@@ -2632,6 +2642,7 @@ class AstroImageAnalyzerGUI:
             if self.analyze_button: self.analyze_button.config(text=self._("analyse_button"))
             if self.analyze_stack_button: self.analyze_stack_button.config(text=self._("analyse_stack_button"))
             if self.send_reference_button: self.send_reference_button.config(text=self._("use_best_reference_button"))
+            if self.save_reference_button: self.save_reference_button.config(text=self._("save_reference_button"))
             if self.visualize_button: self.visualize_button.config(text=self._("visualize_button"))
             if self.open_log_button: self.open_log_button.config(text=self._("open_log_button"))
             if self.organize_button: self.organize_button.config(text=self._("organize_files_button"))
@@ -2853,6 +2864,8 @@ class AstroImageAnalyzerGUI:
         if hasattr(self, 'send_reference_button') and self.send_reference_button:
             self._set_widget_state(self.send_reference_button, tk.DISABLED)
                                                  # car on prépare une NOUVELLE analyse.
+        if hasattr(self, 'save_reference_button') and self.save_reference_button:
+            self._set_widget_state(self.save_reference_button, tk.DISABLED)
 
         # Mettre à jour l'état des boutons log et visu basé sur le fichier log actuel
         self._update_log_and_vis_buttons_state() 
@@ -3167,6 +3180,7 @@ class AstroImageAnalyzerGUI:
             self.recommended_images = []
             self.reco_snr_min = self.reco_fwhm_max = self.reco_ecc_max = None
         self._set_widget_state(self.send_reference_button, tk.NORMAL if self.best_reference_path else tk.DISABLED)
+        self._set_widget_state(self.save_reference_button, tk.NORMAL if self.best_reference_path else tk.DISABLED)
         final_status_key = ""
         processed_count = 0 ; action_count = 0 ; errors_count = 0
 
@@ -3275,16 +3289,7 @@ class AstroImageAnalyzerGUI:
         print("DEBUG (analyse_gui): Sortie de finalize_analysis.")
 
     def _get_best_reference(self):
-        valid = [
-            r
-            for r in self.analysis_results
-            if r.get('status') == 'ok'
-            and r.get('action') == 'kept'
-            and r.get('rejected_reason') is None
-            and 'snr' in r
-            and is_finite_number(r['snr'])
-        ]
-        return max(valid, key=lambda r: r['snr'])['path'] if valid else None
+        return analyse_logic.select_reference_image(self.analysis_results)
 
     def _compute_recommendations(self):
         """Return a list of recommended images based on percentiles."""
@@ -3344,6 +3349,23 @@ class AstroImageAnalyzerGUI:
                 self.main_app_callback(reference_path=self.best_reference_path)
             except TypeError:
                 self.main_app_callback()
+
+    def save_reference(self):
+        """Save the computed reference path to a file chosen by the user."""
+        if not self.best_reference_path:
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title=self._('save_reference_button'),
+            defaultextension='.txt',
+            filetypes=[('Text', '*.txt')]
+        )
+        if not path:
+            return
+        try:
+            analyse_logic.save_reference(self.best_reference_path, path)
+        except Exception as e:
+            messagebox.showerror(self._('msg_error'), str(e), parent=self.root)
 
     def apply_pending_snr_actions_gui(self):
         """Applique les actions SNR sélectionnées via le RangeSlider."""
