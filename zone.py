@@ -91,6 +91,7 @@ translations = {
         'export_button': "Exporter Liste Recommandée (.txt)",
         'Fermer': "Fermer",
         'use_best_reference_button': 'Envoyer Référence',
+        'save_reference_button': 'Sauvegarder Référence',
         'Exporter Toutes Conservées': "Exporter Toutes Conservées",
         'apply_snr_rejection_button': "Appliquer Rejet SNR",
         'visual_apply_snr_button': "Appliquer Rejet SNR",
@@ -263,6 +264,7 @@ translations = {
         'Fermer': "Close", 'Exporter Toutes Conservées': "Export All Kept",
 
         'use_best_reference_button': 'Send Reference',
+        'save_reference_button': 'Save Reference',
         # --- acstools status text ---
         'acstools_ok': "(acstools available)", 'acstools_missing': "(acstools not found or incompatible)", 'acstools_sig_error': "(detsat function incompatible)",
 
