@@ -130,6 +130,7 @@ translations = {
         'msg_tkinter_error': "Erreur Tkinter:\n{e}", 'msg_unexpected_error': "Erreur inattendue:\n{e}",
         'msg_organize_done': "{count} fichiers organisés.",
         'msg_organize_failed': "Organisation échouée: {e}",
+        'msg_stack_plan_write_error': "Impossible d'écrire '{path}'. Fichier utilisé ou dossier non accessible.",
 
         # --- Fenêtre Visualisation ---
         'visu_window_title': "Visualisation des résultats", 'visu_tab_snr_dist': "Distribution SNR", 'visu_tab_snr_comp': "Comparaison SNR", 'visu_tab_sat_trails': "Traînées Détectées", 'visu_tab_raw_data': "Données Détaillées", 'visu_tab_recom': "Recommandations Stacking",
@@ -281,6 +282,7 @@ translations = {
         'msg_tkinter_error': "Tkinter Error:\n{e}", 'msg_unexpected_error': "Unexpected error:\n{e}",
         'msg_organize_done': "{count} files organized.",
         'msg_organize_failed': "Organization failed: {e}",
+        'msg_stack_plan_write_error': "Cannot write '{path}'. File is in use or the directory is not writable.",
 
         # --- Visualization Window ---
         'visu_window_title': "Results Visualization", 'visu_tab_snr_dist': "SNR Distribution", 'visu_tab_snr_comp': "SNR Comparison", 'visu_tab_sat_trails': "Detected Trails", 'visu_tab_raw_data': "Detailed Data", 'visu_tab_recom': "Stacking Recommendations",
