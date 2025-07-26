@@ -680,6 +680,7 @@ class AstroImageAnalyzerGUI:
         self.analysis_running = False
         self.analysis_completed_successfully = False
         self.best_reference_path = None
+        self.best_reference_angle = None
         self.current_reference_path = None
         self.tooltips = {}
         self.timer_running = False 
@@ -2141,8 +2142,8 @@ class AstroImageAnalyzerGUI:
             print("DEBUG AG: Appel du callback du script principal (_on_analyzer_closed)...")
             # --------------------
             try:
-                if self.current_reference_path is not None:
-                    self.main_app_callback(reference_path=self.current_reference_path)
+                if self.best_reference_path is not None:
+                    self.main_app_callback(reference_path=self.best_reference_path)
                 else:
                     self.main_app_callback()
                 # --- Ajout Debug ---
@@ -2862,6 +2863,7 @@ class AstroImageAnalyzerGUI:
         self.analysis_results = [] # Toujours vider les résultats en mémoire
         self.analysis_completed_successfully = False # Réinitialiser l'état de succès de la *dernière* analyse
         self.best_reference_path = None
+        self.best_reference_angle = None
         if hasattr(self, 'send_reference_button') and self.send_reference_button:
             self._set_widget_state(self.send_reference_button, tk.DISABLED)
                                                  # car on prépare une NOUVELLE analyse.
@@ -3173,11 +3175,32 @@ class AstroImageAnalyzerGUI:
         self.analysis_results = results if results else []
         self.current_reference_path = self._get_best_reference()
         self.best_reference_path = self.current_reference_path
-        if self.current_reference_path:
-            name = os.path.basename(self.current_reference_path)
-            self.update_status('status_custom', text=f"Référence calculée: {name}")
+        self.best_reference_angle = None
+        if self.best_reference_path:
+            for r in self.analysis_results:
+                if r.get('path') == self.best_reference_path:
+                    ang = r.get('avg_rotation')
+                    try:
+                        if ang is not None and np.isfinite(float(ang)):
+                            self.best_reference_angle = float(ang)
+                    except Exception:
+                        pass
+                    break
+            name = os.path.basename(self.best_reference_path)
+            angle_txt = (
+                f" (rotation moyenne: {self.best_reference_angle:.2f}\N{DEGREE SIGN})"
+                if self.best_reference_angle is not None
+                else ""
+            )
+            self.update_status(
+                'status_custom',
+                text=f"Image de référence sélectionnée automatiquement: {name}{angle_txt}"
+            )
         else:
-            self.update_status('status_custom', text="Aucune référence trouvée (analyse rotation échouée).")
+            self.update_status(
+                'status_custom',
+                text="Aucune référence trouvée (analyse rotation échouée)."
+            )
         if success and self.analysis_results:
             (self.recommended_images,
              self.reco_snr_min,
@@ -3186,8 +3209,14 @@ class AstroImageAnalyzerGUI:
         else:
             self.recommended_images = []
             self.reco_snr_min = self.reco_fwhm_max = self.reco_ecc_max = None
-        self._set_widget_state(self.send_reference_button, tk.NORMAL if self.current_reference_path else tk.DISABLED)
-        self._set_widget_state(self.save_reference_button, tk.NORMAL if self.current_reference_path else tk.DISABLED)
+        self._set_widget_state(
+            self.send_reference_button,
+            tk.NORMAL if self.best_reference_path else tk.DISABLED
+        )
+        self._set_widget_state(
+            self.save_reference_button,
+            tk.NORMAL if self.best_reference_path else tk.DISABLED
+        )
         final_status_key = ""
         processed_count = 0 ; action_count = 0 ; errors_count = 0
 
@@ -3264,8 +3293,9 @@ class AstroImageAnalyzerGUI:
                 try:
                     with open(self.command_file_path, 'w', encoding='utf-8') as f:
                         f.write(folder_to_stack + "\n")
-                        if self.current_reference_path:
-                            f.write(self.current_reference_path + "\n")
+                        ref_path = self.best_reference_path or self.current_reference_path
+                        if ref_path:
+                            f.write(ref_path + "\n")
                     self.root.after(100, self.return_or_quit)
                 except Exception as e_write_cmd:
                     print(f"Error writing command file: {e_write_cmd}")
@@ -3340,32 +3370,44 @@ class AstroImageAnalyzerGUI:
         return []
 
     def send_reference_to_main(self):
-        """Envoie le chemin de référence calculé au GUI principal."""
-        if not self.current_reference_path:
+        """Send the selected reference path to the parent GUI or command file."""
+        path = self.best_reference_path or self.current_reference_path
+        if not path:
             return
         if self.command_file_path:
             try:
                 with open(self.command_file_path, 'w', encoding='utf-8') as f:
                     folder = self.input_dir.get() or ''
                     f.write(folder + "\n")
-                    f.write(self.current_reference_path + "\n")
+                    f.write(path + "\n")
             except Exception as e:
                 print(f"Error writing reference to command file: {e}")
         elif callable(self.main_app_callback):
             try:
-                self.main_app_callback(reference_path=self.current_reference_path)
+                self.main_app_callback(reference_path=path)
             except TypeError:
                 self.main_app_callback()
 
     def save_reference(self):
-        """Save the computed reference path to the standard file."""
-        if not self.current_reference_path:
+        """Save the automatically computed reference to a text file."""
+        path = self.best_reference_path or self.current_reference_path
+        if not path:
             return
+        save_dir = self.input_dir.get() or os.path.dirname(self.output_log.get() or "")
+        if not save_dir:
+            save_dir = os.getcwd()
+        save_path = os.path.join(save_dir, "reference_image.txt")
         try:
-            with open("reference_image.txt", "w", encoding="utf-8") as f:
-                f.write(self.current_reference_path.strip() + "\n")
-            name = os.path.basename(self.current_reference_path)
+            with open(save_path, "w", encoding="utf-8") as f:
+                f.write(path.strip() + "\n")
+                if self.best_reference_angle is not None:
+                    f.write(f"{self.best_reference_angle:.6f}\n")
+            name = os.path.basename(path)
             self.update_status('status_custom', text=f"Référence sauvegardée: {name}")
+            messagebox.showinfo(
+                self._("msg_info", default="Information"),
+                f"Image de référence :\n{path}"
+            )
         except Exception as e:
             self.update_status('status_custom', text=f"Erreur lors de la sauvegarde: {e}")
 
