@@ -38,6 +38,7 @@ import subprocess
 # import sys # Déjà importé plus haut
 import traceback
 import time
+import shutil
 import gc
 import argparse # Pour gérer les arguments de ligne de commande
 from PIL import Image, ImageTk
@@ -2504,7 +2505,7 @@ class AstroImageAnalyzerGUI:
         self.save_reference_button = ttk.Button(
             button_frame,
             text='',
-            command=self.save_reference,
+            command=self._on_save_reference,
             width=18,
             state=tk.DISABLED
         )
@@ -3175,6 +3176,12 @@ class AstroImageAnalyzerGUI:
         self.analysis_results = results if results else []
         self.current_reference_path = self._get_best_reference()
         self.best_reference_path = self.current_reference_path
+        if self.best_reference_path:
+            print(f"INFO: Référence calculée → {self.best_reference_path}")
+            try:
+                self.save_reference_button.config(state=tk.NORMAL)
+            except Exception:
+                pass
         self.best_reference_angle = None
         if self.best_reference_path:
             for r in self.analysis_results:
@@ -3388,28 +3395,24 @@ class AstroImageAnalyzerGUI:
             except TypeError:
                 self.main_app_callback()
 
-    def save_reference(self):
-        """Save the automatically computed reference to a text file."""
+    def _on_save_reference(self):
+        """Open a dialog to save the computed reference image."""
         path = self.best_reference_path or self.current_reference_path
         if not path:
+            messagebox.showwarning(self._("msg_warning"), "Aucune référence à sauvegarder.")
             return
-        save_dir = self.input_dir.get() or os.path.dirname(self.output_log.get() or "")
-        if not save_dir:
-            save_dir = os.getcwd()
-        save_path = os.path.join(save_dir, "reference_image.txt")
-        try:
-            with open(save_path, "w", encoding="utf-8") as f:
-                f.write(path.strip() + "\n")
-                if self.best_reference_angle is not None:
-                    f.write(f"{self.best_reference_angle:.6f}\n")
-            name = os.path.basename(path)
-            self.update_status('status_custom', text=f"Référence sauvegardée: {name}")
-            messagebox.showinfo(
-                self._("msg_info", default="Information"),
-                f"Image de référence :\n{path}"
-            )
-        except Exception as e:
-            self.update_status('status_custom', text=f"Erreur lors de la sauvegarde: {e}")
+        dest = filedialog.asksaveasfilename(
+            title="Enregistrer la référence",
+            defaultextension=".fits",
+            filetypes=[("FITS files", "*.fits"), ("All files", "*.*")]
+        )
+        if dest:
+            try:
+                shutil.copy(path, dest)
+                print(f"INFO: Référence copiée vers {dest}")
+                self.update_results_text(f"Sauvegarde de la référence : {dest}")
+            except Exception as e:
+                messagebox.showerror(self._("msg_error"), f"Échec de la sauvegarde : {e}")
 
     def apply_pending_snr_actions_gui(self):
         """Applique les actions SNR sélectionnées via le RangeSlider."""
