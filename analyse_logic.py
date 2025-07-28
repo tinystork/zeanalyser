@@ -36,6 +36,7 @@ import threading
 import zipfile
 import xml.etree.ElementTree as ET
 import csv
+from astroalign import find_transform
 
 from rasterio.io import MemoryFile
 from rasterio.transform import from_bounds
@@ -1741,3 +1742,53 @@ def save_reference(reference_path, save_location="reference_image.txt"):
             f.write(reference_path)
     except Exception:
         raise
+
+
+def select_global_reference(results):
+    """Sélectionne une référence globale pour le stacking hiérarchique.
+
+    - results : liste de dict, chaque dict contient au moins 'status',
+      'telescope', 'date_obs', 'path'.
+    Retourne le chemin (string) de l'image de référence globale, ou None si la
+    liste est vide.
+    """
+
+    groups = defaultdict(list)
+    for r in results:
+        if r.get('status') != 'ok':
+            continue
+        tel = r.get('telescope') or 'Unknown'
+        groups[tel].append(r)
+
+    tels = []
+    rep_paths = []
+    for tel, recs in groups.items():
+        recs_sorted = sorted(recs, key=lambda x: x.get('date_obs'))
+        mid = len(recs_sorted) // 2
+        tels.append(tel)
+        rep_paths.append(recs_sorted[mid].get('path'))
+
+    if not rep_paths:
+        return None
+
+    n = len(rep_paths)
+    rot_mat = np.full((n, n), np.nan)
+    for i in range(n):
+        for j in range(i + 1, n):
+            try:
+                tf = find_transform(rep_paths[i], rep_paths[j])
+                angle = tf.rotation
+                rot_mat[i, j] = angle
+                rot_mat[j, i] = -angle
+            except Exception:
+                continue
+
+    avg = np.nanmean(np.abs(rot_mat), axis=1)
+
+    if not np.all(np.isnan(avg)):
+        best_idx = int(np.nanargmin(avg))
+        return rep_paths[best_idx]
+
+    counts = {tel: len(groups[tel]) for tel in groups}
+    best_tel = max(counts, key=counts.get)
+    return rep_paths[tels.index(best_tel)]
