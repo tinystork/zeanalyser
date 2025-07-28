@@ -3174,14 +3174,20 @@ class AstroImageAnalyzerGUI:
 
         self.update_progress(100.0 if success else 0.0)
         self.analysis_results = results if results else []
-        self.current_reference_path = self._get_best_reference()
-        self.best_reference_path = self.current_reference_path
+        self.best_reference_path = analyse_logic.select_global_reference(self.analysis_results)
+        self.current_reference_path = self.best_reference_path
         if self.best_reference_path:
-            print(f"INFO: Référence calculée → {self.best_reference_path}")
-            try:
-                self.save_reference_button.config(state=tk.NORMAL)
-            except Exception:
-                pass
+            self.save_reference_button.config(state=tk.NORMAL)
+            self.send_reference_button.config(state=tk.NORMAL)
+            self.update_results_text(
+                "logic_info_prefix",
+                text=f"Reference globale sélectionnée : {self.best_reference_path}"
+            )
+        else:
+            self.update_results_text(
+                "logic_warn_prefix",
+                text="Aucune référence globale valide trouvée."
+            )
         self.best_reference_angle = None
         if self.best_reference_path:
             for r in self.analysis_results:
@@ -3333,7 +3339,7 @@ class AstroImageAnalyzerGUI:
         print("DEBUG (analyse_gui): Sortie de finalize_analysis.")
 
     def _get_best_reference(self):
-        return analyse_logic.select_reference_image(self.analysis_results)
+        return analyse_logic.select_global_reference(self.analysis_results)
 
     def _compute_recommendations(self):
         """Return a list of recommended images based on percentiles."""
