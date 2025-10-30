@@ -801,14 +801,22 @@ def _snr_worker(path):
                 if starcount_module is not None:
 
                     try:
-                        result['starcount'] = starcount_module.calculate_starcount(data)
+                        result['starcount'] = starcount_module.calculate_starcount(
+                            data,
+                            sky_bg=sky_bg,
+                            sky_noise=sky_noise,
+                        )
                     except Exception:
                         result['starcount'] = None
 
                 if ecc_module is not None:
 
                     try:
-                        fwhm_val, ecc_val, n_det = ecc_module.calculate_fwhm_ecc(data)
+                        fwhm_val, ecc_val, n_det = ecc_module.calculate_fwhm_ecc(
+                            data,
+                            sky_bg=sky_bg,
+                            sky_noise=sky_noise,
+                        )
                         result['fwhm'] = fwhm_val
                         result['ecc'] = ecc_val
                         result['n_star_ecc'] = n_det
@@ -1153,14 +1161,22 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                     if starcount_module is not None:
 
                                         try:
-                                            result['starcount'] = starcount_module.calculate_starcount(data)
+                                            result['starcount'] = starcount_module.calculate_starcount(
+                                                data,
+                                                sky_bg=sky_bg,
+                                                sky_noise=sky_noise,
+                                            )
                                         except Exception:
                                             result['starcount'] = None
 
                                     if ecc_module is not None:
 
                                         try:
-                                            fwhm_val, ecc_val, n_det = ecc_module.calculate_fwhm_ecc(data)
+                                            fwhm_val, ecc_val, n_det = ecc_module.calculate_fwhm_ecc(
+                                                data,
+                                                sky_bg=sky_bg,
+                                                sky_noise=sky_noise,
+                                            )
                                             result['fwhm'] = fwhm_val
                                             result['ecc'] = ecc_val
                                             result['n_star_ecc'] = n_det
