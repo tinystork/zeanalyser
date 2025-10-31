@@ -709,9 +709,12 @@ class AstroImageAnalyzerGUI:
         self.reco_snr_min = None
         self.reco_fwhm_max = None
         self.reco_ecc_max = None
+        self.reco_starcount_min = None
         self.reco_snr_pct_min = tk.DoubleVar(value=25.0)
         self.reco_fwhm_pct_max = tk.DoubleVar(value=75.0)
         self.reco_ecc_pct_max = tk.DoubleVar(value=75.0)
+        self.use_starcount_filter = tk.BooleanVar(value=False)
+        self.reco_starcount_pct_min = tk.DoubleVar(value=25.0)
         
         # Références aux widgets (pour traduction, activation/désactivation)
         self.widgets_refs = {}
@@ -861,24 +864,32 @@ class AstroImageAnalyzerGUI:
         snrs = [r['snr'] for r in valid_kept if np.isfinite(r.get('snr', np.nan))]
         fwhms = [r['fwhm'] for r in valid_kept if np.isfinite(r.get('fwhm', np.nan))]
         eccs = [r['ecc'] for r in valid_kept if np.isfinite(r.get('ecc', np.nan))]
+        scs = [r['starcount'] for r in valid_kept if np.isfinite(r.get('starcount', np.nan))]
 
         snr_p = np.percentile(snrs, float(self.reco_snr_pct_min.get())) if snrs else -np.inf
         fwhm_p = np.percentile(fwhms, float(self.reco_fwhm_pct_max.get())) if fwhms else np.inf
         ecc_p = np.percentile(eccs, float(self.reco_ecc_pct_max.get())) if eccs else np.inf
+        sc_p = None
+        if self.use_starcount_filter.get() and scs:
+            sc_p = np.percentile(scs, float(self.reco_starcount_pct_min.get()))
 
         def ok(r):
             import numpy as np
             ok_snr = (r.get('snr', -np.inf) >= snr_p)
             ok_fwhm = (r.get('fwhm', np.inf) <= fwhm_p) if np.isfinite(r.get('fwhm', np.nan)) else True
             ok_ecc = (r.get('ecc', np.inf) <= ecc_p) if np.isfinite(r.get('ecc', np.nan)) else True
-            return ok_snr and ok_fwhm and ok_ecc
+            ok_sc = True
+            if self.use_starcount_filter.get() and sc_p is not None:
+                ok_sc = (r.get('starcount', -np.inf) >= sc_p)
+            return ok_snr and ok_fwhm and ok_ecc and ok_sc
 
         recos = [r for r in valid_kept if ok(r)]
         self.recommended_images = recos
         self.reco_snr_min = snr_p if np.isfinite(snr_p) else None
         self.reco_fwhm_max = fwhm_p if np.isfinite(fwhm_p) else None
         self.reco_ecc_max = ecc_p if np.isfinite(ecc_p) else None
-        return recos, snr_p, fwhm_p, ecc_p
+        self.reco_starcount_min = sc_p if sc_p is not None and np.isfinite(sc_p) else None
+        return recos, snr_p, fwhm_p, ecc_p, sc_p
 
     def start_analysis(self):
         """Appelle la logique de lancement SANS l'option d'empiler après."""
@@ -1554,6 +1565,54 @@ class AstroImageAnalyzerGUI:
 
                 self.reco_ecc_pct_max.trace_add("write", _sync_ecc_label)
 
+                use_sc_frame = ttk.Frame(sliders_frame)
+                use_sc_frame.grid(row=3, column=0, columnspan=3, sticky="we", pady=(8, 0))
+                use_sc_chk = ttk.Checkbutton(
+                    use_sc_frame,
+                    text=self._("use_starcount_chk"),
+                    variable=self.use_starcount_filter,
+                    command=lambda: update_starcount_slider_state(),
+                )
+                use_sc_chk.pack(side=tk.LEFT)
+                self.tooltips['use_starcount_chk'] = ToolTip(
+                    use_sc_chk,
+                    lambda: self._('tooltip_use_starcount')
+                )
+
+                sc_label = ttk.Label(sliders_frame, text=self._("reco_starcount_min_pct"))
+                sc_label.grid(row=4, column=0, sticky="w")
+                sc_scale = ttk.Scale(
+                    sliders_frame, from_=0, to=100, orient="horizontal",
+                    variable=self.reco_starcount_pct_min, length=220,
+                    command=lambda _v: update_recos()
+                )
+                sc_scale.grid(row=4, column=1, padx=6, sticky="we")
+                sc_val = ttk.Label(sliders_frame, text=f"{self.reco_starcount_pct_min.get():.0f}")
+                sc_val.grid(row=4, column=2, sticky="w")
+
+                def _sync_sc_label(*_):
+                    sc_val.config(text=f"{self.reco_starcount_pct_min.get():.0f}")
+
+                self.reco_starcount_pct_min.trace_add("write", _sync_sc_label)
+
+                def update_starcount_slider_state():
+                    widgets = (sc_scale, sc_val, sc_label)
+                    if self.use_starcount_filter.get():
+                        for widget in widgets:
+                            try:
+                                widget.state(("!disabled",))
+                            except (tk.TclError, AttributeError):
+                                pass
+                    else:
+                        for widget in widgets:
+                            try:
+                                widget.state(("disabled",))
+                            except (tk.TclError, AttributeError):
+                                pass
+                    update_recos()
+
+                self.use_starcount_filter.trace_add('write', lambda *_: update_starcount_slider_state())
+
                 for c in range(3):
                     sliders_frame.columnconfigure(c, weight=(1 if c == 1 else 0))
 
@@ -1561,11 +1620,23 @@ class AstroImageAnalyzerGUI:
                 resume_label = ttk.Label(recom_frame, textvariable=resume_var)
                 resume_label.pack(anchor="w", pady=(0, 6))
 
-                rec_cols = ("file", "snr", "fwhm", "ecc")
+                rec_cols = ("file", "snr", "fwhm", "ecc", "starcount")
                 rec_tree = ttk.Treeview(recom_frame, columns=rec_cols, show="headings", height=12)
-                for cid, label in zip(rec_cols, (self._("visu_recom_col_file"), self._("visu_recom_col_snr"), "FWHM", "e")):
+                for cid, label in zip(
+                    rec_cols,
+                    (
+                        self._("visu_recom_col_file"),
+                        self._("visu_recom_col_snr"),
+                        "FWHM",
+                        "e",
+                        self._("visu_recom_col_starcount"),
+                    ),
+                ):
                     rec_tree.heading(cid, text=label)
-                    rec_tree.column(cid, width=120 if cid != "file" else 320, anchor=tk.CENTER if cid != "file" else tk.W)
+                    if cid == "file":
+                        rec_tree.column(cid, width=320, anchor=tk.W)
+                    else:
+                        rec_tree.column(cid, width=120, anchor=tk.CENTER)
                 rec_scr = ttk.Scrollbar(recom_frame, orient=tk.VERTICAL, command=rec_tree.yview)
                 rec_tree.configure(yscroll=rec_scr.set)
                 rec_scr.pack(side=tk.RIGHT, fill=tk.Y)
@@ -1582,7 +1653,7 @@ class AstroImageAnalyzerGUI:
 
                 def update_recos():
                     import numpy as np
-                    recos, snr_p, fwhm_p, ecc_p = self._compute_recommended_subset()
+                    recos, snr_p, fwhm_p, ecc_p, sc_p = self._compute_recommended_subset()
                     txt = self._("visu_recom_text_all", count=len(recos))
                     if txt.startswith("_visu_recom_text_all_"):
                         txt = f"Images recommandées : {len(recos)}"
@@ -1592,6 +1663,8 @@ class AstroImageAnalyzerGUI:
                         txt += f"  |  FWHM ≤ {fwhm_p:.2f}"
                     if ecc_p is not None and np.isfinite(ecc_p):
                         txt += f"  |  e ≤ {ecc_p:.3f}"
+                    if self.use_starcount_filter.get() and sc_p is not None and np.isfinite(sc_p):
+                        txt += f"  |  Starcount ≥ {sc_p:.0f}"
                     resume_var.set(txt)
 
                     for item in rec_tree.get_children():
@@ -1605,6 +1678,7 @@ class AstroImageAnalyzerGUI:
                                 f"{r.get('snr', 0):.2f}" if np.isfinite(r.get('snr', np.nan)) else "N/A",
                                 f"{r.get('fwhm', 0):.2f}" if np.isfinite(r.get('fwhm', np.nan)) else "N/A",
                                 f"{r.get('ecc', 0):.3f}" if np.isfinite(r.get('ecc', np.nan)) else "N/A",
+                                f"{r.get('starcount', 0):.0f}" if np.isfinite(r.get('starcount', np.nan)) else "N/A",
                             )
                         )
 
@@ -1616,7 +1690,7 @@ class AstroImageAnalyzerGUI:
                     if self.main_apply_reco_button:
                         self.main_apply_reco_button.config(state=state)
 
-                update_recos()
+                update_starcount_slider_state()
             except Exception as e:
                  print(f"Erreur Recommandations: {e}"); traceback.print_exc(); ttk.Label(stack_tab, text=f"{self._('msg_error')}:\n{e}\n{traceback.format_exc()}").pack()
                  # Pas de fig4 à fermer ici pour l'instant
