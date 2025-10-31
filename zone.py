@@ -152,6 +152,13 @@ translations = {
         'visu_data_col_file': "Fichier (Relatif)", 'visu_data_col_snr': "SNR", 'visu_data_col_bg': "Fond", 'visu_data_col_noise': "Bruit", 'visu_data_col_pixsig': "PixSig", 'visu_data_col_trails': "Traînées?", 'visu_data_col_nbseg': "Nb Seg.",
         'Statut': "Statut", 'Action': "Action", 'Raison Rejet': "Raison Rejet", 'Commentaire': "Commentaire",
         'visu_recom_frame_title': "Recommandation (Images Conservées)",
+        'reco_starcount_min_pct': "Starcount min (percentile)",
+        'use_starcount_chk': "Utiliser Starcount",
+        'tooltip_use_starcount': (
+            "Active un filtre supplémentaire basé sur le nombre d'étoiles détectées. "
+            "Utile pour éliminer les poses voilées / nuageuses, ou avec mauvaise transparence. "
+            "À désactiver pour des objets très diffus (nébuleuses) où le starcount varie peu."
+        ),
         'visu_recom_text': "Suggestion: Utiliser les {count} images conservées avec SNR >= {p75:.2f} (P25)",
         'visu_recom_text_both': "Suggestion: Utiliser les {count} images conservées avec SNR ≥ {snr_p25:.2f} (P25) et Starcount ≥ {sc_p25:.0f} (P25)",
         'visu_recom_text_all': "Suggestion : utiliser {count} images avec SNR ≥ P25, FWHM ≤ P75 et e ≤ P75",
@@ -304,6 +311,13 @@ translations = {
         'visu_data_col_file': "File (Relative)", 'visu_data_col_snr': "SNR", 'visu_data_col_bg': "BG", 'visu_data_col_noise': "Noise", 'visu_data_col_pixsig': "SigPix", 'visu_data_col_trails': "Trails?", 'visu_data_col_nbseg': "Nb Seg.",
         'Statut': "Status", 'Action': "Action", 'Raison Rejet': "Reject Reason", 'Commentaire': "Comment",
         'visu_recom_frame_title': "Recommendation (Kept Images)",
+        'reco_starcount_min_pct': "Starcount min (percentile)",
+        'use_starcount_chk': "Use Starcount",
+        'tooltip_use_starcount': (
+            "Adds an extra filter based on the detected star count. "
+            "Useful to discard hazy/cloudy subs or poor transparency. "
+            "Disable for very diffuse targets (nebulae) where star count is less indicative."
+        ),
         'visu_recom_text': "Suggestion: Use the {count} kept images with SNR >= {p75:.2f} (P25)",
         'visu_recom_text_both': "Suggestion: Use the {count} kept images with SNR \u2265 {snr_p25:.2f} (P25) and Starcount \u2265 {sc_p25:.0f} (P25)",
         'visu_recom_text_all': "Suggestion: use {count} images with SNR \u2265 P25, FWHM \u2264 P75 and e \u2264 P75",
