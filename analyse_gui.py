@@ -1651,6 +1651,17 @@ class AstroImageAnalyzerGUI:
                 )
                 self.apply_reco_button.pack(side=tk.RIGHT)
 
+                def _safe_button_config(btn, **cfg):
+                    """Configure a Tkinter button only if it still exists."""
+                    if not btn:
+                        return
+                    try:
+                        if btn.winfo_exists():
+                            btn.config(**cfg)
+                    except tk.TclError:
+                        # The widget might have been destroyed while callbacks are still alive
+                        pass
+
                 def update_recos():
                     import numpy as np
                     recos, snr_p, fwhm_p, ecc_p, sc_p = self._compute_recommended_subset()
@@ -1683,12 +1694,10 @@ class AstroImageAnalyzerGUI:
                         )
 
                     state = tk.NORMAL if recos else tk.DISABLED
-                    if self.apply_reco_button:
-                        self.apply_reco_button.config(state=state)
-                    if hasattr(self, 'visual_apply_reco_button') and self.visual_apply_reco_button:
-                        self.visual_apply_reco_button.config(state=state)
-                    if self.main_apply_reco_button:
-                        self.main_apply_reco_button.config(state=state)
+                    _safe_button_config(self.apply_reco_button, state=state)
+                    if hasattr(self, 'visual_apply_reco_button'):
+                        _safe_button_config(self.visual_apply_reco_button, state=state)
+                    _safe_button_config(self.main_apply_reco_button, state=state)
 
                 update_starcount_slider_state()
             except Exception as e:
