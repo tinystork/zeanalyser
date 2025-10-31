@@ -704,11 +704,14 @@ class AstroImageAnalyzerGUI:
         self.current_ecc_max = None
         self.ecc_range_slider = None
 
-        # Recommended images and associated thresholds
+        # Recommended images and associated thresholds / sliders
         self.recommended_images = []
         self.reco_snr_min = None
         self.reco_fwhm_max = None
         self.reco_ecc_max = None
+        self.reco_snr_pct_min = tk.DoubleVar(value=25.0)
+        self.reco_fwhm_pct_max = tk.DoubleVar(value=75.0)
+        self.reco_ecc_pct_max = tk.DoubleVar(value=75.0)
         
         # Références aux widgets (pour traduction, activation/désactivation)
         self.widgets_refs = {}
@@ -728,6 +731,7 @@ class AstroImageAnalyzerGUI:
         self.apply_starcount_button = None
         self.apply_fwhm_button = None
         self.apply_ecc_button = None
+        self.main_apply_reco_button = None
         self.apply_reco_button = None
         self.visual_apply_reco_button = None
         self.organize_button = None
@@ -834,6 +838,47 @@ class AstroImageAnalyzerGUI:
             return False
 
 
+
+    def _compute_recommended_subset(self):
+        """Recompute recommended images using the current percentile sliders."""
+        import numpy as np
+
+        valid_kept = [
+            r for r in self.analysis_results
+            if r.get('status') == 'ok'
+            and r.get('action') == 'kept'
+            and r.get('rejected_reason') is None
+            and np.isfinite(r.get('snr', np.nan))
+        ]
+
+        if not valid_kept:
+            self.recommended_images = []
+            self.reco_snr_min = None
+            self.reco_fwhm_max = None
+            self.reco_ecc_max = None
+            return [], None, None, None
+
+        snrs = [r['snr'] for r in valid_kept if np.isfinite(r.get('snr', np.nan))]
+        fwhms = [r['fwhm'] for r in valid_kept if np.isfinite(r.get('fwhm', np.nan))]
+        eccs = [r['ecc'] for r in valid_kept if np.isfinite(r.get('ecc', np.nan))]
+
+        snr_p = np.percentile(snrs, float(self.reco_snr_pct_min.get())) if snrs else -np.inf
+        fwhm_p = np.percentile(fwhms, float(self.reco_fwhm_pct_max.get())) if fwhms else np.inf
+        ecc_p = np.percentile(eccs, float(self.reco_ecc_pct_max.get())) if eccs else np.inf
+
+        def ok(r):
+            import numpy as np
+            ok_snr = (r.get('snr', -np.inf) >= snr_p)
+            ok_fwhm = (r.get('fwhm', np.inf) <= fwhm_p) if np.isfinite(r.get('fwhm', np.nan)) else True
+            ok_ecc = (r.get('ecc', np.inf) <= ecc_p) if np.isfinite(r.get('ecc', np.nan)) else True
+            return ok_snr and ok_fwhm and ok_ecc
+
+        recos = [r for r in valid_kept if ok(r)]
+        self.recommended_images = recos
+        self.reco_snr_min = snr_p if np.isfinite(snr_p) else None
+        self.reco_fwhm_max = fwhm_p if np.isfinite(fwhm_p) else None
+        self.reco_ecc_max = ecc_p if np.isfinite(ecc_p) else None
+        return recos, snr_p, fwhm_p, ecc_p
 
     def start_analysis(self):
         """Appelle la logique de lancement SANS l'option d'empiler après."""
@@ -1458,219 +1503,120 @@ class AstroImageAnalyzerGUI:
             # --- Onglet Recommandations Stacking ---
             stack_tab = ttk.Frame(notebook); notebook.add(stack_tab, text=self._("visu_tab_recom")); fig4=None # Placeholder fig
             try:
-                recom_frame = ttk.LabelFrame(stack_tab, text=self._("visu_recom_frame_title"), padding=10); recom_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-                valid_kept_results = [
-                    r for r in self.analysis_results
-                    if r.get('status') == 'ok'
-                    and r.get('action') == 'kept'
-                    and r.get('rejected_reason') is None
-                    and 'snr' in r and is_finite_number(r['snr'])
-                ]
-                valid_kept_snrs = [r['snr'] for r in valid_kept_results]
-                sc_vals = [
-                    r['starcount']
-                    for r in valid_kept_results
-                    if r.get('starcount') is not None and is_finite_number(r['starcount'])
-                ]
-                fwhm_vals = [
-                    r['fwhm']
-                    for r in valid_kept_results
-                    if is_finite_number(r.get('fwhm', np.nan))
-                ]
-                ecc_vals = [
-                    r['ecc']
-                    for r in valid_kept_results
-                    if is_finite_number(r.get('ecc', np.nan))
-                ]
+                recom_frame = ttk.LabelFrame(stack_tab, text=self._("visu_recom_frame_title"), padding=10)
+                recom_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-                if len(valid_kept_snrs) >= 5 and len(fwhm_vals) >= 5 and len(ecc_vals) >= 5:
-                    snr_p25 = np.percentile(valid_kept_snrs, 25)
-                    fwhm_p75 = np.percentile(fwhm_vals, 75)
-                    ecc_p75 = np.percentile(ecc_vals, 75)
-                    good_img = [
-                        r
-                        for r in valid_kept_results
-                        if r['snr'] >= snr_p25
-                        and (
-                            r.get('fwhm')
-                            if is_finite_number(r.get('fwhm'))
-                            else np.inf
-                        )
-                        <= fwhm_p75
-                        and (
-                            r.get('ecc')
-                            if is_finite_number(r.get('ecc'))
-                            else np.inf
-                        )
-                        <= ecc_p75
-                    ]
-                    ttk.Label(
-                        recom_frame,
-                        text=self._(
-                            "visu_recom_text_all",
-                            count=len(good_img),
-                        ),
-                    ).pack(anchor=tk.W, pady=(0, 5))
-                    rec_cols = ("file", "snr", "fwhm", "ecc")
-                    rec_tree = ttk.Treeview(
-                        recom_frame, columns=rec_cols, show="headings", height=10
-                    )
-                    rec_tree.heading("file", text=self._("visu_recom_col_file"))
-                    rec_tree.heading("snr", text=self._("visu_recom_col_snr"))
-                    rec_tree.heading("fwhm", text="FWHM")
-                    rec_tree.heading("ecc", text="e")
-                    rec_tree.column("file", width=450, anchor="w")
-                    rec_tree.column("snr", width=80, anchor="center")
-                    rec_tree.column("fwhm", width=80, anchor="center")
-                    rec_tree.column("ecc", width=80, anchor="center")
-                    for img in sorted(good_img, key=lambda x: x['snr'], reverse=True):
+                sliders_frame = ttk.Frame(recom_frame)
+                sliders_frame.pack(fill=tk.X, pady=(0, 10))
+
+                ttk.Label(sliders_frame, text="SNR min (percentile)").grid(row=0, column=0, sticky="w")
+                snr_scale = ttk.Scale(
+                    sliders_frame, from_=0, to=100, orient="horizontal",
+                    variable=self.reco_snr_pct_min, length=220,
+                    command=lambda _v: update_recos()
+                )
+                snr_scale.grid(row=0, column=1, padx=6, sticky="we")
+                snr_val = ttk.Label(sliders_frame, text=f"{self.reco_snr_pct_min.get():.0f}")
+                snr_val.grid(row=0, column=2, sticky="w")
+
+                def _sync_snr_label(*_):
+                    snr_val.config(text=f"{self.reco_snr_pct_min.get():.0f}")
+
+                self.reco_snr_pct_min.trace_add("write", _sync_snr_label)
+
+                ttk.Label(sliders_frame, text="FWHM max (percentile)").grid(row=1, column=0, sticky="w")
+                fwhm_scale = ttk.Scale(
+                    sliders_frame, from_=0, to=100, orient="horizontal",
+                    variable=self.reco_fwhm_pct_max, length=220,
+                    command=lambda _v: update_recos()
+                )
+                fwhm_scale.grid(row=1, column=1, padx=6, sticky="we")
+                fwhm_val = ttk.Label(sliders_frame, text=f"{self.reco_fwhm_pct_max.get():.0f}")
+                fwhm_val.grid(row=1, column=2, sticky="w")
+
+                def _sync_fwhm_label(*_):
+                    fwhm_val.config(text=f"{self.reco_fwhm_pct_max.get():.0f}")
+
+                self.reco_fwhm_pct_max.trace_add("write", _sync_fwhm_label)
+
+                ttk.Label(sliders_frame, text="e (eccentricity) max (percentile)").grid(row=2, column=0, sticky="w")
+                ecc_scale = ttk.Scale(
+                    sliders_frame, from_=0, to=100, orient="horizontal",
+                    variable=self.reco_ecc_pct_max, length=220,
+                    command=lambda _v: update_recos()
+                )
+                ecc_scale.grid(row=2, column=1, padx=6, sticky="we")
+                ecc_val = ttk.Label(sliders_frame, text=f"{self.reco_ecc_pct_max.get():.0f}")
+                ecc_val.grid(row=2, column=2, sticky="w")
+
+                def _sync_ecc_label(*_):
+                    ecc_val.config(text=f"{self.reco_ecc_pct_max.get():.0f}")
+
+                self.reco_ecc_pct_max.trace_add("write", _sync_ecc_label)
+
+                for c in range(3):
+                    sliders_frame.columnconfigure(c, weight=(1 if c == 1 else 0))
+
+                resume_var = tk.StringVar(value="")
+                resume_label = ttk.Label(recom_frame, textvariable=resume_var)
+                resume_label.pack(anchor="w", pady=(0, 6))
+
+                rec_cols = ("file", "snr", "fwhm", "ecc")
+                rec_tree = ttk.Treeview(recom_frame, columns=rec_cols, show="headings", height=12)
+                for cid, label in zip(rec_cols, (self._("visu_recom_col_file"), self._("visu_recom_col_snr"), "FWHM", "e")):
+                    rec_tree.heading(cid, text=label)
+                    rec_tree.column(cid, width=120 if cid != "file" else 320, anchor=tk.CENTER if cid != "file" else tk.W)
+                rec_scr = ttk.Scrollbar(recom_frame, orient=tk.VERTICAL, command=rec_tree.yview)
+                rec_tree.configure(yscroll=rec_scr.set)
+                rec_scr.pack(side=tk.RIGHT, fill=tk.Y)
+                rec_tree.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+
+                btns = ttk.Frame(recom_frame)
+                btns.pack(fill=tk.X)
+                self.apply_reco_button = ttk.Button(
+                    btns,
+                    text=self._("apply_reco_button", default="Appliquer Recommandations"),
+                    command=lambda: self._apply_current_recommendations()
+                )
+                self.apply_reco_button.pack(side=tk.RIGHT)
+
+                def update_recos():
+                    import numpy as np
+                    recos, snr_p, fwhm_p, ecc_p = self._compute_recommended_subset()
+                    txt = self._("visu_recom_text_all", count=len(recos))
+                    if txt.startswith("_visu_recom_text_all_"):
+                        txt = f"Images recommandées : {len(recos)}"
+                    if snr_p is not None and np.isfinite(snr_p):
+                        txt += f"  |  SNR ≥ {snr_p:.2f}"
+                    if fwhm_p is not None and np.isfinite(fwhm_p):
+                        txt += f"  |  FWHM ≤ {fwhm_p:.2f}"
+                    if ecc_p is not None and np.isfinite(ecc_p):
+                        txt += f"  |  e ≤ {ecc_p:.3f}"
+                    resume_var.set(txt)
+
+                    for item in rec_tree.get_children():
+                        rec_tree.delete(item)
+                    for r in recos:
                         rec_tree.insert(
                             "",
                             tk.END,
                             values=(
-                                img.get("rel_path", os.path.basename(img["file"])),
-                                f"{img['snr']:.2f}",
-                                f"{img['fwhm']:.2f}",
-                                f"{img['ecc']:.2f}",
-                            ),
-                        )
-                    rec_scr = ttk.Scrollbar(
-                        recom_frame, orient=tk.VERTICAL, command=rec_tree.yview
-                    )
-                    rec_tree.configure(yscroll=rec_scr.set)
-                    rec_scr.pack(side=tk.RIGHT, fill=tk.Y)
-                    rec_tree.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-                    export_cmd = lambda gi=good_img, p=(snr_p25, fwhm_p75, ecc_p75): self.export_recommended_list(gi, p)
-                    export_button = ttk.Button(
-                        recom_frame, text=self._("export_button"), command=export_cmd
-                    )
-                    export_button.pack(pady=5)
-                elif len(valid_kept_snrs) >= 5 and len(sc_vals) >= 5:
-                    snr_p25 = np.percentile(valid_kept_snrs, 25)
-                    sc_p25 = np.percentile(sc_vals, 25)
-                    good_img = [
-                        r for r in valid_kept_results
-                        if r['snr'] >= snr_p25 and r['starcount'] >= sc_p25
-                    ]
-
-                    ttk.Label(
-                        recom_frame,
-                        text=self._(
-                            "visu_recom_text_both",
-                            count=len(good_img),
-                            snr_p25=snr_p25,
-                            sc_p25=sc_p25,
-                        ),
-                    ).pack(anchor=tk.W, pady=(0, 5))
-
-                    rec_cols = ("file", "snr", "starcount")
-                    rec_tree = ttk.Treeview(
-                        recom_frame, columns=rec_cols, show="headings", height=10
-                    )
-                    rec_tree.heading("file", text=self._("visu_recom_col_file"))
-                    rec_tree.heading("snr", text=self._("visu_recom_col_snr"))
-                    rec_tree.heading(
-                        "starcount", text=self._("visu_recom_col_starcount")
-                    )
-                    rec_tree.column("file", width=450, anchor="w")
-                    rec_tree.column("snr", width=80, anchor="center")
-                    rec_tree.column("starcount", width=90, anchor="center")
-
-                    for img in sorted(good_img, key=lambda x: x['snr'], reverse=True):
-                        rec_tree.insert(
-                            "",
-                            tk.END,
-                            values=(
-                                img.get("rel_path", os.path.basename(img["file"])),
-                                f"{img['snr']:.2f}",
-                                f"{img['starcount']:.0f}",
-                            ),
-                        )
-
-                    rec_scr = ttk.Scrollbar(
-                        recom_frame, orient=tk.VERTICAL, command=rec_tree.yview
-                    )
-                    rec_tree.configure(yscroll=rec_scr.set)
-                    rec_scr.pack(side=tk.RIGHT, fill=tk.Y)
-                    rec_tree.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-
-                    export_cmd = lambda gi=good_img, p=(snr_p25, sc_p25): self.export_recommended_list(gi, p)
-                    export_button = ttk.Button(
-                        recom_frame, text=self._("export_button"), command=export_cmd
-                    )
-                    export_button.pack(pady=5)
-
-                elif len(valid_kept_snrs) >= 5:
-                    p25_threshold = np.percentile(valid_kept_snrs, 25)
-                    good_img = [r for r in valid_kept_results if r['snr'] >= p25_threshold]
-                    if good_img:
-                        good_img_sorted = sorted(good_img, key=lambda x: x['snr'], reverse=True)
-                        ttk.Label(
-                            recom_frame,
-                            text=self._(
-                                "visu_recom_text",
-                                count=len(good_img_sorted),
-                                p75=p25_threshold,
-                            ),
-                        ).pack(anchor=tk.W, pady=(0, 5))
-
-                        rec_cols = ("file", "snr")
-                        rec_tree = ttk.Treeview(
-                            recom_frame, columns=rec_cols, show="headings", height=10
-                        )
-                        rec_tree.heading("file", text=self._("visu_recom_col_file"))
-                        rec_tree.heading("snr", text=self._("visu_recom_col_snr"))
-                        rec_tree.column("file", width=450, anchor="w")
-                        rec_tree.column("snr", width=100, anchor="center")
-
-                        for img in good_img_sorted:
-                            rec_tree.insert(
-                                "",
-                                tk.END,
-                                values=(
-                                    img.get(
-                                        "rel_path", os.path.basename(img.get("file", "?"))
-                                    ),
-                                    f"{img.get('snr', 0.0):.2f}",
-                                ),
+                                r.get('rel_path', os.path.basename(r.get('file', '?'))),
+                                f"{r.get('snr', 0):.2f}" if np.isfinite(r.get('snr', np.nan)) else "N/A",
+                                f"{r.get('fwhm', 0):.2f}" if np.isfinite(r.get('fwhm', np.nan)) else "N/A",
+                                f"{r.get('ecc', 0):.3f}" if np.isfinite(r.get('ecc', np.nan)) else "N/A",
                             )
-
-                        rec_scr = ttk.Scrollbar(
-                            recom_frame, orient=tk.VERTICAL, command=rec_tree.yview
                         )
-                        rec_tree.configure(yscroll=rec_scr.set)
-                        rec_scr.pack(side=tk.RIGHT, fill=tk.Y)
-                        rec_tree.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
-                        export_cmd = lambda gi=good_img_sorted, p=p25_threshold: self.export_recommended_list(gi, p)
-                        export_button = ttk.Button(
-                            recom_frame,
-                            text=self._("export_button"),
-                            command=export_cmd,
-                        )
-                        export_button.pack(pady=5)
-                    else:
-                        ttk.Label(
-                            recom_frame, text=self._("visu_recom_no_selection")
-                        ).pack(padx=10, pady=10)
+                    state = tk.NORMAL if recos else tk.DISABLED
+                    if self.apply_reco_button:
+                        self.apply_reco_button.config(state=state)
+                    if hasattr(self, 'visual_apply_reco_button') and self.visual_apply_reco_button:
+                        self.visual_apply_reco_button.config(state=state)
+                    if self.main_apply_reco_button:
+                        self.main_apply_reco_button.config(state=state)
 
-                elif len(valid_kept_snrs) > 0:
-                    ttk.Label(
-                        recom_frame, text=self._("visu_recom_not_enough")
-                    ).pack(padx=10, pady=10)
-
-                    export_all_kept_cmd = lambda gi=valid_kept_results: self.export_recommended_list(gi, -1)
-                    export_all_button = ttk.Button(
-                        recom_frame,
-                        text=self._("Exporter Toutes Conservées", default="Export All Kept"),
-                        command=export_all_kept_cmd,
-                    )
-                    export_all_button.pack(pady=5)
-
-                else:
-                    ttk.Label(
-                        recom_frame, text=self._("visu_recom_no_data")
-                    ).pack(padx=10, pady=10)
+                update_recos()
             except Exception as e:
                  print(f"Erreur Recommandations: {e}"); traceback.print_exc(); ttk.Label(stack_tab, text=f"{self._('msg_error')}:\n{e}\n{traceback.format_exc()}").pack()
                  # Pas de fig4 à fermer ici pour l'instant
@@ -1780,7 +1726,7 @@ class AstroImageAnalyzerGUI:
                 text=self._('visual_apply_reco_button'),
                 width=30,
                 state=tk.DISABLED,
-                command=self._apply_recommendations_gui
+                command=self._apply_current_recommendations
             )
             self.visual_apply_reco_button.pack(side=tk.RIGHT, padx=5)
             if self.recommended_images:
@@ -2534,15 +2480,15 @@ class AstroImageAnalyzerGUI:
         self.stack_plan_button.pack(side=tk.LEFT, padx=5)
         self.widgets_refs['create_stack_plan_button'] = self.stack_plan_button
 
-        self.apply_reco_button = ttk.Button(
+        self.main_apply_reco_button = ttk.Button(
             button_frame,
             text=self._('apply_reco_button'),
             command=self._apply_recommendations_gui,
             width=30,
             state=tk.DISABLED
         )
-        self.apply_reco_button.pack(side=tk.RIGHT, padx=5)
-        self.widgets_refs['apply_reco_button'] = self.apply_reco_button
+        self.main_apply_reco_button.pack(side=tk.RIGHT, padx=5)
+        self.widgets_refs['apply_reco_button'] = self.main_apply_reco_button
 
         self.return_button = ttk.Button(button_frame, text="", command=self.return_or_quit, width=12)
         self.return_button.pack(side=tk.RIGHT, padx=5)
@@ -2655,8 +2601,8 @@ class AstroImageAnalyzerGUI:
             if self.return_button:
                 btn_text = self._("return_button_text") if self.main_app_callback else self._("quit_button")
                 self.return_button.config(text=btn_text)
-            if self.apply_reco_button:
-                self.apply_reco_button.config(text=self._("apply_reco_button"))
+            if self.main_apply_reco_button:
+                self.main_apply_reco_button.config(text=self._("apply_reco_button"))
         except tk.TclError as e:
             print(f"WARN: Erreur Tcl mise à jour texte bouton principal: {e}")
         except KeyError as e:
@@ -3296,9 +3242,9 @@ class AstroImageAnalyzerGUI:
 
                 self._set_widget_state(self.apply_snr_button, tk.NORMAL if can_apply_snr_action else tk.DISABLED)
             # Activer/désactiver bouton recommandations
-            if hasattr(self, 'apply_reco_button') and self.apply_reco_button:
+            if self.main_apply_reco_button:
                 state = tk.NORMAL if (success and self.recommended_images) else tk.DISABLED
-                self.apply_reco_button.config(state=state)
+                self.main_apply_reco_button.config(state=state)
             # --- FIN NOUVEAU ---
         
         if should_write_command and folder_to_stack:
@@ -3546,6 +3492,17 @@ class AstroImageAnalyzerGUI:
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
 
+    def _apply_current_recommendations(self):
+        """Apply the currently computed recommended images."""
+        if not getattr(self, 'recommended_images', None):
+            messagebox.showinfo(
+                self._('msg_info'),
+                self._('visu_recom_no_selection', default='Aucune image recommandée à appliquer.')
+            )
+            return
+
+        self._apply_recommendations_gui()
+
     def _apply_recommendations_gui(self, *, auto: bool = False):
         """Keep only recommended images and apply reject actions."""
         if not getattr(self, 'recommended_images', None):
@@ -3625,8 +3582,10 @@ class AstroImageAnalyzerGUI:
 
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
-        if hasattr(self, 'apply_reco_button') and self.apply_reco_button:
+        if self.apply_reco_button:
             self.apply_reco_button.config(state=tk.DISABLED)
+        if self.main_apply_reco_button:
+            self.main_apply_reco_button.config(state=tk.DISABLED)
         if hasattr(self, 'visual_apply_reco_button') and self.visual_apply_reco_button:
             self.visual_apply_reco_button.config(state=tk.DISABLED)
         self._regenerate_stack_plan()
