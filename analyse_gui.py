@@ -895,7 +895,7 @@ class AstroImageAnalyzerGUI:
             if r.get('status') == 'ok'
             and r.get('action') == 'kept'
             and r.get('rejected_reason') is None
-            and np.isfinite(r.get('snr', np.nan))
+            and is_finite_number(r.get('snr', np.nan))
         ]
 
         if not valid_kept:
@@ -905,10 +905,10 @@ class AstroImageAnalyzerGUI:
             self.reco_ecc_max = None
             return [], None, None, None
 
-        snrs = [r['snr'] for r in valid_kept if np.isfinite(r.get('snr', np.nan))]
-        fwhms = [r['fwhm'] for r in valid_kept if np.isfinite(r.get('fwhm', np.nan))]
-        eccs = [r['ecc'] for r in valid_kept if np.isfinite(r.get('ecc', np.nan))]
-        scs = [r['starcount'] for r in valid_kept if np.isfinite(r.get('starcount', np.nan))]
+        snrs = [r['snr'] for r in valid_kept if is_finite_number(r.get('snr', np.nan))]
+        fwhms = [r['fwhm'] for r in valid_kept if is_finite_number(r.get('fwhm', np.nan))]
+        eccs = [r['ecc'] for r in valid_kept if is_finite_number(r.get('ecc', np.nan))]
+        scs = [r['starcount'] for r in valid_kept if is_finite_number(r.get('starcount', np.nan))]
 
         snr_p = np.percentile(snrs, float(self.reco_snr_pct_min.get())) if snrs else -np.inf
         fwhm_p = np.percentile(fwhms, float(self.reco_fwhm_pct_max.get())) if fwhms else np.inf
@@ -920,8 +920,8 @@ class AstroImageAnalyzerGUI:
         def ok(r):
             import numpy as np
             ok_snr = (r.get('snr', -np.inf) >= snr_p)
-            ok_fwhm = (r.get('fwhm', np.inf) <= fwhm_p) if np.isfinite(r.get('fwhm', np.nan)) else True
-            ok_ecc = (r.get('ecc', np.inf) <= ecc_p) if np.isfinite(r.get('ecc', np.nan)) else True
+            ok_fwhm = (r.get('fwhm', np.inf) <= fwhm_p) if is_finite_number(r.get('fwhm', np.nan)) else True
+            ok_ecc = (r.get('ecc', np.inf) <= ecc_p) if is_finite_number(r.get('ecc', np.nan)) else True
             ok_sc = True
             if self.use_starcount_filter.get() and sc_p is not None:
                 ok_sc = (r.get('starcount', -np.inf) >= sc_p)
@@ -929,10 +929,10 @@ class AstroImageAnalyzerGUI:
 
         recos = [r for r in valid_kept if ok(r)]
         self.recommended_images = recos
-        self.reco_snr_min = snr_p if np.isfinite(snr_p) else None
-        self.reco_fwhm_max = fwhm_p if np.isfinite(fwhm_p) else None
-        self.reco_ecc_max = ecc_p if np.isfinite(ecc_p) else None
-        self.reco_starcount_min = sc_p if sc_p is not None and np.isfinite(sc_p) else None
+        self.reco_snr_min = snr_p if is_finite_number(snr_p) else None
+        self.reco_fwhm_max = fwhm_p if is_finite_number(fwhm_p) else None
+        self.reco_ecc_max = ecc_p if is_finite_number(ecc_p) else None
+        self.reco_starcount_min = sc_p if sc_p is not None and is_finite_number(sc_p) else None
         return recos, snr_p, fwhm_p, ecc_p, sc_p
 
     def start_analysis(self):
@@ -1653,7 +1653,13 @@ class AstroImageAnalyzerGUI:
                                 widget.state(("disabled",))
                             except (tk.TclError, AttributeError):
                                 pass
-                    update_recos()
+                    try:
+
+                        update_recos()
+
+                    except tk.TclError:
+
+                        return
 
                 self.use_starcount_filter.trace_add('write', lambda *_: update_starcount_slider_state())
 
@@ -1696,43 +1702,132 @@ class AstroImageAnalyzerGUI:
                 self.apply_reco_button.pack(side=tk.RIGHT)
 
                 def update_recos():
-                    import numpy as np
-                    recos, snr_p, fwhm_p, ecc_p, sc_p = self._compute_recommended_subset()
-                    txt = self._("visu_recom_text_all", count=len(recos))
-                    if txt.startswith("_visu_recom_text_all_"):
-                        txt = f"Images recommandées : {len(recos)}"
-                    if snr_p is not None and np.isfinite(snr_p):
-                        txt += f"  |  SNR ≥ {snr_p:.2f}"
-                    if fwhm_p is not None and np.isfinite(fwhm_p):
-                        txt += f"  |  FWHM ≤ {fwhm_p:.2f}"
-                    if ecc_p is not None and np.isfinite(ecc_p):
-                        txt += f"  |  e ≤ {ecc_p:.3f}"
-                    if self.use_starcount_filter.get() and sc_p is not None and np.isfinite(sc_p):
-                        txt += f"  |  Starcount ≥ {sc_p:.0f}"
-                    resume_var.set(txt)
 
-                    for item in rec_tree.get_children():
-                        rec_tree.delete(item)
-                    for r in recos:
-                        rec_tree.insert(
-                            "",
-                            tk.END,
-                            values=(
+                    import numpy as np, tkinter as tk
+
+                    try:
+
+                        recos, snr_p, fwhm_p, ecc_p, sc_p = self._compute_recommended_subset()
+
+
+                        txt = self._("visu_recom_text_all", count=len(recos))
+
+                        if txt.startswith("_visu_recom_text_all_"):
+
+                            txt = f"Images recommandées : {len(recos)}"
+
+                        if snr_p is not None and is_finite_number(snr_p):
+
+                            txt += f"  |  SNR ≥ {snr_p:.2f}"
+
+                        if fwhm_p is not None and is_finite_number(fwhm_p):
+
+                            txt += f"  |  FWHM ≤ {fwhm_p:.2f}"
+
+                        if ecc_p is not None and is_finite_number(ecc_p):
+
+                            txt += f"  |  e ≤ {ecc_p:.3f}"
+
+                        if self.use_starcount_filter.get() and sc_p is not None and is_finite_number(sc_p):
+
+                            txt += f"  |  Starcount ≥ {sc_p:.0f}"
+
+                        resume_var.set(txt)
+
+
+                        # Clear Treeview safely
+
+                        try:
+
+                            items = rec_tree.get_children()
+
+                        except tk.TclError:
+
+                            return
+
+                        for iid in items:
+
+                            try:
+
+                                rec_tree.delete(iid)
+
+                            except tk.TclError:
+
+                                # If the widget dies mid-loop, just stop updating.
+
+                                return
+
+
+                        # Refill Treeview safely
+
+                        for r in recos:
+
+                            vals = (
+
                                 r.get('rel_path', os.path.basename(r.get('file', '?'))),
-                                f"{r.get('snr', 0):.2f}" if np.isfinite(r.get('snr', np.nan)) else "N/A",
-                                f"{r.get('fwhm', 0):.2f}" if np.isfinite(r.get('fwhm', np.nan)) else "N/A",
-                                f"{r.get('ecc', 0):.3f}" if np.isfinite(r.get('ecc', np.nan)) else "N/A",
-                                f"{r.get('starcount', 0):.0f}" if np.isfinite(r.get('starcount', np.nan)) else "N/A",
-                            )
-                        )
 
-                    state = tk.NORMAL if recos else tk.DISABLED
-                    if self.apply_reco_button:
-                        self.apply_reco_button.config(state=state)
-                    if hasattr(self, 'visual_apply_reco_button') and self.visual_apply_reco_button:
-                        self.visual_apply_reco_button.config(state=state)
-                    if self.main_apply_reco_button:
-                        self.main_apply_reco_button.config(state=state)
+                                f"{r.get('snr', 0):.2f}" if is_finite_number(r.get('snr', np.nan)) else "N/A",
+
+                                f"{r.get('fwhm', 0):.2f}" if is_finite_number(r.get('fwhm', np.nan)) else "N/A",
+
+                                f"{r.get('ecc', 0):.3f}" if is_finite_number(r.get('ecc', np.nan)) else "N/A",
+
+                                f"{r.get('starcount', 0):.0f}" if is_finite_number(r.get('starcount', np.nan)) else "N/A",
+
+                            )
+
+                            try:
+
+                                rec_tree.insert("", tk.END, values=vals)
+
+                            except tk.TclError:
+
+                                return
+
+
+                        state = tk.NORMAL if recos else tk.DISABLED
+
+
+                        # Buttons may already be destroyed: guard each call
+
+                        try:
+
+                            if self.apply_reco_button and self.apply_reco_button.winfo_exists():
+
+                                self.apply_reco_button.config(state=state)
+
+                        except tk.TclError:
+
+                            pass
+
+
+                        try:
+
+                            if hasattr(self, 'visual_apply_reco_button') and self.visual_apply_reco_button and self.visual_apply_reco_button.winfo_exists():
+
+                                self.visual_apply_reco_button.config(state=state)
+
+                        except tk.TclError:
+
+                            pass
+
+
+                        try:
+
+                            if self.main_apply_reco_button and self.main_apply_reco_button.winfo_exists():
+
+                                self.main_apply_reco_button.config(state=state)
+
+                        except tk.TclError:
+
+                            pass
+
+
+                    except tk.TclError:
+
+                        # Any late callback hitting a dead widget should just no-op.
+
+                        return
 
                 update_starcount_slider_state()
             except Exception as e:
