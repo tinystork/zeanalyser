@@ -797,7 +797,7 @@ class AstroImageAnalyzerGUI:
         # Mettre à jour l'état initial des sections (activé/désactivé)
         self.toggle_sections_state()
         # Définir taille et taille minimale de la fenêtre
-        self.root.geometry("950x850")
+        self.root.geometry("1400x1000")
         self.root.minsize(950, 850)
         self._update_log_and_vis_buttons_state() # Pour l'état initial (si log pré-rempli par args
 
