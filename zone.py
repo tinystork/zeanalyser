@@ -26,7 +26,7 @@ translations = {
     'fr': {
             
         # --- Fenêtre principale ---
-        'window_title': "ZeAnalyser V2.1 Analyseur d'Images Astronomiques",
+        'window_title': "ZeAnalyser V2.2 Analyseur d'Images Astronomiques",
         'status_ready': "Prêt",
         'status_analysis_start': "Démarrage de l'analyse...",
         'status_analysis_prep': "Préparation de l'analyse...",
@@ -83,6 +83,7 @@ translations = {
         'browse_button': "Parcourir",
         'analyse_button': "Analyser les images",
         'analyse_stack_button': "Analyser et Empiler", # Clé pour le nouveau bouton
+        'token_dependency_missing_notice': "Fonctionnalité désactivée : token.zsss introuvable dans le dossier parent du projet.",
         'visualize_button': "Visualiser les résultats",
         'open_log_button': "Ouvrir le fichier log",
         'manage_markers_button': "Gérer Marqueurs", # <-- NOUVEAU
@@ -228,7 +229,7 @@ translations = {
     },
     'en': {
         # --- Main Window ---
-        'window_title': "Zeanalyser V2.1 Astronomical Image Analyzer",
+        'window_title': "Zeanalyser V2.2 Astronomical Image Analyzer",
         'status_ready': "Ready", 'status_analysis_start': "Starting analysis...", 'status_analysis_prep': "Preparing analysis...",
         'status_discovery_start': "Discovering FITS files...", # NEW
         'status_satdet_wait': "Detecting trails (acstools)... Please wait...", 'status_satdet_no_file': "Trail detection: No FITS files found.",
@@ -267,6 +268,7 @@ translations = {
         'browse_button': "Browse", 'analyse_button':
         "Analyze Images", 'visualize_button': "Visualize Results", 'open_log_button': "Open Log File",
         'analyse_stack_button': "Analyze and Stack", # Key for the new button
+        'token_dependency_missing_notice': "Feature disabled: token.zsss is missing from the parent project directory.",
         'manage_markers_button': "Manage Markers", # <-- NEW
         'quit_button': "Quit", 'return_button_text': "Return", 'export_button': "Export Recommended List (.txt)",
         'Fermer': "Close", 'Exporter Toutes Conservées': "Export All Kept",
