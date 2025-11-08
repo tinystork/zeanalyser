@@ -637,12 +637,23 @@ class AstroImageAnalyzerGUI:
 
         # --- AJOUTÉ: Stockage du chemin du fichier de commande ---
         self.command_file_path = command_file_path
+        self.parent_project_dir = None
+        self.parent_token_file_path = None
+        self.parent_token_available = False
         try:
             # 1. Trouver le chemin absolu de l'icône depuis ce script
             analyzer_script_path = os.path.abspath(__file__)
             beforehand_dir = os.path.dirname(analyzer_script_path)
             # Remonter d'UN niveau pour être à la racine du projet (où se trouve le dossier icon/)
             project_root = os.path.dirname(beforehand_dir) 
+            parent_project_dir = os.path.dirname(project_root)
+            self.parent_project_dir = parent_project_dir
+            self.parent_token_file_path = os.path.normpath(os.path.join(parent_project_dir, 'token.zsss'))
+            self.parent_token_available = os.path.isfile(self.parent_token_file_path)
+            if self.parent_token_available:
+                print(f"DEBUG (analyse_gui __init__): token.zsss trouvé dans {parent_project_dir}.")
+            else:
+                print(f"AVERTISSEMENT (analyse_gui __init__): token.zsss introuvable dans {parent_project_dir}. Les boutons d'empilage/communication resteront désactivés.")
             icon_rel_path = os.path.join('icon', 'icon.png') # Chemin relatif depuis la racine
             icon_path = os.path.join(project_root, icon_rel_path)
             icon_path = os.path.normpath(icon_path)
@@ -2640,12 +2651,13 @@ class AstroImageAnalyzerGUI:
 
         # <--- NOUVEAU ---> Ajout du bouton Analyser et Empiler
         # Il appellera self.start_analysis_and_stack (à créer à l'étape 2)
+        stack_button_state = self._token_guarded_state(tk.NORMAL)
         self.analyze_stack_button = ttk.Button(
             button_frame,
             text='analyse_stack_button', # Sera défini par la traduction 'analyse_stack_button'
             command=self.start_analysis_and_stack, # Fonction callback (Étape 2)
             width=18,
-            state=tk.NORMAL # Activé par défaut (ou tk.DISABLED si pas de dossier initial)
+            state=stack_button_state
         )
         self.analyze_stack_button.pack(side=tk.LEFT, padx=(2, 5)) # Pack à droite du bouton Analyser
         self.widgets_refs['analyse_stack_button'] = self.analyze_stack_button # Référencer pour traduction
@@ -2660,6 +2672,18 @@ class AstroImageAnalyzerGUI:
         )
         self.send_reference_button.pack(side=tk.LEFT, padx=5)
         self.widgets_refs['send_reference_button'] = self.send_reference_button
+        if not self.parent_token_available:
+            tooltip_key = 'token_dependency_missing_notice'
+            if self.analyze_stack_button:
+                self.tooltips['analyse_stack_button_token_missing'] = ToolTip(
+                    self.analyze_stack_button,
+                    lambda key=tooltip_key: self._(key)
+                )
+            if self.send_reference_button:
+                self.tooltips['send_reference_button_token_missing'] = ToolTip(
+                    self.send_reference_button,
+                    lambda key=tooltip_key: self._(key)
+                )
 
         self.save_reference_button = ttk.Button(
             button_frame,
@@ -2927,6 +2951,20 @@ class AstroImageAnalyzerGUI:
                 # Sinon, affecter le widget directement
                 widget.configure(state=state)
         except tk.TclError: pass # Ignorer si widget détruit
+
+    def _stack_features_available(self) -> bool:
+        """Retourne True si le dossier parent contient token.zsss, autorisant les boutons avancés."""
+        return getattr(self, 'parent_token_available', False)
+
+    def _token_guarded_state(self, requested_state):
+        """
+        Si l'on demande un état 'normal' mais que le token parent est absent,
+        renvoyer 'disabled' pour éviter d'activer les boutons dépendants.
+        """
+        normalized = str(requested_state).lower()
+        if normalized == tk.NORMAL.lower() and not self._stack_features_available():
+            return tk.DISABLED
+        return requested_state
 
     def toggle_sections_state(self, *args):
         """Met à jour l'état (activé/désactivé) des sections en fonction des options cochées."""
@@ -3337,7 +3375,7 @@ class AstroImageAnalyzerGUI:
         self.current_reference_path = self.best_reference_path
         if self.best_reference_path:
             self.save_reference_button.config(state=tk.NORMAL)
-            self.send_reference_button.config(state=tk.NORMAL)
+            self.send_reference_button.config(state=self._token_guarded_state(tk.NORMAL))
             self.update_results_text(
                 "logic_info_prefix",
                 text=f"Reference globale sélectionnée : {self.best_reference_path}"
@@ -3383,7 +3421,7 @@ class AstroImageAnalyzerGUI:
             self.reco_snr_min = self.reco_fwhm_max = self.reco_ecc_max = None
         self._set_widget_state(
             self.send_reference_button,
-            tk.NORMAL if self.best_reference_path else tk.DISABLED
+            self._token_guarded_state(tk.NORMAL if self.best_reference_path else tk.DISABLED)
         )
         self._set_widget_state(
             self.save_reference_button,
@@ -3438,7 +3476,7 @@ class AstroImageAnalyzerGUI:
             if hasattr(self, 'analyze_button') and self.analyze_button:
                 self.root.after(0, lambda: self.analyze_button.config(state='normal'))
             self._set_widget_state(self.analyze_button, tk.NORMAL)
-            self._set_widget_state(self.analyze_stack_button, tk.NORMAL)
+            self._set_widget_state(self.analyze_stack_button, self._token_guarded_state(tk.NORMAL))
             self._set_widget_state(self.return_button, tk.NORMAL)
             self._set_widget_state(self.manage_markers_button, tk.NORMAL)
             self._update_log_and_vis_buttons_state() 
@@ -3472,7 +3510,7 @@ class AstroImageAnalyzerGUI:
                 except Exception as e_write_cmd:
                     print(f"Error writing command file: {e_write_cmd}")
                     self._set_widget_state(self.analyze_button, tk.NORMAL)
-                    self._set_widget_state(self.analyze_stack_button, tk.NORMAL)
+                    self._set_widget_state(self.analyze_stack_button, self._token_guarded_state(tk.NORMAL))
                     self._set_widget_state(self.return_button, tk.NORMAL)
                     self._set_widget_state(self.manage_markers_button, tk.NORMAL)
                     self._update_log_and_vis_buttons_state() 
@@ -3483,7 +3521,7 @@ class AstroImageAnalyzerGUI:
             else: # command_file_path non défini
                 # ... (gestion erreur) ...
                 self._set_widget_state(self.analyze_button, tk.NORMAL)
-                self._set_widget_state(self.analyze_stack_button, tk.NORMAL)
+                self._set_widget_state(self.analyze_stack_button, self._token_guarded_state(tk.NORMAL))
                 self._set_widget_state(self.return_button, tk.NORMAL)
                 self._set_widget_state(self.manage_markers_button, tk.NORMAL)
                 self._update_log_and_vis_buttons_state()
@@ -4113,7 +4151,7 @@ class AstroImageAnalyzerGUI:
 
         # Réactiver les boutons principaux
         self._set_widget_state(self.analyze_button, tk.NORMAL)
-        self._set_widget_state(self.analyze_stack_button, tk.NORMAL)
+        self._set_widget_state(self.analyze_stack_button, self._token_guarded_state(tk.NORMAL))
         self._set_widget_state(self.return_button, tk.NORMAL)
         self._set_widget_state(self.manage_markers_button, tk.NORMAL)
         
