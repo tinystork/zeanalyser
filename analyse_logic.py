@@ -856,6 +856,8 @@ def _snr_worker(path):
         'fwhm': np.nan,
         'ecc': np.nan,
         'n_star_ecc': 0,
+        'ra': None,
+        'dec': None,
     }
     hdul = None
     try:
@@ -873,6 +875,13 @@ def _snr_worker(path):
                 result['exposure'] = header.get('EXPTIME', header.get('EXPOSURE', 'N/A'))
                 result['filter'] = header.get('FILTER', 'N/A')
                 result['temperature'] = header.get('CCD-TEMP', header.get('TEMPERAT', 'N/A'))
+                # RA / DEC raw header values (keep as-is, prefer RA/OBJCTRA/CRVAL1 and DEC/OBJCTDEC/CRVAL2)
+                result['ra'] = (
+                    header.get('RA') or header.get('OBJCTRA') or header.get('CRVAL1')
+                )
+                result['dec'] = (
+                    header.get('DEC') or header.get('OBJCTDEC') or header.get('CRVAL2')
+                )
                 snr, sky_bg, sky_noise, signal_pixels = snr_module.calculate_snr(data)
                 result.update({'snr': snr, 'sky_bg': sky_bg, 'sky_noise': sky_noise, 'signal_pixels': signal_pixels})
 
@@ -1128,6 +1137,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     'fwhm': np.nan,
                     'ecc': np.nan,
                     'n_star_ecc': 0,
+                    'ra': None,
+                    'dec': None,
                     'eqmode': 2,
                     'sitelong': None,
                     'sitelat': None,
@@ -1154,6 +1165,9 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                         result_base['sitelat'] = worker_res.get('sitelat')
                         result_base['telescope'] = worker_res.get('telescope')
                         result_base['date_obs'] = worker_res.get('date_obs')
+                        # Propagate RA/DEC values from worker
+                        result_base['ra'] = worker_res.get('ra')
+                        result_base['dec'] = worker_res.get('dec')
                         if 'starcount' in worker_res:
                             result_base['starcount'] = worker_res['starcount']
                         if 'fwhm' in worker_res:
@@ -1199,6 +1213,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 'has_trails': False,
                 'num_trails': 0,
                 'starcount': None,
+                'ra': None,
+                'dec': None,
                 'eqmode': 2,
                 'sitelong': None,
                 'sitelat': None,
@@ -1220,6 +1236,13 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                 result['sitelat'] = header.get('SITELAT')
                                 result['telescope'] = header.get('TELESCOP', header.get('TELESCOPE'))
                                 result['date_obs'] = header.get('DATE-OBS')
+                                # RA / DEC raw header values (keep as-is, prefer RA/OBJCTRA/CRVAL1 and DEC/OBJCTDEC/CRVAL2)
+                                result['ra'] = (
+                                    header.get('RA') or header.get('OBJCTRA') or header.get('CRVAL1')
+                                )
+                                result['dec'] = (
+                                    header.get('DEC') or header.get('OBJCTDEC') or header.get('CRVAL2')
+                                )
                                 exposure = header.get('EXPTIME', header.get('EXPOSURE', 'N/A'))
                                 filter_name = header.get('FILTER', 'N/A')
                                 temperature = header.get('CCD-TEMP', header.get('TEMPERAT', 'N/A'))

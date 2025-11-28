@@ -26,7 +26,7 @@ translations = {
     'fr': {
             
         # --- Fenêtre principale ---
-        'window_title': "ZeAnalyser V2.2 Analyseur d'Images Astronomiques",
+        'window_title': "ZeAnalyser V2.3 Analyseur d'Images Astronomiques",
         'status_ready': "Prêt",
         'status_analysis_start': "Démarrage de l'analyse...",
         'status_analysis_prep': "Préparation de l'analyse...",
@@ -194,6 +194,10 @@ translations = {
         'logic_snr_start': "Démarrage de l'analyse individuelle...", 'logic_fits_no_data': "{file} - Pas de données image dans HDU 0.", 'logic_snr_info': "  {file}: SNR={snr:.2f}, Fond={bg:.2f}", 'logic_trail_info': "    Traînées (segments): {status} ({count})", 'logic_trail_yes': "Oui", 'logic_trail_no': "Non",
         'logic_moved_info': "-> Déplacé vers {folder}", 'logic_move_skipped': "    Info: {file} n'existait plus à l'emplacement source pour action.", 'logic_move_error': "    Erreur déplacement {file}: {e}", 'logic_file_error': "Erreur analyse fichier {file}: {e}",
         'logic_log_summary_error': "Erreur lors de l'écriture du résumé du log ({path}): {e}", 'logic_final_snr': "SNR moyen global: {mean:.2f}", 'logic_final_trails': "Images avec traînées détectées: {count} ({percent:.1f}%)", 'logic_final_no_success': "Aucune image n'a pu être traitée avec succès.",
+        # Messages relatifs au plan d'empilement (stack plan)
+        'stack_plan_summary': "Plan d'empilement créé : {selected} image(s) sélectionnée(s) sur {total} images analysées ({pct:.1f} %) -> {filename}",
+        'stack_plan_summary_no_total': "Plan d'empilement créé : {selected} entrée(s) dans {filename}",
+        'stack_plan_reminder': "Rappel : le plan d'empilement ne contient que les images retenues après filtrage (SNR / traînées / critères d'analyse).",
         'Liste dimages recommandées': "Liste d'images recommandées", 'Critère': "Critère", 'Généré le': "Généré le", 'Nombre dimages': "Nombre d'images",
         'Fichiers log': "Fichiers log", 'Tous les fichiers': "Tous les fichiers", 'Fichiers Texte': "Fichiers Texte",
 
@@ -229,7 +233,7 @@ translations = {
     },
     'en': {
         # --- Main Window ---
-        'window_title': "Zeanalyser V2.2 Astronomical Image Analyzer",
+        'window_title': "ZeAnalyser V2.3 Astronomical Image Analyzer",
         'status_ready': "Ready", 'status_analysis_start': "Starting analysis...", 'status_analysis_prep': "Preparing analysis...",
         'status_discovery_start': "Discovering FITS files...", # NEW
         'status_satdet_wait': "Detecting trails (acstools)... Please wait...", 'status_satdet_no_file': "Trail detection: No FITS files found.",
@@ -354,6 +358,10 @@ translations = {
         'logic_snr_start': "Starting individual file analysis...", 'logic_fits_no_data': "{file} - No image data in HDU 0.", 'logic_snr_info': "  {file}: SNR={snr:.2f}, Background={bg:.2f}", 'logic_trail_info': "    Trails (segments): {status} ({count})", 'logic_trail_yes': "Yes", 'logic_trail_no': "No",
         'logic_moved_info': "-> Moved to {folder}", 'logic_move_skipped': "    Info: {file} no longer existed at source location for action.", 'logic_move_error': "    Error moving {file}: {e}", 'logic_file_error': "Error analyzing file {file}: {e}",
         'logic_log_summary_error': "Error writing log summary ({path}): {e}", 'logic_final_snr': "Overall average SNR: {mean:.2f}", 'logic_final_trails': "Images with detected trails: {count} ({percent:.1f}%)", 'logic_final_no_success': "No images could be processed successfully.",
+        # Stacking plan related messages
+        'stack_plan_summary': "Stacking plan created: {selected} image(s) selected out of {total} analysed images ({pct:.1f} %) -> {filename}",
+        'stack_plan_summary_no_total': "Stacking plan created: {selected} entry/entries in {filename}",
+        'stack_plan_reminder': "Reminder: the stacking plan only contains images retained after filtering (SNR / trails / analysis criteria).",
         'Liste dimages recommandées': "Recommended image list", 'Critère': "Criterion", 'Généré le': "Generated on", 'Nombre dimages': "Number of images",
         'Fichiers log': "Log Files", 'Tous les fichiers': "All Files", 'Fichiers Texte': "Text Files",
 

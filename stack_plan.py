@@ -74,6 +74,8 @@ def generate_stacking_plan(
         filt = r.get("filter", "")
         expo = r.get("exposure", "")
         path = r.get("path", "")
+        ra = r.get("ra", "")
+        dec = r.get("dec", "")
 
         values = {
             "mount": mount,
@@ -82,6 +84,8 @@ def generate_stacking_plan(
             "session_date": session_date,
             "filter": filt,
             "exposure": str(expo),
+            "ra": str(ra) if ra is not None else "",
+            "dec": str(dec) if dec is not None else "",
         }
 
         skip = False
@@ -103,6 +107,8 @@ def generate_stacking_plan(
             "filter": filt,
             "exposure": str(expo),
             "file_path": path,
+            "ra": str(ra) if ra is not None else "",
+            "dec": str(dec) if dec is not None else "",
         }
         rows.append(row)
 
@@ -145,6 +151,8 @@ def write_stacking_plan_csv(csv_path: str, rows: Iterable[Dict[str, str]]) -> No
                     "filter",
                     "exposure",
                     "file_path",
+                    "ra",
+                    "dec",
                 ]
             )
             for row in rows:
@@ -159,6 +167,8 @@ def write_stacking_plan_csv(csv_path: str, rows: Iterable[Dict[str, str]]) -> No
                         row.get("filter", ""),
                         row.get("exposure", ""),
                         row.get("file_path", ""),
+                        row.get("ra", ""),
+                        row.get("dec", ""),
                     ]
                 )
     except PermissionError as exc:

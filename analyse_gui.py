@@ -3963,6 +3963,20 @@ class AstroImageAnalyzerGUI:
                 f"Impossible d'écrire le fichier :\n{plan_path}\n{exc}"
             )
             return
+        # Log summary into the GUI results/journal (timestamped)
+        try:
+            selected = len(plan)
+            total_ok = len([r for r in self.analysis_results if r.get('status') == 'ok']) if getattr(self, 'analysis_results', None) else None
+            if total_ok:
+                pct = 100.0 * selected / max(total_ok, 1)
+                self.update_results_text('stack_plan_summary', selected=selected, total=total_ok, pct=pct, filename=os.path.basename(plan_path))
+            else:
+                self.update_results_text('stack_plan_summary_no_total', selected=selected, filename=os.path.basename(plan_path))
+            self.update_results_text('stack_plan_reminder')
+        except Exception:
+            # Be robust: logging should never crash the GUI
+            pass
+
         messagebox.showinfo(
             "Plan de stacking mis à jour",
             f"Le plan a été régénéré :\n{plan_path}\n({len(plan)} fichiers)"
@@ -4001,6 +4015,19 @@ class AstroImageAnalyzerGUI:
             write_stacking_plan_csv(plan_path, rows)
         except Exception:
             return None
+
+        # Log summary into the GUI journal (be robust and non-blocking)
+        try:
+            selected = len(rows)
+            total_ok = len([r for r in self.analysis_results if r.get('status') == 'ok']) if getattr(self, 'analysis_results', None) else None
+            if total_ok:
+                pct = 100.0 * selected / max(total_ok, 1)
+                self.update_results_text('stack_plan_summary', selected=selected, total=total_ok, pct=pct, filename=os.path.basename(plan_path))
+            else:
+                self.update_results_text('stack_plan_summary_no_total', selected=selected, filename=os.path.basename(plan_path))
+            self.update_results_text('stack_plan_reminder')
+        except Exception:
+            pass
 
         self.latest_stack_plan_path = plan_path
         return plan_path
@@ -4281,6 +4308,18 @@ class AstroImageAnalyzerGUI:
                     parent=window,
                 )
                 return
+            # Write summary into GUI journal as well
+            try:
+                selected = len(rows)
+                total_ok = len([r for r in self.analysis_results if r.get('status') == 'ok']) if getattr(self, 'analysis_results', None) else None
+                if total_ok:
+                    pct = 100.0 * selected / max(total_ok, 1)
+                    self.update_results_text('stack_plan_summary', selected=selected, total=total_ok, pct=pct, filename=os.path.basename(csv_path))
+                else:
+                    self.update_results_text('stack_plan_summary_no_total', selected=selected, filename=os.path.basename(csv_path))
+                self.update_results_text('stack_plan_reminder')
+            except Exception:
+                pass
             messagebox.showinfo(self._('msg_info'), csv_path, parent=window)
             window.destroy()
 
