@@ -65,7 +65,9 @@ def generate_stacking_plan(
     # Filter step
     rows = []
     for r in results:
-        if r.get("status") != "ok":
+        # Treat missing status as 'ok' to be forgiving when upstream data
+        # doesn't include a status field (tests and some data use bare rows).
+        if r.get("status", "ok") != "ok":
             continue
         mount = r.get("mount", "")
         bortle = str(r.get("bortle", ""))

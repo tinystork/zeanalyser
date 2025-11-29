@@ -1,200 +1,205 @@
-✅ agent.md — Ajout d’un message de résumé « stack plan » dans le log du GUI
+# 🎯 Mission : ZeAnalyser Qt – Remise sur rails & parité avec l’UI Tk
 
-### 🎯 Mission
+Objectif immédiat :  
+Amener l’UI **Qt** au niveau fonctionnel de l’UI **Tk** actuelle pour l’onglet **Projet** et l’onglet **Résultats**, **sans toucher à la logique métier** ni aux formats CSV.
 
-Quand un **stack plan** est généré à partir d’une analyse (ex : 30 fichiers analysés, 24 gardés), le GUI doit écrire dans le journal un message explicite de rappel, par exemple :
-
-> `Plan d'empilement créé : 24 images sur 30 images analysées (80.0 %) -> stack_plan.csv`
-
-Objectif : éviter de croire à un bug quand le CSV contient moins de lignes que le nombre de fichiers analysés (SNR / trails / filtres appliqués).
-
-**Très important :**  
-👉 *Ne pas modifier la logique d’analyse ni de génération du stack plan.*  
-On ajoute **uniquement** de la **journalisation** (log) côté GUI.
+La base Qt est déjà en place (fenêtre, worker, tableau de résultats + filtres).  
+La mission est maintenant de **porter les contrôles Tk restants** et de **rebrancher les mêmes options**.
 
 ---
 
-### 📂 Fichiers concernés
+## 📦 Contexte
 
-- `analyse_gui.py`  
-  - Contient la classe GUI principale (zone « Résultats / Journal » visible dans le screenshot).
-  - Gère les callbacks de lancement d’analyse et de génération du stack plan.
+- UI actuelle de référence : `analyse_gui.py` (Tkinter), qui contient :
+  - Toute la **configuration d’analyse** (SNR, traînées, Bortle, rejet, actions, etc.).
+  - La logique de construction du dict `options` passé à `perform_analysis()`.
+  - Les handlers des boutons : analyser, analyser & empiler, créer plan de stack, gérer marqueurs, etc.   
 
-- `analyse_logic.py`  
-  - Contient la logique qui prépare les résultats d’analyse (liste d’images, statut, actions, etc.).
-  - Fournit déjà le nombre total d’images **OK** et/ou analysées.
+- UI Qt expérimentale : `analyse_gui_qt.py` :
+  - Onglet **Project** minimal (sélecteur input, log, SNR on/off, trails on/off, Analyse/Annuler, barre de progression, log texte). :contentReference[oaicite:8]{index=8}  
+  - Worker Qt (`AnalysisWorker`, `AnalysisRunnable`) déjà fonctionnel et câblé à `perform_analysis()`. :contentReference[oaicite:9]{index=9}  
+  - Onglet **Results** avec `QTableView` + `AnalysisResultsModel` + `ResultsFilterProxy` et filtres SNR/FWHM/ECC/Trails.   
 
-- `stack_plan.py`  
-  - Contient la logique de création du plan d’empilement :
-    - génération de la structure (lignes du plan)
-    - écriture dans `stack_plan.csv`.
-
-- (éventuellement) `ui_utils.py`
-  - Si des helpers de log GUI existent déjà (par ex. fonction générique pour écrire dans le journal).
+- Modèle / schéma de résultats :
+  - `analysis_model.py` + `analysis_schema.py` définissent l’ordre des colonnes et exposent les lignes (dicts) au QTableView.   
 
 ---
 
-### 🧩 Comportement souhaité
+## ❗ Contraintes non négociables
 
-1. **Moment du message**
+- **Ne pas modifier** la logique métier dans :
+  - `analyse_logic.py`,
+  - `snr_module.py`, `ecc_module.py`, `trail_module.py`, `sat_trail.py`,
+  - `stack_plan.py`,
+  - `bortle_utils.py`, `bortle_thresholds.json`.   
+- **Ne pas changer** les formats CSV (colonnes, ordre, séparateurs, encodage) ni les logs.
+- **Ne pas renommer / supprimer** les tokens utilisés par `zone.py`, la détection ZeSeestarStacker / ZeMosaic, ou la CLI.
+- Garder l’UI Tk **opérationnelle** en parallèle (aucun comportement cassé).
+- Ne pas réindenter massivement les vieux fichiers (diff propres).
 
-   - Le message doit être écrit **immédiatement après** l’écriture du `stack_plan.csv` réussie.
-   - Il doit apparaître dans la **zone de log du GUI** (même zone que :  
-     `___ Analyse terminée ___` / `CSV pollution écrit: telescopes_pollution.csv` etc.).
+---
 
-2. **Contenu du message**
+## 🧱 Architecture Qt à respecter
 
-   À partir des données disponibles, calculer :
+- `analyse_gui_qt.py` :
+  - `ZeAnalyserMainWindow(QMainWindow)` avec :
+    - Onglet **Project** (config d’analyse, boutons).
+    - Onglet **Results** (table de résultats + filtres).
+    - (Plus tard) onglets **Stack Plan**, **Preview**, etc.
+- Worker d’analyse :
+  - `AnalysisWorker` / `AnalysisRunnable` déjà présents → **ne pas refondre**, seulement **réutiliser**. :contentReference[oaicite:13]{index=13}  
+- Modèles Qt :
+  - `AnalysisResultsModel` + `ResultsFilterProxy` pour les résultats.   
+  - Plus tard : `StackPlanModel` pour le CSV de stack plan.
 
-   - `total_ok_or_analysed` = nombre d’images **analysées et éligibles** avant filtrage SNR / trails,  
-     ou, à défaut, **nombre de lignes « ok »** dans les résultats d’analyse.
-   - `selected_for_stack` = nombre de lignes effectivement présentes dans le `stack_plan.csv`.
-   - `pct = 100 * selected_for_stack / max(total_ok_or_analysed, 1)`.
+---
 
-   Puis logguer une ligne **en français** dans le GUI, par exemple :
+## 🧩 Plan de travail révisé (petites étapes)
 
-   - Cas normal (au moins une image) :
-     ```text
-     Plan d'empilement créé : 24 image(s) sélectionnée(s) sur 30 images analysées (80.0 %) -> stack_plan.csv
-     ```
-   - Cas limite (aucune image éligible) :
-     ```text
-     Plan d'empilement créé : 0 image sélectionnée sur 30 images analysées (0.0 %) -> stack_plan.csv
-     ```
-   - Si pour une raison quelconque `total_ok_or_analysed` n’est pas disponible, fallback minimal :
-     ```text
-     Plan d'empilement créé : 24 entrée(s) dans stack_plan.csv
-     ```
+### Phase 3A – Parité “Configuration générale” du tab Projet
 
-3. **Rappel pédagogique**
+Objectif : reproduire la section **Configuration Générale** de Tk dans l’onglet **Project** Qt.
 
-   Ajouter une petite phrase fixe rappelant que le stack plan ne contient que les images **retenues** :
+À faire dans `ZeAnalyserMainWindow._build_ui()` (ou méthodes dédiées) :
 
-   ```text
-   Rappel : le plan d'empilement ne contient que les images retenues après filtrage (SNR / traînées / critères d'analyse).
-Cette phrase peut être soit sur la même ligne que le résumé, soit sur la ligne suivante (au choix, mais lisible).
+ - [X] Ajouter un `QGroupBox` ou équivalent “Configuration générale” contenant :
+  - [X] `Dossier d’entrée` (déjà présent, réordonner si besoin).
+  - [X] `Fichier log` (déjà présent).
+  - [X] Checkbox **“Inclure les sous-dossiers”** (`include_subfolders`).
+  - [X] Champ **Base Bortle (GeoTIFF/KMZ)** (`bortle_path`) + bouton `Parcourir…`.
+  - [X] Checkbox **“Utiliser le classement Bortle”** (`use_bortle`).
+  - [X] Bouton `Organiser fichiers` (reprend exactement la logique Tk existante).
+- [X] Ajouter un sélecteur de langue (combo) en bas de la section, avec la valeur initiale identique à Tk (via `zone.py` / config).
+- [X] Créer une méthode `_build_options_from_ui()` qui construit le dict `options` pour `perform_analysis()` **en miroir** de ce que fait Tk (`start_analysis()` / `_launch_analysis()` dans `analyse_gui.py`).
 
-Robustesse
+**Livrable Phase 3A** :  
+Le tab **Project** en Qt expose la même config générale que Tk, et `options` (include_subfolders, bortle_path, use_bortle…) passent correctement à `perform_analysis()`.
 
-Ne pas crasher si :
+---
 
-le stack_plan.csv est vide ;
+### Phase 3B – Parité “Analyse SNR & Sélection”
 
-les statistiques d’analyse ne sont pas disponibles.
+Objectif : porter la section **Analyse SNR & Sélection**.
 
-Le code doit simplement :
+À faire :
 
-logguer ce qu’il sait ;
+- [X] Ajouter un `QGroupBox` “Analyse SNR & Sélection” avec :  
+  *(implémenté dans `analyse_gui_qt.py`; test ajouté `tests/test_analyse_gui_snr.py`)*
+  - [X] Checkbox `Activer l’analyse SNR` (lié à `options['analyze_snr']`).  
+    *(implémenté et testé : `analyse_gui_qt.py` / `tests/test_analyse_gui_snr.py`)*
+  - [X] Radio-boutons pour le **mode de sélection** :  
+    *(Top Pourcentage / Seuil SNR / Tout garder — implemented in `analyse_gui_qt.py` and covered by tests)*
+    - `Top Pourcentage (%)` (`mode='percent'` + `value`),
+    - `Seuil SNR (>)` (`mode='threshold'` + `value`),
+    - `Tout garder` (`mode='all'` ou équivalent utilisé en Tk).
+  - [X] Champ numérique pour le pourcentage / seuil SNR.  
+    *(QDoubleSpinBox `snr_value_spin` added and used by `_build_options_from_ui()` — tests cover value extraction)*
+  - [X] Champ `Dossier Rejet (Faible SNR)` (`snr_reject_dir`).  
+    *(text field + browse button added; value included in `_build_options_from_ui()`)*
+  - [X] Bouton `Appliquer Rejet SNR` qui appelle la même logique que Tk (factorisé vers `analyse_logic.apply_pending_snr_actions`).  
+    *(implémenté — see `analyse_gui_qt.py` and `tests/test_analyse_gui_snr.py`)*
+- [X] Brancher ces contrôles dans `_build_options_from_ui()` (options `apply_snr_action_immediately`, `move_rejected`, `delete_rejected`, etc., exactement comme en Tk).  
+  *(snr_mode/sn r_value/snr_reject_dir/apply flags included)*
 
-rester silencieux si la génération du stack plan a échoué ou été annulée.
+**Livrable Phase 3B** :  
+En Qt, lancer une analyse avec SNR activé/rejet configuré produit le **même comportement** (fichiers déplacés / marqués) que depuis Tk.
 
-🛠️ Plan de modification
-Identifier le point d’entrée stack plan côté GUI
+---
 
-Dans analyse_gui.py, trouver le callback / handler qui :
+### Phase 3C – Parité “Détection Traînées + Actions sur images rejetées”
 
-appelle la logique de génération du stack plan (probablement via stack_plan.py) ;
+Objectif : porter la section **Détection Traînées** et **Action sur images rejetées**.
 
-sait où se trouve le dossier de travail et le chemin du stack_plan.csv.
+ - [X] Ajouter un `QGroupBox` “Détection Traînées” avec :  
+   *(implémenté dans `analyse_gui_qt.py` — widgets et tests ajoutés `tests/test_analyse_gui_trails.py`)*
+  - [X] Checkbox `Activer détection traînées` ↔ `options['detect_trails']`.
+  - [X] Champs numériques : `sigma`, `low_thr`, `high_thr`, `line_len`, `small_edge`, `line_gap`.
+  - [X] Champ `Dossier Rejet (Traînées)` (`trail_reject_dir`).
+  - [X] Bouton `Appliquer Rejet Traînées` (implémenté et testé `tests/test_analyse_gui_trails.py`).
+- [X] Ajouter un `QGroupBox` “Action sur images rejetées” avec radios :  
+  *(implémenté — radio buttons move/delete/none added and wired into `_build_options_from_ui()`)*
+  - [X] `Déplacer vers dossier Rejet` → `options['move_rejected']=True`, `delete_rejected=False`.
+  - [X] `Supprimer définitivement` → `delete_rejected=True`.
+  - [X] `Ne rien faire` → les deux False.
+- [X] Adapter `_build_options_from_ui()` pour refléter exactement la logique Tk (y compris validations d’entrées et messages d’erreur).  
+  *(basic validation implemented in `_start_analysis()` — missing target dirs prevent starting and log an error; tests added)*
 
-Si la génération est déléguée à analyse_logic.py ou main_stacking_script.py, identifier la fonction de haut niveau qui :
+**Livrable Phase 3C** :  
+Les analyses Qt avec détection de traînées + stratégie de rejet configurée se comportent comme Tk (mêmes options, mêmes effets).
 
-reçoit les résultats d’analyse ;
+---
 
-produit le stack plan.
+### Phase 3D – Barre d’actions du bas + tris d’affichage
 
-Récupérer les chiffres nécessaires
+Objectif : amener les boutons et options d’affichage au même niveau.
 
-Récupérer, au même endroit :
+  - [X] Ajouter un `QGroupBox` ou layout pour :
+  - [X] Checkbox `Trier les résultats par SNR décroissant` :
+    - soit en demandant au `QTableView` de trier sur la colonne SNR en desc,
+    - soit en ajustant le `QSortFilterProxyModel`.
+  - [X] Barre de boutons avec :
+    - [X] `Analyser les images` (déjà présent : alias de `Analyser`).
+    - [X] `Analyser et Empiler` (implémenté: `analyse_and_stack_btn` → `_start_analysis_and_stack()`).
+    - [X] `Ouvrir le fichier log` (implémentation best-effort: `_open_log_file`).
+    - [X] `Créer plan de stack` (stubbed: `_create_stack_plan`, tries to call `stack_plan` module when available).
+    - [X] `Gérer marqueurs`, `Visualiser les résultats`, `Appliquer Recommandations`, `Envoyer/Sauvegarder Référence` :
+      - **OK** que certains restent désactivés/“stub” dans un premier temps, mais ils doivent être présents visuellement.
+    - [X] `Quitter` (fermeture propre de la fenêtre Qt).
+- [X] Ajouter `Temps écoulé` / `Temps restant` dans la barre d’état (statusBar) ou comme labels en bas, alimentés par les infos du worker ou un chrono interne.
+  *(placeholders added as labels in the bottom action bar)*
 
-selected_for_stack :
-soit via la valeur de retour de write_stacking_plan_csv(...),
-soit en calculant len(plan_rows) juste avant l’écriture du CSV.
+**Livrable Phase 3D** :  
+L’onglet Project Qt ressemble fonctionnellement à la fenêtre Tk : mêmes boutons, même ergonomie générale.
 
-total_ok_or_analysed :
+---
 
-idéalement à partir de la structure déjà utilisée pour le résumé d’analyse (celle qui donne par exemple :
-Images initialement éligibles (OK): 30, Images sélectionnées / conservées par SNR : 24, etc.).
+### Phase 4 – Stack Plan viewer (comme avant mais Qt)
 
-Si cette info est stockée dans un objet des résultats, l’exposer via un getter ou un simple champ.
+(Ne démarrer qu’une fois 3A–3D OK.)
 
-Si ce n’est vraiment pas accessible, laisser tomber ce nombre et faire un message dégradé (voir plus haut).
+- [X] Créer un `StackPlanModel(QAbstractTableModel)` lisant le CSV produit par `stack_plan.py` **sans changer le format**.
+- [X] Onglet “Stack Plan” avec un `QTableView` triable/filtrable.
+  - [X] Indicateurs visuels (par dossier / nuit / Bortle) via couleurs ou tri.
+ - [X] Indicateurs visuels (par dossier / nuit / Bortle) via couleurs ou tri.
+ - [X] Boutons légers pour des actions non destructives (préparer scripts, etc.).
 
-Ajouter la fonction utilitaire de log (si besoin)
+---
 
-Si analyse_gui.py possède déjà une méthode dédiée au log (ex : append_log, log_message, write_to_log), la réutiliser.
+### Phase 5 – Preview image + histogramme (simple)
 
-Sinon, utiliser la même stratégie que les messages existants « Analyse terminée », « CSV pollution écrit: ... », etc.
+- [X] Onglet/panneau “Preview” :
+  - sélection d’une ligne dans la table de résultats → chargement de l’image correspondante (FITS/PNG).
+  - affichage via un canvas Qt (zoom/pan basiques).
+- [X] Histogramme (Matplotlib backend Qt) avec sliders min/max.
 
-Éviter de dupliquer la logique de formatage (timestamp, préfixe [INFO], etc.) : rester cohérent avec le reste du journal.
+---
 
-Écrire le message dans le GUI
+### Phase 6 – Traductions / zones
 
-Juste après le succès de la génération du stack_plan.csv, ajouter les appels de log :
+- [X] Analyser `zone.py` et le système actuel de tokens.
+- [X] Ajouter un petit wrapper Qt de traduction pour réutiliser les mêmes textes.
+- [X] Remplacer les labels hardcodés du GUI Qt par des appels à ce wrapper.
 
-Exemple pseudo-code (adapté au code réel par Codex) :
+---
 
-python
-Copier le code
-msg = (
-    f"Plan d'empilement créé : "
-    f"{selected_for_stack} image(s) sélectionnée(s)"
-)
-if total_ok_or_analysed is not None:
-    pct = 100.0 * selected_for_stack / max(total_ok_or_analysed, 1)
-    msg += f" sur {total_ok_or_analysed} images analysées ({pct:.1f} %)"
-msg += f" -> {os.path.basename(stack_plan_path)}"
+### Phase 7 – Confort UX & settings
 
-self.log_info(msg)  # ou méthode équivalente dans le GUI
+ - [X] Tooltips sur les contrôles importants.
 
-self.log_info(
-    "Rappel : le plan d'empilement ne contient que les images retenues après filtrage (SNR / traînées / critères d'analyse)."
-)
-Ne pas toucher à la logique métier
+---
 
-Ne jamais modifier :
+### Phase 8 – Coexistence Tk / Qt
 
-les critères SNR / trails ;
+- [ ] Entry point propre pour Qt (ex : `python -m zeanalyser_qt`).
+- [ ] Documentation courte (README ou doc) expliquant comment lancer ZeAnalyser Qt.
+- [ ] Vérifier que Tk continue à fonctionner.
 
-la sélection des images ;
+---
 
-la structure du CSV (stack_plan.csv).
+## ✅ Règles de travail pour Codex
 
-La mission est strictement de l’affichage / log.
-
-✅ Tests attendus
-Merci de prévoir au minimum :
-
-Dataset de 30 fichiers (comme l’exemple fourni)
-
-Lancer une analyse complète (SNR + génération automatique du stack plan).
-
-Vérifier dans le journal GUI qu’apparaît par exemple :
-
-text
-Copier le code
-Plan d'empilement créé : 24 image(s) sélectionnée(s) sur 30 images analysées (80.0 %) -> stack_plan.csv
-Rappel : le plan d'empilement ne contient que les images retenues après filtrage (SNR / traînées / critères d'analyse).
-Vérifier que le nombre 24 correspond bien au nombre de lignes dans stack_plan.csv.
-
-Cas « 0 image retenue »
-
-Forcer des critères SNR très stricts pour rejeter toutes les images.
-
-Vérifier que :
-
-la génération du stack plan ne plante pas (CSV vide ok) ;
-
-un message clair est loggué (0 images sélectionnées).
-
-Cas sans stack plan
-
-Lancer une analyse sans demander de stack plan.
-
-Vérifier qu’aucun message de type « Plan d’empilement créé » n’apparaît.
-
-Non-régression
-
-Vérifier que les autres messages du log (marqueur .astro_analyzer_run_complete, écriture de telescopes_pollution.csv, etc.) restent inchangés.
-
-Vérifier qu’aucune nouvelle exception n’est levée en mode normal.
+- Toujours comparer la logique Qt avec celle de `analyse_gui.py` avant d’inventer quelque chose.
+- Procéder **par sous-phase** (3A, 3B, 3C, etc.) → un ensemble de commits courts, ciblés.
+- Ne pas modifier les signatures de `perform_analysis()` ni les clés `options` sans nécessité absolue.
+- Ne pas casser les tests existants (UI worker, modèle de résultats, filtres).
+- Ajouter des commentaires dans `analyse_gui_qt.py` là où la logique est un mirror de Tk (pour faciliter la review).
