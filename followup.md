@@ -40,13 +40,13 @@ Coche chaque étape quand elle est terminée.
 
 ## 4. Marqueurs, “Manage Markers” & Stack Plan
 
-- [ ] Reprendre dans Qt la logique Tk de détection de fichiers marqueurs dans le dossier d’entrée.
-- [ ] Activer/désactiver `manage_markers_btn` en conséquence.
-- [ ] Implémenter `_manage_markers()` côté Qt avec un comportement cohérent (gestion ou au minimum affichage des marqueurs / ouverture du dossier).
-- [ ] Relier le bouton “Create stacking plan” au même pipeline que Tk :
-  - [ ] Utiliser `stack_plan.generate_stacking_plan(...)` / `write_stacking_plan_csv(...)` pour produire le CSV.
-  - [ ] Stocker le chemin du dernier plan,
-  - [ ] Remplir la tab “Stack Plan” avec un aperçu (lecture du CSV dans un modèle Qt).
+- [X] Reprendre dans Qt la logique Tk de détection de fichiers marqueurs dans le dossier d’entrée.
+- [X] Activer/désactiver `manage_markers_btn` en conséquence.
+- [X] Implémenter `_manage_markers()` côté Qt avec un comportement cohérent (gestion ou au minimum affichage des marqueurs / ouverture du dossier).
+- [X] Relier le bouton “Create stacking plan” au même pipeline que Tk :
+  - [X] Utiliser `stack_plan.generate_stacking_plan(...)` / `write_stacking_plan_csv(...)` pour produire le CSV.
+  - [X] Stocker le chemin du dernier plan,
+  - [X] Remplir la tab “Stack Plan” avec un aperçu (lecture du CSV dans un modèle Qt).
 
 ## 5. “Analyze and Stack” & token
 

@@ -1301,6 +1301,12 @@ class ZeAnalyserMainWindow(QMainWindow):
             # don't fail on broken stored values
             pass
 
+        # Update markers state based on any restored input directory
+        try:
+            self._update_marker_button_state()
+        except Exception:
+            pass
+
     def _save_settings(self) -> None:
         """Persist a small set of UI settings for convenience.
 
@@ -4347,6 +4353,12 @@ class ZeAnalyserMainWindow(QMainWindow):
         ena = bool(a and a.text().strip())
         if isinstance(self.analyse_btn, QPushButton):
             self.analyse_btn.setEnabled(ena)
+
+        # Update marker detection alongside enablement checks
+        try:
+            self._update_marker_button_state()
+        except Exception:
+            pass
 
     def _tick(self) -> None:
         self._progress_value += 1
