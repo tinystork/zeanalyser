@@ -269,22 +269,27 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.initial_lang = initial_lang
         self.lock_language = lock_language
 
-        # Detect parent token availability
+        # Detect parent token availability (align with Tk logic)
         self.parent_project_dir = None
         self.parent_token_file_path = None
         self.parent_token_available = False
         try:
             analyzer_script_path = os.path.abspath(__file__)
             beforehand_dir = os.path.dirname(analyzer_script_path)
-            seestar_package_dir = os.path.dirname(beforehand_dir)
-            project_root_dir = os.path.dirname(seestar_package_dir)
-            self.parent_project_dir = project_root_dir
-            self.parent_token_file_path = os.path.normpath(os.path.join(project_root_dir, 'token.zsss'))
+            project_root_dir = os.path.dirname(beforehand_dir)
+            parent_project_dir = os.path.dirname(project_root_dir)
+            self.parent_project_dir = parent_project_dir
+            self.parent_token_file_path = os.path.normpath(os.path.join(parent_project_dir, 'token.zsss'))
             self.parent_token_available = os.path.isfile(self.parent_token_file_path)
             if self.parent_token_available:
-                print(f"DEBUG (analyse_gui_qt __init__): token.zsss found in {project_root_dir}.")
+                print(f"DEBUG (analyse_gui_qt __init__): token.zsss found in {parent_project_dir}.")
             else:
-                print(f"WARNING (analyse_gui_qt __init__): token.zsss not found in {project_root_dir}. Stacking/communication buttons will remain disabled.")
+                msg = _("token_dependency_missing_notice")
+                print(f"WARNING (analyse_gui_qt __init__): token.zsss not found in {parent_project_dir}. Stacking/communication buttons will remain disabled.")
+                try:
+                    self._log(msg)
+                except Exception:
+                    pass
         except Exception as e:
             print(f"Error detecting token: {e}")
 
@@ -305,6 +310,13 @@ class ZeAnalyserMainWindow(QMainWindow):
                 pass
 
         self._retranslate_ui()
+
+        # Ensure the analyse+stack button respects token availability
+        try:
+            if getattr(self, 'analyse_and_stack_btn', None) is not None:
+                self.analyse_and_stack_btn.setEnabled(bool(self.parent_token_available))
+        except Exception:
+            pass
 
         # Try to restore saved UI state (QSettings) if available.
         try:
@@ -1163,6 +1175,38 @@ class ZeAnalyserMainWindow(QMainWindow):
                 pass
 
             try:
+                if getattr(self, 'analyze_snr_cb', None) is not None:
+                    self.analyze_snr_cb.setToolTip(_('tooltip_analyze_snr'))
+                if getattr(self, 'snr_mode_percent_rb', None) is not None:
+                    self.snr_mode_percent_rb.setToolTip(_('tooltip_snr_mode_percent'))
+                if getattr(self, 'snr_mode_threshold_rb', None) is not None:
+                    self.snr_mode_threshold_rb.setToolTip(_('tooltip_snr_mode_threshold'))
+                if getattr(self, 'snr_value_spin', None) is not None:
+                    self.snr_value_spin.setToolTip(_('tooltip_snr_value'))
+            except Exception:
+                pass
+
+            try:
+                if getattr(self, 'detect_trails_cb', None) is not None:
+                    self.detect_trails_cb.setToolTip(_('tooltip_detect_trails'))
+                if getattr(self, 'trail_sigma_spin', None) is not None:
+                    self.trail_sigma_spin.setToolTip(_('tooltip_sigma'))
+                if getattr(self, 'trail_low_thr_spin', None) is not None:
+                    self.trail_low_thr_spin.setToolTip(_('tooltip_low_thresh'))
+                if getattr(self, 'trail_high_thr_spin', None) is not None:
+                    self.trail_high_thr_spin.setToolTip(_('tooltip_h_thresh'))
+            except Exception:
+                pass
+
+            try:
+                if getattr(self, 'reject_move_rb', None) is not None:
+                    self.reject_move_rb.setToolTip(_('tooltip_reject_move'))
+                if getattr(self, 'reject_delete_rb', None) is not None:
+                    self.reject_delete_rb.setToolTip(_('tooltip_reject_delete'))
+            except Exception:
+                pass
+
+            try:
                 if getattr(self, 'analyze_btn', None) is not None:
                     # backwards-compatible name: some environments create analyse_btn
                     pass
@@ -1196,6 +1240,16 @@ class ZeAnalyserMainWindow(QMainWindow):
             try:
                 if getattr(self, 'sort_by_snr_cb', None) is not None:
                     self.sort_by_snr_cb.setToolTip(_('When checked results are sorted by SNR descending'))
+            except Exception:
+                pass
+
+            try:
+                if getattr(self, 'apply_recos_btn', None) is not None:
+                    self.apply_recos_btn.setToolTip(_('tooltip_apply_recommendations'))
+                if getattr(self, 'manage_markers_btn', None) is not None:
+                    self.manage_markers_btn.setToolTip(_('tooltip_manage_markers'))
+                if getattr(self, 'create_stack_plan_btn', None) is not None:
+                    self.create_stack_plan_btn.setToolTip(_('tooltip_create_stack_plan'))
             except Exception:
                 pass
 
@@ -1498,6 +1552,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.analysis_results = list(results) if results is not None else []
         except Exception:
             self.analysis_results = []
+        self._analysis_completed_successfully = bool(self.analysis_results)
         self.set_results(self.analysis_results)
         try:
             self._compute_recommended_subset()
@@ -1543,6 +1598,11 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.analyse_btn.setEnabled(True)
         if isinstance(self.cancel_btn, QPushButton):
             self.cancel_btn.setEnabled(False)
+        try:
+            if self.analyse_and_stack_btn:
+                self.analyse_and_stack_btn.setEnabled(bool(self.parent_token_available))
+        except Exception:
+            pass
         # reset timer labels
         if hasattr(self, 'elapsed_label') and self.elapsed_label is not None:
             self.elapsed_label.setText(f"{_('elapsed_time_label')} 00:00")
@@ -1550,13 +1610,16 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.remaining_label.setText(f"{_('remaining_time_label')} 00:00")
 
         # If analysis completed successfully and stacking was requested, trigger stacking
-        if not cancelled and getattr(self, '_stack_after_analysis', False):
+        success = bool(self._analysis_completed_successfully) and not cancelled
+        if success and getattr(self, '_stack_after_analysis', False):
             self._stack_after_analysis = False  # reset flag
             self._log("Analysis completed, starting stacking workflow...")
             try:
                 self._start_stacking_after_analysis()
             except Exception as e:
                 self._log(f"Error starting stacking: {e}")
+        else:
+            self._stack_after_analysis = False
 
         # clear reference
         self._current_worker = None
@@ -2062,13 +2125,12 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         return opts
 
-    def _start_analysis(self):
-        """Start an AnalysisWorker (QThread) for the chosen input/output paths.
+    def _run_analysis(self, stack_after: bool = False) -> bool:
+        """Shared entrypoint for launching analysis with or without stacking."""
+        self._stack_after_analysis = False
+        self._analysis_completed_successfully = False
+        self._stack_input_path = None
 
-        In this Phase 1 integration the AnalysisWorker may be mocked in tests;
-        in future phases we'll call the real perform_analysis from analyse_logic.py
-        with real arguments.
-        """
         input_path = self.input_path_edit.text().strip() if hasattr(self, 'input_path_edit') else ''
         output_path = self.log_path_edit.text().strip() if hasattr(self, 'log_path_edit') else ''
 
@@ -2079,12 +2141,21 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             QMessageBox = None
 
+        if stack_after and not self.parent_token_available:
+            self._log(_("token_dependency_missing_notice"))
+            try:
+                if self.analyse_and_stack_btn:
+                    self.analyse_and_stack_btn.setEnabled(False)
+            except Exception:
+                pass
+            return False
+
         if not input_path or not os.path.isdir(input_path):
             if QMessageBox:
                 QMessageBox.critical(self, _("msg_error"), _("msg_input_dir_invalid"))
             else:
                 self._log(_("msg_input_dir_invalid"))
-            return
+            return False
 
         # If output_path is empty, mirror Tk default suggestion
         if not output_path:
@@ -2096,7 +2167,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     QMessageBox.critical(self, _("msg_error"), _("msg_log_file_missing"))
                 else:
                     self._log(_("msg_log_file_missing"))
-                return
+                return False
 
         # Build options dict from UI widgets (mirror of Tk behaviour)
         try:
@@ -2130,7 +2201,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     QMessageBox.warning(self, _("msg_warning"), _("bortle_file_label"))
                 else:
                     self._log(_("bortle_file_label"))
-                return
+                return False
 
         # Validation for move/delete actions similar to Tk
         reject_move = bool(options.get('move_rejected'))
@@ -2139,11 +2210,11 @@ class ZeAnalyserMainWindow(QMainWindow):
         if reject_delete:
             if QMessageBox:
                 if QMessageBox.question(self, _("msg_warning"), _("confirm_delete")) != QMessageBox.Yes:
-                    return
+                    return False
             else:
                 # without dialogs, default to cancelling delete for safety
                 self._log(_("confirm_delete"))
-                return
+                return False
 
         if reject_move:
             if options.get('detect_trails') and not options.get('trail_reject_dir'):
@@ -2151,13 +2222,13 @@ class ZeAnalyserMainWindow(QMainWindow):
                     QMessageBox.critical(self, _("msg_error"), _("trail_reject_dir_label"))
                 else:
                     self._log(_("trail_reject_dir_label"))
-                return
+                return False
             if options.get('analyze_snr') and options.get('snr_selection_mode') != 'none' and not options.get('snr_reject_dir'):
                 if QMessageBox:
                     QMessageBox.critical(self, _("msg_error"), _("snr_reject_dir_label"))
                 else:
                     self._log(_("snr_reject_dir_label"))
-                return
+                return False
 
         # Validate SNR selection
         if options.get('analyze_snr'):
@@ -2169,7 +2240,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                         QMessageBox.critical(self, _("msg_error"), _("snr_value_missing"))
                     else:
                         self._log(_("snr_value_missing"))
-                    return
+                    return False
                 try:
                     float(val)
                 except Exception:
@@ -2177,7 +2248,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                         QMessageBox.critical(self, _("msg_error"), _("snr_value_invalid"))
                     else:
                         self._log(_("snr_value_invalid"))
-                    return
+                    return False
             else:
                 options['snr_selection_value'] = None
         else:
@@ -2195,13 +2266,17 @@ class ZeAnalyserMainWindow(QMainWindow):
                         QMessageBox.critical(self, _("msg_error"), _("msg_params_invalid", e="High Thresh doit être >= Low Thresh"))
                     else:
                         self._log(_("msg_params_invalid", e="High Thresh doit être >= Low Thresh"))
-                    return
+                    return False
             except Exception:
                 if QMessageBox:
                     QMessageBox.critical(self, _("msg_error"), _("msg_params_invalid", e="Paramètres Traînées"))
                 else:
                     self._log(_("msg_params_invalid", e="Paramètres Traînées"))
-                return
+                return False
+
+        # With validations passed, persist flags for finish callback
+        self._stack_after_analysis = bool(stack_after)
+        self._stack_input_path = input_path
 
         # Log the paths being used
         self._log(f"Using input dir: {input_path}, log file: {output_path}")
@@ -2215,7 +2290,13 @@ class ZeAnalyserMainWindow(QMainWindow):
         self._log("Worker started in QThread…")
 
         # update UI
-        self.analyse_btn.setEnabled(False)
+        try:
+            if self.analyse_btn:
+                self.analyse_btn.setEnabled(False)
+            if self.analyse_and_stack_btn:
+                self.analyse_and_stack_btn.setEnabled(False)
+        except Exception:
+            pass
         self.cancel_btn.setEnabled(True)
 
         # Start timer for elapsed/remaining time
@@ -2258,13 +2339,18 @@ class ZeAnalyserMainWindow(QMainWindow):
 
             if hasattr(analyse_logic, 'perform_analysis'):
                 w.start(analyse_logic.perform_analysis, input_path, output_path, options, log_callback=log_callback)
-                return
+                return True
         except Exception:
             # ignore failures importing analyse_logic — run simulation instead
             pass
 
         # start simulation-fallback
         w.start()
+        return True
+
+    def _start_analysis(self):
+        """Start analysis without stacking."""
+        self._run_analysis(stack_after=False)
 
     def _load_visualisation_from_log_path(self, log_path: str) -> bool:
         """Load visualization data from a log file and populate results."""
@@ -2313,6 +2399,11 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self._log("Stacking not available - token.zsss not found")
                 return
 
+            folder_to_stack = self._stack_input_path or (self.input_path_edit.text().strip() if hasattr(self, 'input_path_edit') else '')
+            if not folder_to_stack or not os.path.isdir(folder_to_stack):
+                self._log(_("msg_input_dir_invalid"))
+                return
+
             # Apply recommendations automatically
             self._apply_recommendations_gui()
             # Organize files automatically
@@ -2324,6 +2415,22 @@ class ZeAnalyserMainWindow(QMainWindow):
                 pass
             # Create a simple stack plan
             self._create_simple_stack_plan()
+
+            # Write command file for the stacker, mirroring Tk behaviour
+            try:
+                reference_path = self._get_best_reference()
+                command_file = self._get_command_file_path()
+                if command_file:
+                    with open(command_file, 'w', encoding='utf-8') as f:
+                        f.write(folder_to_stack + "\n")
+                        if reference_path:
+                            f.write(reference_path + "\n")
+                    self._log(_("stack_command_written", path=command_file))
+                else:
+                    self._log(_("command_file_missing"))
+            except Exception as e:
+                self._log(_("command_file_write_error", e=str(e)))
+
             # Then attempt to run the stacking script
             self._run_stacking_script()
         except Exception as e:
@@ -2390,9 +2497,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def _start_analysis_and_stack(self):
         """Start analysis and trigger stacking afterwards."""
-        # Set a lightweight flag to represent stacking after analysis
-        self._stack_after_analysis = True
-        self._start_analysis()
+        self._run_analysis(stack_after=True)
 
     def _cancel_current_worker(self):
         if getattr(self, '_current_worker', None) is not None:
@@ -3065,7 +3170,11 @@ class ZeAnalyserMainWindow(QMainWindow):
         """Enable/disable buttons after analysis completes."""
         has_results = bool(getattr(self, '_results_model', None) or getattr(self, '_results_rows', None))
         has_log = bool(getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip())
-        has_recos = bool(getattr(self, '_results_rows', None) and any(r.get('recommended') for r in self._results_rows))
+        try:
+            recos = getattr(self, 'recommended_images', None)
+            has_recos = bool(recos)
+        except Exception:
+            has_recos = bool(getattr(self, '_results_rows', None) and any(r.get('recommended') for r in self._results_rows))
 
         # Enable/disable based on presence of results
         try:
@@ -3107,6 +3216,29 @@ class ZeAnalyserMainWindow(QMainWindow):
         best = max(valid, key=lambda r: r['snr'])
         return best.get('path') or best.get('file_path')
 
+    def _get_command_file_path(self):
+        """Resolve the command file path used to communicate with the stacker."""
+        command_file = getattr(self, 'command_file_path', None) or os.environ.get('ZEANALYSER_COMMAND_FILE')
+        if command_file:
+            return command_file
+
+        possible_files = []
+        if self.parent_project_dir:
+            possible_files.append(os.path.join(self.parent_project_dir, 'zeanalyser_command.txt'))
+        if self.parent_token_file_path:
+            possible_files.append(os.path.join(os.path.dirname(self.parent_token_file_path), 'zeanalyser_command.txt'))
+        possible_files.extend([
+            os.path.join(os.getcwd(), 'zeanalyser_command.txt'),
+            os.path.join(os.getcwd(), 'stacker_command.txt'),
+            os.path.join(os.path.expanduser('~'), '.zeanalyser_command.txt'),
+        ])
+
+        for candidate in possible_files:
+            parent_dir = os.path.dirname(candidate)
+            if not parent_dir or os.path.isdir(parent_dir):
+                return candidate
+        return None
+
     def send_reference_to_main(self):
         """Send the selected reference path to the parent GUI or command file."""
         path = self._get_best_reference()
@@ -3115,18 +3247,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             return
 
         # Try to find command file or token file
-        command_file = getattr(self, 'command_file_path', None) or os.environ.get('ZEANALYSER_COMMAND_FILE')
-        if not command_file:
-            # Look for common token/command files
-            possible_files = [
-                os.path.join(os.getcwd(), 'zeanalyser_command.txt'),
-                os.path.join(os.getcwd(), 'stacker_command.txt'),
-                os.path.join(os.path.expanduser('~'), '.zeanalyser_command.txt')
-            ]
-            for f in possible_files:
-                if os.path.exists(f):
-                    command_file = f
-                    break
+        command_file = self._get_command_file_path()
 
         if command_file:
             try:

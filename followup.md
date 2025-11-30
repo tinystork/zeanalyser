@@ -50,24 +50,24 @@ Coche chaque étape quand elle est terminée.
 
 ## 5. “Analyze and Stack” & token
 
-- [ ] Vérifier la détection du `token.zsss` dans `ZeAnalyserMainWindow.__init__` (même chemin et logique que Tk).
-- [ ] Si le token est absent, désactiver `analyse_and_stack_btn` et logguer un warning.
-- [ ] Implémenter `_start_analysis_and_stack()` :
-  - [ ] lancer l’analyse avec un flag interne `self.stack_after_analysis`,
-  - [ ] en fin d’analyse, si succès :
-    - [ ] écrire le fichier de commande vers le stacker au format attendu par Tk,
-    - [ ] logguer le chemin du fichier de commande.
-- [ ] Factoriser au maximum la logique commune entre “Analyze only” et “Analyze and Stack”.
+- [X] Vérifier la détection du `token.zsss` dans `ZeAnalyserMainWindow.__init__` (même chemin et logique que Tk).
+- [X] Si le token est absent, désactiver `analyse_and_stack_btn` et logguer un warning.
+- [X] Implémenter `_start_analysis_and_stack()` :
+  - [X] lancer l’analyse avec un flag interne `self.stack_after_analysis`,
+  - [X] en fin d’analyse, si succès :
+    - [X] écrire le fichier de commande vers le stacker au format attendu par Tk,
+    - [X] logguer le chemin du fichier de commande.
+- [X] Factoriser au maximum la logique commune entre “Analyze only” et “Analyze and Stack”.
 
 ## 6. I18n, tooltips, état des boutons
 
-- [ ] Ajouter dans `zone.py` les clés manquantes utilisées par Qt (FR/EN au minimum).
-- [ ] Positionner des tooltips Qt sur les contrôles clés (SNR, trails, actions, recommandations).
-- [ ] Vérifier que les boutons :
-  - [ ] “Visualise Results”
-  - [ ] “Apply Recommendations”
-  - [ ] “Manage Markers”
-  - [ ] “Create stacking plan”
+- [X] Ajouter dans `zone.py` les clés manquantes utilisées par Qt (FR/EN au minimum).
+- [X] Positionner des tooltips Qt sur les contrôles clés (SNR, trails, actions, recommandations).
+- [X] Vérifier que les boutons :
+  - [X] “Visualise Results”
+  - [X] “Apply Recommendations”
+  - [X] “Manage Markers”
+  - [X] “Create stacking plan”
   sont correctement activés/désactivés selon l’état (`analysis_results`, log présent, etc.).
 
 ## 7. Tests finaux
