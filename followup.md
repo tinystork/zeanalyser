@@ -15,16 +15,16 @@ Coche chaque étape quand elle est terminée.
 
 ## 2. Lancement d’analyse & log en Qt
 
-- [ ] Harmoniser `_start_analysis()` et `_start_analysis_and_stack()` dans `ZeAnalyserMainWindow` pour construire le même dict `options` que Tk :
-  - [ ] SNR / trails / subfolders / Bortle / actions / chemins de rejet.
-  - [ ] Validation des entrées (dossier, log, pourcentage SNR, params trails, confirm delete).
-- [ ] Vérifier que l’appel à la logique d’analyse Qt utilise la même fonction que Tk (`analyse_logic.perform_analysis(...)` ou équivalent).
-- [ ] Confirmer que le thread Qt appelle `write_log_summary(...)` avec `results_list` final pour générer le bloc JSON.
-- [ ] Implémenter une méthode Qt type `_load_visualisation_from_log_path(path)` qui :
-  - [ ] lit file,
-  - [ ] trouve le dernier bloc JSON entre `--- BEGIN/END VISUALIZATION DATA ---`,
-  - [ ] remplit `self.analysis_results`,
-  - [ ] appelle `_compute_recommended_subset()`.
+- [X] Harmoniser `_start_analysis()` et `_start_analysis_and_stack()` dans `ZeAnalyserMainWindow` pour construire le même dict `options` que Tk :
+  - [X] SNR / trails / subfolders / Bortle / actions / chemins de rejet.
+  - [X] Validation des entrées (dossier, log, pourcentage SNR, params trails, confirm delete).
+- [X] Vérifier que l’appel à la logique d’analyse Qt utilise la même fonction que Tk (`analyse_logic.perform_analysis(...)` ou équivalent).
+- [X] Confirmer que le thread Qt appelle `write_log_summary(...)` avec `results_list` final pour générer le bloc JSON.
+- [X] Implémenter une méthode Qt type `_load_visualisation_from_log_path(path)` qui :
+  - [X] lit file,
+  - [X] trouve le dernier bloc JSON entre `--- BEGIN/END VISUALIZATION DATA ---`,
+  - [X] remplit `self.analysis_results`,
+  - [X] appelle `_compute_recommended_subset()`.
 
 ## 3. Remplissage de l’onglet “Results”
 
