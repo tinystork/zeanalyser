@@ -44,6 +44,7 @@ try:
         QSortFilterProxyModel,
         QSettings,
         QThreadPool,
+        QRegularExpression,
     )
     from PySide6.QtWidgets import (
         QApplication,
@@ -93,6 +94,7 @@ except Exception:  # pragma: no cover - tests guard for availability
     QThreadPool = object
     Qt = object
     QSettings = object
+    QRegularExpression = object
     QDialog = object
     QTreeWidget = object
     QTreeWidgetItem = object
@@ -1559,12 +1561,14 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         Uses AnalysisResultsModel and a QSortFilterProxyModel for sorting/filtering.
         """
-        try:
-            from analysis_model import AnalysisResultsModel
-            from PySide6.QtCore import QSortFilterProxyModel
-        except Exception:
+        from analysis_model import AnalysisResultsModel
+        if QSortFilterProxyModel is object:
             # in environments without Qt, keep an internal reference
             self._results_rows = list(rows)
+            self._results_model = None
+            self._results_proxy = None
+            self.results_model = None
+            self.results_proxy = None
             return
 
         model = AnalysisResultsModel(rows)
@@ -1580,11 +1584,23 @@ class ZeAnalyserMainWindow(QMainWindow):
                 pass
         proxy.setSourceModel(model)
         proxy.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        try:
+            proxy.setFilterKeyColumn(-1)
+        except Exception:
+            pass
         proxy.setDynamicSortFilter(True)
 
+        # remember references with both public and private attribute names for callers
         self._results_model = model
         self._results_proxy = proxy
+        self.results_model = model
+        self.results_proxy = proxy
+
         self.results_view.setModel(proxy)
+        try:
+            self.results_view.setSortingEnabled(True)
+        except Exception:
+            pass
         # show all columns (no special sizing decisions here)
         self.results_view.resizeColumnsToContents()
 
@@ -1595,6 +1611,13 @@ class ZeAnalyserMainWindow(QMainWindow):
                 sel.selectionChanged.connect(self._on_results_selection_changed)
         except Exception:
             # headless or missing selection model — do nothing
+            pass
+
+        # re-apply any existing filters after loading new data
+        try:
+            self._on_results_filter_changed(self.results_filter.text())
+            self._on_numeric_or_boolean_filters_changed()
+        except Exception:
             pass
     def set_stack_plan_rows(self, rows_or_csv):
         """Populate the Stack Plan tab from either a CSV path or iterable of dict rows.
@@ -1641,14 +1664,19 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def _on_results_filter_changed(self, text: str):
         try:
-            # Simple substring filter on all columns: use wildcard search
-            pattern = f"{text}"
-            # keep case-insensitive behavior
+            # Simple substring filter on all columns: use a case-insensitive
+            # wildcard regular expression so any column match is accepted.
+            proxy = getattr(self, 'results_proxy', None) or getattr(self, '_results_proxy', None)
+            if proxy is None:
+                return
             try:
-                self._results_proxy.setFilterFixedString(pattern)
+                pattern = QRegularExpression.fromWildcard(f"*{text}*", QRegularExpression.CaseInsensitiveOption)
+                proxy.setFilterRegularExpression(pattern)
             except Exception:
-                pass
-            # keep case-insensitive behavior
+                try:
+                    proxy.setFilterFixedString(text)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -1664,7 +1692,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def _on_numeric_or_boolean_filters_changed(self):
         try:
-            p = getattr(self, '_results_proxy', None)
+            p = getattr(self, 'results_proxy', None) or getattr(self, '_results_proxy', None)
             if p is None:
                 return
             p.snr_min = self._parse_float_or_none(self.snr_min_edit.text())
@@ -1883,7 +1911,8 @@ class ZeAnalyserMainWindow(QMainWindow):
     def _on_sort_by_snr_changed(self, state:int):
         try:
             # if we have a proxy, sort by snr descending
-            if getattr(self, '_results_proxy', None) is None:
+            proxy = getattr(self, 'results_proxy', None) or getattr(self, '_results_proxy', None)
+            if proxy is None:
                 return
             m = getattr(self, '_results_model', None)
             if m is None:
@@ -1905,12 +1934,12 @@ class ZeAnalyserMainWindow(QMainWindow):
             try:
                 # first ensure proxy sorts by numeric user role
                 try:
-                    self._results_proxy.setSortRole(_Qt.UserRole)
+                    proxy.setSortRole(_Qt.UserRole)
                 except Exception:
                     pass
                 # call sort on the proxy or view
                 try:
-                    self._results_proxy.sort(idx, order)
+                    proxy.sort(idx, order)
                 except Exception:
                     try:
                         self.results_view.sortByColumn(idx, order)

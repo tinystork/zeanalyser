@@ -28,15 +28,15 @@ Coche chaque étape quand elle est terminée.
 
 ## 3. Remplissage de l’onglet “Results”
 
-- [ ] Créer un `QAbstractTableModel` (ou utiliser celui existant) pour `self.analysis_results`, avec :
-  - [ ] `self._keys` = colonnes,
-  - [ ] `data(..., DisplayRole)` pour l’affichage,
-  - [ ] `data(..., UserRole)` pour les valeurs brutes.
-- [ ] Brancher `ResultsFilterProxy` :
-  - [ ] `self.results_proxy.setSourceModel(self.results_model)`,
-  - [ ] `self.results_view.setModel(self.results_proxy)`.
-- [ ] Relier les champs de filtre (SNR/FWHM/ECC/has_trails) à `ResultsFilterProxy`.
-- [ ] Implémenter le tri SNR décroissant quand la checkbox correspondante est cochée.
+- [X] Créer un `QAbstractTableModel` (ou utiliser celui existant) pour `self.analysis_results`, avec :
+  - [X] `self._keys` = colonnes,
+  - [X] `data(..., DisplayRole)` pour l’affichage,
+  - [X] `data(..., UserRole)` pour les valeurs brutes.
+- [X] Brancher `ResultsFilterProxy` :
+  - [X] `self.results_proxy.setSourceModel(self.results_model)`,
+  - [X] `self.results_view.setModel(self.results_proxy)`.
+- [X] Relier les champs de filtre (SNR/FWHM/ECC/has_trails) à `ResultsFilterProxy`.
+- [X] Implémenter le tri SNR décroissant quand la checkbox correspondante est cochée.
 
 ## 4. Marqueurs, “Manage Markers” & Stack Plan
 
