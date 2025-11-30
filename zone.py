@@ -53,6 +53,9 @@ translations = {
         'action_frame_title': "Action sur Images Rejetées",
         'display_options_frame_title': "Options d'Affichage",
         'results_frame_title': "Résultats / Journal",
+        'help_menu_label': "Aide",
+        'about_action_label': "À propos",
+        'no_preview_selected': "Aucun aperçu sélectionné.",
 
         # --- Labels & Champs ---
         'input_dir_label': "Dossier d'entrée:",
@@ -77,7 +80,10 @@ translations = {
         'line_len_label': "Line Len:", 'small_edge_label': "Small Edge:", 'line_gap_label': "Line Gap:",
         'trail_reject_dir_label': "Dossier Rejet (Traînées):",
         'action_label': "Action:", 'action_mode_move': "Déplacer vers dossier Rejet", 'action_mode_delete': "Supprimer Définitivement", 'action_mode_none': "Ne Rien Faire (Tout Garder)",
+        'apply_immediately': "Appliquer immédiatement",
         'sort_snr_check_label': "Trier les résultats par SNR décroissant",
+        'filter_results_placeholder': "Filtrer les résultats...",
+        'filter_stack_plan_placeholder': "Filtrer le plan de stack...",
 
         # --- Boutons ---
         'browse_button': "Parcourir",
@@ -101,6 +107,10 @@ translations = {
         'apply_reco_button': "Appliquer Recommandations",
         'visual_apply_reco_button': "Appliquer Recommandations",
         'create_stack_plan_button': "Créer plan de stack",
+        'stack_export_csv': "Exporter le plan en CSV",
+        'stack_prepare_script': "Préparer le script d'empilage",
+        'cancel_button': "Annuler",
+        'close_button': "Fermer",
         'stack_plan_window_title': "Plan de stack",
         'include_exposure_in_batch': "Inclure le temps de pose dans le batch",
         'generate_plan_button': "Générer le plan",
@@ -115,6 +125,7 @@ translations = {
         'exposure': "Temps de pose",
         'ascending': "Croissant",
         'descending': "Décroissant",
+        'sort_order': "Ordre de tri",
 
         # --- Textes acstools status ---
         'acstools_ok': "(acstools disponible)", 'acstools_missing': "(acstools non trouvé ou incompatible)", 'acstools_sig_error': "(fonction detsat incompatible)",
@@ -132,12 +143,19 @@ translations = {
         'msg_organize_done': "{count} fichiers organisés.",
         'msg_organize_failed': "Organisation échouée: {e}",
         'msg_stack_plan_write_error': "Impossible d'écrire '{path}'. Fichier utilisé ou dossier non accessible.",
+        'command_file_missing': "Fichier de commande introuvable pour le stacker.",
+        'command_file_write_error': "Erreur d'écriture du fichier de commande : {e}",
+        'stack_command_written': "Fichier de commande écrit : {path}",
 
         # --- Fenêtre Visualisation ---
         'visu_window_title': "Visualisation des résultats",
         'results_visualisation_title': "Résultats visuels",
+        'results_summary_title': "Résumé des résultats",
         'visu_tab_snr_dist': "Distribution SNR", 'visu_tab_snr_comp': "Comparaison SNR", 'visu_tab_sat_trails': "Traînées Détectées", 'visu_tab_raw_data': "Données Détaillées", 'visu_tab_recom': "Recommandations Stacking",
         'visu_snr_dist_title': 'Distribution du Rapport Signal/Bruit (SNR)', 'visu_snr_dist_xlabel': 'SNR', 'visu_snr_dist_ylabel': 'Nombre d\'images', 'visu_snr_dist_no_data': "Aucune donnée SNR valide",
+        'snr_statistics_title': "Statistiques SNR",
+        'fwhm_statistics_title': "Statistiques FWHM",
+        'bortle_distribution_title': "Distribution Bortle",
         'starcount_distribution_tab': "Distribution Starcount",
         'starcount_distribution_title': "Distribution Starcount",
         'starcount_label': "Nombre d'étoiles",
@@ -156,6 +174,9 @@ translations = {
         'Statut': "Statut", 'Action': "Action", 'Raison Rejet': "Raison Rejet", 'Commentaire': "Commentaire",
         'visu_recom_frame_title': "Recommandation (Images Conservées)",
         'reco_starcount_min_pct': "Starcount min (percentile)",
+        'reco_snr_min_pct': "SNR min (percentile)",
+        'reco_fwhm_max_pct': "FWHM max (percentile)",
+        'reco_ecc_max_pct': "Excentricité max (percentile)",
         'use_starcount_chk': "Utiliser Starcount",
         'tooltip_use_starcount': (
             "Active un filtre supplémentaire basé sur le nombre d'étoiles détectées. "
@@ -177,6 +198,15 @@ translations = {
         'tooltip_sigma': "Sigma du filtre Gaussien avant détection contours (flou). Défaut: 2.0", 'tooltip_low_thresh': "Seuil bas Canny (0-1). Détecte bords potentiels. Bas=Sensible bruit. Défaut acstools: 0.1", 'tooltip_h_thresh': "Seuil haut Canny (0-1). Ancre bords forts. >= Low Thr. Bas=Permissif. Défaut acstools: 0.5", 'tooltip_line_len': "Longueur min. (px) segment final pour être une traînée. Défaut acstools: 150", 'tooltip_small_edge': "Longueur min. (px) contour initial (par Canny). Filtre bruit avant Hough. Défaut acstools: 60", 'tooltip_line_gap': "Écart max (px) pour joindre segments. Défaut acstools: 75", 'tooltip_snr_value': "Entrez % (ex: 80) ou seuil SNR (ex: 5.5). Ignoré si Tout Garder.",
         'tooltip_apply_snr_rejection': "Appliquer les rejets SNR différés",
         'tooltip_apply_starcount_rejection': "Appliquer les actions Starcount différées",
+        'tooltip_analyze_snr': "Active l'analyse SNR pour chaque image et permet la sélection automatique.",
+        'tooltip_snr_mode_percent': "Sélectionne les meilleures images selon un pourcentage de SNR.",
+        'tooltip_snr_mode_threshold': "Garde les images dont le SNR dépasse ce seuil.",
+        'tooltip_detect_trails': "Active la détection de traînées satellites avec les paramètres indiqués.",
+        'tooltip_reject_move': "Déplacer automatiquement les images rejetées vers les dossiers configurés.",
+        'tooltip_reject_delete': "Supprimer définitivement les images rejetées après analyse.",
+        'tooltip_apply_recommendations': "Appliquer les recommandations de conservation aux fichiers analysés.",
+        'tooltip_manage_markers': "Ouvrir le dossier pour gérer les fichiers marqueurs générés par l'analyse.",
+        'tooltip_create_stack_plan': "Générer un plan d'empilage CSV basé sur les images conservées.",
 
         # --- Textes Logique ---
         # Prefixes utilisés par la logique d'analyse pour formater les messages
@@ -250,6 +280,7 @@ translations = {
 
         # --- Frames ---
         'config_frame_title': "General Configuration", 'snr_frame_title': "SNR Analysis & Selection", 'trail_frame_title': "Trail Detection", 'action_frame_title': "Action on Rejected Images", 'display_options_frame_title': "Display Options", 'results_frame_title': "Results / Log",
+        'help_menu_label': "Help", 'about_action_label': "About",
 
         # --- Labels & Fields ---
         'input_dir_label': "Input Folder:", 'output_log_label': "Log File:",
@@ -262,13 +293,16 @@ translations = {
         'status_label': "Status:",
         'elapsed_time_label': "Elapsed:",
         'remaining_time_label': "Remaining:",
+        'no_preview_selected': "No preview selected.",
         'analyze_snr_check_label': "Enable SNR analysis", 'snr_select_mode_label': "SNR Selection Mode:", 'snr_mode_percent': "Top Percent (%)", 'snr_mode_threshold': "SNR Threshold (>)",
         'snr_mode_none': "Keep All", 'snr_reject_dir_label': "Reject Folder (Low SNR):",
         'detect_trails_check_label': "Enable trail detection",
         'sigma_label': "Sigma:", 'low_thresh_label': "Low Thr:", 'h_thresh_label': "High Thr:",
         'line_len_label': "Line Len:", 'small_edge_label': "Small Edge:", 'line_gap_label': "Line Gap:",
         'trail_reject_dir_label': "Reject Folder (Trails):", 'action_label': "Action:", 'action_mode_move': "Move to Reject Folder", 'action_mode_delete': "Delete Permanently", 'action_mode_none': "Do Nothing (Keep All)",
+        'apply_immediately': "Apply immediately",
         'sort_snr_check_label': "Sort results by descending SNR",
+        'filter_results_placeholder': "Filter results...", 'filter_stack_plan_placeholder': "Filter stack plan...",
 
         # --- Buttons ---
         'browse_button': "Browse", 'analyse_button':
@@ -278,6 +312,8 @@ translations = {
         'manage_markers_button': "Manage Markers", # <-- NEW
         'quit_button': "Quit", 'return_button_text': "Return", 'export_button': "Export Recommended List (.txt)",
         'Fermer': "Close", 'Exporter Toutes Conservées': "Export All Kept",
+        'cancel_button': "Cancel", 'close_button': "Close",
+        'stack_export_csv': "Export plan as CSV", 'stack_prepare_script': "Prepare stacking script",
 
         'use_best_reference_button': 'Send Reference',
         'save_reference_button': 'Save Reference',
@@ -298,10 +334,17 @@ translations = {
         'msg_organize_done': "{count} files organized.",
         'msg_organize_failed': "Organization failed: {e}",
         'msg_stack_plan_write_error': "Cannot write '{path}'. File is in use or the directory is not writable.",
+        'command_file_missing': "Command file for the stacker is missing.",
+        'command_file_write_error': "Could not write command file: {e}",
+        'stack_command_written': "Command file written: {path}",
 
         # --- Visualization Window ---
         'visu_window_title': "Results Visualization", 'visu_tab_snr_dist': "SNR Distribution", 'visu_tab_snr_comp': "SNR Comparison", 'visu_tab_sat_trails': "Detected Trails", 'visu_tab_raw_data': "Detailed Data", 'visu_tab_recom': "Stacking Recommendations",
+        'results_summary_title': "Results summary",
         'visu_snr_dist_title': 'Signal-to-Noise Ratio (SNR) Distribution', 'visu_snr_dist_xlabel': 'SNR', 'visu_snr_dist_ylabel': 'Number of images', 'visu_snr_dist_no_data': "No valid SNR data",
+        'snr_statistics_title': "SNR statistics",
+        'fwhm_statistics_title': "FWHM statistics",
+        'bortle_distribution_title': "Bortle distribution",
         'starcount_distribution_tab': "Starcount Distribution",
         'starcount_distribution_title': "Starcount Distribution",
         'starcount_label': "Starcount",
@@ -326,6 +369,15 @@ translations = {
             "Useful to discard hazy/cloudy subs or poor transparency. "
             "Disable for very diffuse targets (nebulae) where star count is less indicative."
         ),
+        'tooltip_analyze_snr': "Enable SNR analysis on each image to drive selection.",
+        'tooltip_snr_mode_percent': "Keep the top percentage of images by SNR.",
+        'tooltip_snr_mode_threshold': "Keep images whose SNR exceeds this threshold.",
+        'tooltip_detect_trails': "Enable satellite trail detection with the configured parameters.",
+        'tooltip_reject_move': "Move rejected images automatically into the configured folders.",
+        'tooltip_reject_delete': "Permanently delete rejected images after analysis.",
+        'tooltip_apply_recommendations': "Apply recommended keep/reject actions to analyzed files.",
+        'tooltip_manage_markers': "Open the folder to manage marker files produced by analysis.",
+        'tooltip_create_stack_plan': "Generate a CSV stacking plan from kept images.",
         'visu_recom_text': "Suggestion: Use the {count} kept images with SNR >= {p75:.2f} (P25)",
         'visu_recom_text_both': "Suggestion: Use the {count} kept images with SNR \u2265 {snr_p25:.2f} (P25) and Starcount \u2265 {sc_p25:.0f} (P25)",
         'visu_recom_text_all': "Suggestion: use {count} images with SNR \u2265 P25, FWHM \u2264 P75 and e \u2264 P75",
@@ -336,6 +388,7 @@ translations = {
         'visu_recom_not_enough': "Fewer than 5 valid kept images. Use/Export all valid kept images.",
         'visu_recom_no_data': "No valid SNR data for recommendation.",
         'Toutes les images conservées valides': "All valid kept images",
+        'reco_snr_min_pct': "SNR min (percentile)", 'reco_fwhm_max_pct': "FWHM max (percentile)", 'reco_ecc_max_pct': "Eccentricity max (percentile)",
 
         # --- Tooltips ---
         'tooltip_sigma': "Sigma of Gaussian filter before edge detection (blur). Default: 2.0", 'tooltip_low_thresh': "Lower Canny threshold (0-1). Detects potential edges. Lower=Noisier. acstools default: 0.1", 'tooltip_h_thresh': "Upper Canny threshold (0-1). Anchors strong edges. >= Low Thr. Lower=Permissive. acstools default: 0.5", 'tooltip_line_len': "Min. length (px) of final line segment to be a trail. acstools default: 150", 'tooltip_small_edge': "Min. length (px) of initial edge segment (Canny). Filters noise before Hough. acstools default: 60", 'tooltip_line_gap': "Max allowed gap (px) to link segments. acstools default: 75", 'tooltip_snr_value': "Enter % (e.g., 80) or SNR threshold (e.g., 5.5). Ignored if Keep All.",
