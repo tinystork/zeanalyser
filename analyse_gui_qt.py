@@ -10,6 +10,7 @@ existing Tkinter UI and project code remain untouched.
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 
@@ -43,6 +44,7 @@ try:
         QSortFilterProxyModel,
         QSettings,
         QThreadPool,
+        QRegularExpression,
     )
     from PySide6.QtWidgets import (
         QApplication,
@@ -92,6 +94,7 @@ except Exception:  # pragma: no cover - tests guard for availability
     QThreadPool = object
     Qt = object
     QSettings = object
+    QRegularExpression = object
     QDialog = object
     QTreeWidget = object
     QTreeWidgetItem = object
@@ -1485,7 +1488,15 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def _on_results_ready(self, results):
         """Slot for results ready from worker, populates Results table."""
-        self.set_results(results)
+        try:
+            self.analysis_results = list(results) if results is not None else []
+        except Exception:
+            self.analysis_results = []
+        self.set_results(self.analysis_results)
+        try:
+            self._compute_recommended_subset()
+        except Exception:
+            pass
         # After setting results, enable/disable buttons based on results
         self._update_buttons_after_analysis()
         self._update_marker_button_state()
@@ -1550,12 +1561,14 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         Uses AnalysisResultsModel and a QSortFilterProxyModel for sorting/filtering.
         """
-        try:
-            from analysis_model import AnalysisResultsModel
-            from PySide6.QtCore import QSortFilterProxyModel
-        except Exception:
+        from analysis_model import AnalysisResultsModel
+        if QSortFilterProxyModel is object:
             # in environments without Qt, keep an internal reference
             self._results_rows = list(rows)
+            self._results_model = None
+            self._results_proxy = None
+            self.results_model = None
+            self.results_proxy = None
             return
 
         model = AnalysisResultsModel(rows)
@@ -1571,11 +1584,23 @@ class ZeAnalyserMainWindow(QMainWindow):
                 pass
         proxy.setSourceModel(model)
         proxy.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        try:
+            proxy.setFilterKeyColumn(-1)
+        except Exception:
+            pass
         proxy.setDynamicSortFilter(True)
 
+        # remember references with both public and private attribute names for callers
         self._results_model = model
         self._results_proxy = proxy
+        self.results_model = model
+        self.results_proxy = proxy
+
         self.results_view.setModel(proxy)
+        try:
+            self.results_view.setSortingEnabled(True)
+        except Exception:
+            pass
         # show all columns (no special sizing decisions here)
         self.results_view.resizeColumnsToContents()
 
@@ -1586,6 +1611,13 @@ class ZeAnalyserMainWindow(QMainWindow):
                 sel.selectionChanged.connect(self._on_results_selection_changed)
         except Exception:
             # headless or missing selection model — do nothing
+            pass
+
+        # re-apply any existing filters after loading new data
+        try:
+            self._on_results_filter_changed(self.results_filter.text())
+            self._on_numeric_or_boolean_filters_changed()
+        except Exception:
             pass
     def set_stack_plan_rows(self, rows_or_csv):
         """Populate the Stack Plan tab from either a CSV path or iterable of dict rows.
@@ -1632,14 +1664,19 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def _on_results_filter_changed(self, text: str):
         try:
-            # Simple substring filter on all columns: use wildcard search
-            pattern = f"{text}"
-            # keep case-insensitive behavior
+            # Simple substring filter on all columns: use a case-insensitive
+            # wildcard regular expression so any column match is accepted.
+            proxy = getattr(self, 'results_proxy', None) or getattr(self, '_results_proxy', None)
+            if proxy is None:
+                return
             try:
-                self._results_proxy.setFilterFixedString(pattern)
+                pattern = QRegularExpression.fromWildcard(f"*{text}*", QRegularExpression.CaseInsensitiveOption)
+                proxy.setFilterRegularExpression(pattern)
             except Exception:
-                pass
-            # keep case-insensitive behavior
+                try:
+                    proxy.setFilterFixedString(text)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -1655,7 +1692,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def _on_numeric_or_boolean_filters_changed(self):
         try:
-            p = getattr(self, '_results_proxy', None)
+            p = getattr(self, 'results_proxy', None) or getattr(self, '_results_proxy', None)
             if p is None:
                 return
             p.snr_min = self._parse_float_or_none(self.snr_min_edit.text())
@@ -1874,7 +1911,8 @@ class ZeAnalyserMainWindow(QMainWindow):
     def _on_sort_by_snr_changed(self, state:int):
         try:
             # if we have a proxy, sort by snr descending
-            if getattr(self, '_results_proxy', None) is None:
+            proxy = getattr(self, 'results_proxy', None) or getattr(self, '_results_proxy', None)
+            if proxy is None:
                 return
             m = getattr(self, '_results_model', None)
             if m is None:
@@ -1896,12 +1934,12 @@ class ZeAnalyserMainWindow(QMainWindow):
             try:
                 # first ensure proxy sorts by numeric user role
                 try:
-                    self._results_proxy.setSortRole(_Qt.UserRole)
+                    proxy.setSortRole(_Qt.UserRole)
                 except Exception:
                     pass
                 # call sort on the proxy or view
                 try:
-                    self._results_proxy.sort(idx, order)
+                    proxy.sort(idx, order)
                 except Exception:
                     try:
                         self.results_view.sortByColumn(idx, order)
@@ -1920,7 +1958,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         """
         opts = {}
         # Analysis toggles
-        opts['analyze_snr'] = True  # Force SNR analysis enabled
+        opts['analyze_snr'] = bool(getattr(self, 'analyze_snr_cb', None) and self.analyze_snr_cb.isChecked())
         opts['detect_trails'] = bool(getattr(self, 'detect_trails_cb', None) and self.detect_trails_cb.isChecked())
 
         # Configuration general
@@ -1960,7 +1998,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         # numeric value (either percent or threshold) — keep None if missing or none
         try:
-            if getattr(self, 'snr_value_spin', None) is not None and opts['snr_selection_mode'] != 'none':
+            if getattr(self, 'snr_value_spin', None) is not None and opts['snr_selection_mode'] != 'none' and opts.get('analyze_snr'):
                 opts['snr_selection_value'] = str(self.snr_value_spin.value())
             else:
                 opts['snr_selection_value'] = None
@@ -1968,7 +2006,9 @@ class ZeAnalyserMainWindow(QMainWindow):
             opts['snr_selection_value'] = None
 
         try:
-            opts['snr_reject_dir'] = self.snr_reject_dir_edit.text().strip() if opts['move_rejected'] else None
+            opts['snr_reject_dir'] = self.snr_reject_dir_edit.text().strip() if opts.get('move_rejected') else None
+            if opts.get('snr_reject_dir') == '':
+                opts['snr_reject_dir'] = None
         except Exception:
             opts['snr_reject_dir'] = None
 
@@ -1984,8 +2024,8 @@ class ZeAnalyserMainWindow(QMainWindow):
             if getattr(self, 'trail_sigma_spin', None) is not None:
                 opts['trail_params'] = {
                     'sigma': float(self.trail_sigma_spin.value()) if getattr(self, 'trail_sigma_spin', None) is not None else None,
-                    'low_thr': float(self.trail_low_thr_spin.value()) if getattr(self, 'trail_low_thr_spin', None) is not None else None,
-                    'high_thr': float(self.trail_high_thr_spin.value()) if getattr(self, 'trail_high_thr_spin', None) is not None else None,
+                    'low_thresh': float(self.trail_low_thr_spin.value()) if getattr(self, 'trail_low_thr_spin', None) is not None else None,
+                    'h_thresh': float(self.trail_high_thr_spin.value()) if getattr(self, 'trail_high_thr_spin', None) is not None else None,
                     'line_len': int(self.trail_line_len_spin.value()) if getattr(self, 'trail_line_len_spin', None) is not None else None,
                     'small_edge': int(self.trail_small_edge_spin.value()) if getattr(self, 'trail_small_edge_spin', None) is not None else None,
                     'line_gap': int(self.trail_line_gap_spin.value()) if getattr(self, 'trail_line_gap_spin', None) is not None else None,
@@ -1996,15 +2036,13 @@ class ZeAnalyserMainWindow(QMainWindow):
             opts['trail_params'] = {}
 
         try:
-            opts['trail_reject_dir'] = self.trail_reject_dir_edit.text().strip() if opts['move_rejected'] else None
+            opts['trail_reject_dir'] = self.trail_reject_dir_edit.text().strip() if opts.get('move_rejected') else None
+            if opts.get('trail_reject_dir') == '':
+                opts['trail_reject_dir'] = None
         except Exception:
             opts['trail_reject_dir'] = None
 
-        try:
-            opts['apply_trail_action_immediately'] = False
-        except Exception:
-            opts['apply_trail_action_immediately'] = False
-
+        opts['apply_trail_action_immediately'] = False
 
         # include input/output paths for callers/tests to use
         try:
@@ -2030,23 +2068,133 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         # Validate input_path (parity with Tk)
         import os
-        if not input_path or not os.path.isdir(input_path):
+        try:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.critical(self, _("msg_error"), _("msg_input_dir_invalid"))
+        except Exception:
+            QMessageBox = None
+
+        if not input_path or not os.path.isdir(input_path):
+            if QMessageBox:
+                QMessageBox.critical(self, _("msg_error"), _("msg_input_dir_invalid"))
+            else:
+                self._log(_("msg_input_dir_invalid"))
             return
 
-        # If output_path is empty, default it (parity with Tk)
+        # If output_path is empty, mirror Tk default suggestion
         if not output_path:
             try:
-                import os
-                output_path = os.path.join(input_path, 'analyse_resultats.log')
-                # reflect default back into UI
-                try:
-                    self.log_path_edit.setText(output_path)
-                except Exception:
-                    pass
+                output_path = self._suggest_log_path(input_path)
+                self.log_path_edit.setText(output_path)
             except Exception:
-                self._log("Missing output path — cannot start analysis")
+                if QMessageBox:
+                    QMessageBox.critical(self, _("msg_error"), _("msg_log_file_missing"))
+                else:
+                    self._log(_("msg_log_file_missing"))
+                return
+
+        # Build options dict from UI widgets (mirror of Tk behaviour)
+        try:
+            options = self._build_options_from_ui()
+        except Exception:
+            # defensive fallback if UI method is missing
+            options = {
+                'analyze_snr': self.analyze_snr_cb.isChecked() if hasattr(self, 'analyze_snr_cb') else False,
+                'detect_trails': self.detect_trails_cb.isChecked() if hasattr(self, 'detect_trails_cb') else False,
+                'include_subfolders': False,
+                'bortle_path': '',
+                'use_bortle': False,
+                'move_rejected': False,
+                'delete_rejected': False,
+                'apply_snr_action_immediately': False,
+                'apply_trail_action_immediately': False,
+                'snr_selection_mode': 'none',
+                'snr_selection_value': None,
+                'trail_params': {},
+            }
+
+        # Normalize log path back onto options for downstream calls/tests
+        options['output_path'] = output_path
+        options['input_path'] = input_path
+
+        # Validate Bortle selection if requested
+        if options.get('use_bortle'):
+            bortle_path = options.get('bortle_path', '')
+            if not bortle_path or not bortle_path.lower().endswith(('.tif', '.tiff', '.kmz')):
+                if QMessageBox:
+                    QMessageBox.warning(self, _("msg_warning"), _("bortle_file_label"))
+                else:
+                    self._log(_("bortle_file_label"))
+                return
+
+        # Validation for move/delete actions similar to Tk
+        reject_move = bool(options.get('move_rejected'))
+        reject_delete = bool(options.get('delete_rejected'))
+
+        if reject_delete:
+            if QMessageBox:
+                if QMessageBox.question(self, _("msg_warning"), _("confirm_delete")) != QMessageBox.Yes:
+                    return
+            else:
+                # without dialogs, default to cancelling delete for safety
+                self._log(_("confirm_delete"))
+                return
+
+        if reject_move:
+            if options.get('detect_trails') and not options.get('trail_reject_dir'):
+                if QMessageBox:
+                    QMessageBox.critical(self, _("msg_error"), _("trail_reject_dir_label"))
+                else:
+                    self._log(_("trail_reject_dir_label"))
+                return
+            if options.get('analyze_snr') and options.get('snr_selection_mode') != 'none' and not options.get('snr_reject_dir'):
+                if QMessageBox:
+                    QMessageBox.critical(self, _("msg_error"), _("snr_reject_dir_label"))
+                else:
+                    self._log(_("snr_reject_dir_label"))
+                return
+
+        # Validate SNR selection
+        if options.get('analyze_snr'):
+            mode = options.get('snr_selection_mode', 'none')
+            val = options.get('snr_selection_value')
+            if mode in ('percent', 'threshold'):
+                if val in (None, ''):
+                    if QMessageBox:
+                        QMessageBox.critical(self, _("msg_error"), _("snr_value_missing"))
+                    else:
+                        self._log(_("snr_value_missing"))
+                    return
+                try:
+                    float(val)
+                except Exception:
+                    if QMessageBox:
+                        QMessageBox.critical(self, _("msg_error"), _("snr_value_invalid"))
+                    else:
+                        self._log(_("snr_value_invalid"))
+                    return
+            else:
+                options['snr_selection_value'] = None
+        else:
+            options['snr_selection_mode'] = 'none'
+            options['snr_selection_value'] = None
+
+        # Validate trail params (simple parity with Tk checks)
+        if options.get('detect_trails'):
+            try:
+                params = options.get('trail_params', {})
+                low = params.get('low_thresh')
+                high = params.get('h_thresh')
+                if low is not None and high is not None and float(high) < float(low):
+                    if QMessageBox:
+                        QMessageBox.critical(self, _("msg_error"), _("msg_params_invalid", e="High Thresh doit être >= Low Thresh"))
+                    else:
+                        self._log(_("msg_params_invalid", e="High Thresh doit être >= Low Thresh"))
+                    return
+            except Exception:
+                if QMessageBox:
+                    QMessageBox.critical(self, _("msg_error"), _("msg_params_invalid", e="Paramètres Traînées"))
+                else:
+                    self._log(_("msg_params_invalid", e="Paramètres Traînées"))
                 return
 
         # Log the paths being used
@@ -2067,26 +2215,10 @@ class ZeAnalyserMainWindow(QMainWindow):
         # Start timer for elapsed/remaining time
         self._analysis_start_time = time.monotonic()
 
-        # Build options dict from UI widgets (mirror of Tk behaviour)
-        try:
-            options = self._build_options_from_ui()
-        except Exception:
-            # defensive fallback if UI method is missing
-            options = {
-                'analyze_snr': self.analyze_snr_cb.isChecked() if hasattr(self, 'analyze_snr_cb') else False,
-                'detect_trails': self.detect_trails_cb.isChecked() if hasattr(self, 'detect_trails_cb') else False,
-                'include_subfolders': False,
-                'bortle_path': '',
-                'use_bortle': False,
-                'move_rejected': False,
-                'delete_rejected': False,
-                'apply_snr_action_immediately': False,
-                'apply_trail_action_immediately': False,
-            }
-
         # Prepare log callback that writes to file and emits to widget
         import datetime
         log_file_path = output_path
+
         def log_callback(text_key, clear=False, **kwargs):
             try:
                 # Translate the key using _translate like Tk version
@@ -2102,7 +2234,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     pass
                 # Emit to widget
                 w.logLine.emit(full_text)
-            except Exception as e:
+            except Exception:
                 # Fallback: log raw message
                 fallback_msg = str(text_key) if isinstance(text_key, str) else str(kwargs)
                 try:
@@ -2112,55 +2244,9 @@ class ZeAnalyserMainWindow(QMainWindow):
                     pass
                 w.logLine.emit(fallback_msg)
 
-        # Validate options similarly to Tk: ensure move actions have appropriate target dirs
-        # Debug snapshot of UI/options to help unit tests understand what's being validated
-        try:
-            print('DEBUG_OPTIONS:', options)
-        except Exception:
-            pass
-        try:
-            print('DEBUG_UI: reject_move_rb=', bool(getattr(self, 'reject_move_rb', None) and self.reject_move_rb.isChecked()), 'reject_delete_rb=', bool(getattr(self, 'reject_delete_rb', None) and self.reject_delete_rb.isChecked()))
-        except Exception:
-            pass
         # Prefer to run the real perform_analysis if available, otherwise
         # fall back to the worker's built-in timer-driven simulation.
 
-        try:
-            # Determine if user selected 'move' in UI radios or via options
-            move_flag = bool(options.get('move_rejected', False))
-            try:
-                if getattr(self, 'reject_move_rb', None) is not None and self.reject_move_rb.isChecked():
-                    move_flag = True
-                elif getattr(self, 'reject_delete_rb', None) is not None and self.reject_delete_rb.isChecked():
-                    move_flag = False
-            except Exception:
-                pass
-
-            # If user selected to move rejected images but did not specify appropriate dirs,
-            # mirror the Tk behaviour and stop with a logged error instead of starting.
-            if move_flag:
-                # debug trace for tests/validation
-                debug_msg = f"DEBUG_VALIDATE: move_flag={move_flag}, detect_trails={options.get('detect_trails')}, trail_reject_dir={options.get('trail_reject_dir')!r}, analyze_snr={options.get('analyze_snr')}, snr_selection_mode={options.get('snr_selection_mode')}, snr_reject_dir={options.get('snr_reject_dir')!r}"
-                try:
-                    self._log(debug_msg)
-                except Exception:
-                    pass
-                # Also print so tests can observe potential mismatches between UI and options
-                try:
-                    print(debug_msg)
-                except Exception:
-                    pass
-                # if trail detection is enabled, require trail_reject_dir
-                if (options.get('detect_trails') or (getattr(self, 'detect_trails_cb', None) is not None and self.detect_trails_cb.isChecked())) and options.get('trail_reject_dir', '') == '':
-                    self._log("ERROR: trail reject directory required when moving rejected trail images")
-                    return
-                # if analyze_snr is enabled and snr selection isn't 'all', require snr_reject_dir
-                if (options.get('analyze_snr') or (getattr(self, 'analyze_snr_cb', None) is not None and self.analyze_snr_cb.isChecked())) and options.get('snr_selection_mode', 'all') != 'all' and options.get('snr_reject_dir', '') == '':
-                    self._log("ERROR: snr reject directory required when moving rejected SNR images")
-                    return
-        except Exception:
-            # defensive: fallthrough to try starting the worker
-            pass
         try:
             import analyse_logic
 
@@ -2173,6 +2259,44 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         # start simulation-fallback
         w.start()
+
+    def _load_visualisation_from_log_path(self, log_path: str) -> bool:
+        """Load visualization data from a log file and populate results."""
+        self.analysis_results = []
+        if not log_path or not os.path.isfile(log_path):
+            return False
+
+        try:
+            with open(log_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            # find the last BEGIN/END block
+            end_indices = [i for i, line in enumerate(lines) if line.strip() == "--- END VISUALIZATION DATA ---"]
+            if not end_indices:
+                return False
+            end_idx = end_indices[-1]
+            begin_candidates = [i for i, line in enumerate(lines[:end_idx]) if line.strip() == "--- BEGIN VISUALIZATION DATA ---"]
+            if not begin_candidates:
+                return False
+            start_idx = begin_candidates[-1]
+
+            json_str = "".join(lines[start_idx + 1:end_idx])
+            if not json_str.strip():
+                return False
+
+            loaded_data = json.loads(json_str)
+            if isinstance(loaded_data, list):
+                self.analysis_results = loaded_data
+                self.set_results(self.analysis_results)
+                try:
+                    self._compute_recommended_subset()
+                except Exception:
+                    pass
+                self._update_buttons_after_analysis()
+                return True
+            return False
+        except Exception:
+            return False
 
     def _start_stacking_after_analysis(self):
         """Called after analysis completes to start the stacking workflow."""
