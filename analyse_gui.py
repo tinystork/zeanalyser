@@ -104,6 +104,41 @@ def is_finite_number(value):
     """Return True if value is a real number and finite."""
     return isinstance(value, numbers.Number) and np.isfinite(value)
 
+
+def safe_set_maximized(root):
+    """Met la fenêtre en mode maximisé de façon cross-platform, sans lever d'exception."""
+    if not root:
+        return
+
+    try:
+        root.state('zoomed')
+        return
+    except tk.TclError:
+        pass
+    except Exception:
+        pass
+
+    try:
+        root.wm_attributes('-zoomed', True)
+        return
+    except tk.TclError:
+        pass
+    except Exception:
+        pass
+
+    try:
+        root.state('normal')
+    except Exception:
+        pass
+
+    try:
+        screen_w = root.winfo_screenwidth()
+        screen_h = root.winfo_screenheight()
+        if screen_w and screen_h:
+            root.geometry(f"{screen_w}x{screen_h}+0+0")
+    except Exception:
+        pass
+
 # --- AJUSTEMENT DE SYS.PATH POUR PERMETTRE LES IMPORTS DEPUIS LA RACINE DU PROJET ---
 # Ceci est crucial lorsque ce script (analyse_gui.py) est exécuté directement
 # ou via subprocess, car Python a besoin de savoir où se trouve le package 'seestar'.
@@ -1259,7 +1294,7 @@ class AstroImageAnalyzerGUI:
             # Créer la fenêtre Toplevel pour la visualisation
             vis_window = tk.Toplevel(self.root)
             vis_window.title(self._("visu_window_title"))
-            vis_window.state('zoomed')
+            safe_set_maximized(vis_window)
             vis_window.transient(self.root) # Lier à la fenêtre principale
             vis_window.grab_set() # Rendre modale
 
