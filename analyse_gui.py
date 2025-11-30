@@ -70,6 +70,7 @@ import sys  # Nécessaire pour sys.path
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, scrolledtext, messagebox
+from pathlib import Path
 import matplotlib
 matplotlib.use('TkAgg') # Assurer la compatibilité Tkinter pour Matplotlib
 import matplotlib.pyplot as plt
@@ -640,42 +641,32 @@ class AstroImageAnalyzerGUI:
         self.parent_project_dir = None
         self.parent_token_file_path = None
         self.parent_token_available = False
+        self.tk_icon = None
         try:
             # 1. Trouver le chemin absolu de l'icône depuis ce script
-            analyzer_script_path = os.path.abspath(__file__)
-            beforehand_dir = os.path.dirname(analyzer_script_path)
+            analyzer_script_path = Path(__file__).resolve()
+            beforehand_dir = analyzer_script_path.parent
             # Remonter d'UN niveau pour être à la racine du projet (où se trouve le dossier icon/)
-            project_root = os.path.dirname(beforehand_dir) 
-            parent_project_dir = os.path.dirname(project_root)
-            self.parent_project_dir = parent_project_dir
-            self.parent_token_file_path = os.path.normpath(os.path.join(parent_project_dir, 'token.zsss'))
-            self.parent_token_available = os.path.isfile(self.parent_token_file_path)
+            project_root = beforehand_dir.parent
+            parent_project_dir = project_root.parent
+            self.parent_project_dir = str(parent_project_dir)
+            self.parent_token_file_path = str((parent_project_dir / 'token.zsss').resolve())
+            self.parent_token_available = Path(self.parent_token_file_path).is_file()
             if self.parent_token_available:
                 print(f"DEBUG (analyse_gui __init__): token.zsss trouvé dans {parent_project_dir}.")
             else:
                 print(f"AVERTISSEMENT (analyse_gui __init__): token.zsss introuvable dans {parent_project_dir}. Les boutons d'empilage/communication resteront désactivés.")
-            icon_rel_path = os.path.join('icon', 'icon.png') # Chemin relatif depuis la racine
-            icon_path = os.path.join(project_root, icon_rel_path)
-            icon_path = os.path.normpath(icon_path)
-            print(f"DEBUG (analyse_gui __init__): Chemin icône calculé: {icon_path}")
 
-            # 2. Vérifier si le fichier existe
-            if os.path.exists(icon_path):
-                # 3. Charger et définir l'icône
-                icon_image = Image.open(icon_path)
-                # Stocker la référence à l'image Tkinter pour éviter la garbage collection
-                self.tk_icon = ImageTk.PhotoImage(icon_image)
-                # Appliquer à la fenêtre racine de CETTE interface (self.root)
-                self.root.iconphoto(True, self.tk_icon)
-                print(f"DEBUG (analyse_gui __init__): Icône de fenêtre définie avec succès depuis: {icon_path}")
-            else:
-                print(f"AVERTISSEMENT (analyse_gui __init__): Fichier icône introuvable: {icon_path}. Icône par défaut utilisée.")
+            print(f"DEBUG (analyse_gui __init__): Chemin icône calculé depuis: {project_root / 'icon'}")
+
+            # 2. Charger et définir l'icône avec gestion multi-plateforme
+            self._set_cross_platform_icon(project_root)
         except ImportError:
              print("AVERTISSEMENT (analyse_gui __init__): Pillow (PIL/ImageTk) non trouvé. Impossible de définir l'icône.")
-             self.tk_icon = None 
+             self.tk_icon = None
         except Exception as e_icon:
             print(f"ERREUR (analyse_gui __init__): Impossible de charger/définir l'icône: {e_icon}")
-            traceback.print_exc(limit=1) 
+            traceback.print_exc(limit=1)
             self.tk_icon = None
         # --- FIN AJOUT ---
 
@@ -811,6 +802,63 @@ class AstroImageAnalyzerGUI:
         self.root.geometry("1400x1000")
         self.root.minsize(950, 850)
         self._update_log_and_vis_buttons_state() # Pour l'état initial (si log pré-rempli par args
+
+    def _set_cross_platform_icon(self, project_root: Path):
+        """
+        Configure l'icône de la fenêtre avec des fallback spécifiques à l'OS.
+
+        - Windows : tente iconbitmap avec .ico si disponible.
+        - Linux/macOS : tente iconbitmap avec .xbm si disponible.
+        - Fallback universel : iconphoto avec .png.
+        Chaque tentative est protégée contre les erreurs Tkinter pour éviter tout crash.
+        """
+        system_name = platform.system()
+        icon_dir = project_root / "icon"
+        icon_candidates = []
+
+        if system_name == "Windows":
+            icon_candidates.append(icon_dir / "icon.ico")
+        else:
+            icon_candidates.append(icon_dir / "icon.xbm")
+
+        icon_candidates.append(icon_dir / "icon.png")
+
+        for icon_path in icon_candidates:
+            if not icon_path.exists():
+                continue
+            try:
+                if icon_path.suffix.lower() == ".ico" and system_name == "Windows":
+                    self.root.iconbitmap(default=str(icon_path))
+                elif icon_path.suffix.lower() == ".xbm":
+                    self.root.iconbitmap(f"@{icon_path}")
+                else:
+                    icon_image = Image.open(icon_path)
+                    self.tk_icon = ImageTk.PhotoImage(icon_image)
+                    self.root.iconphoto(True, self.tk_icon)
+                print(f"DEBUG (analyse_gui __init__): Icône de fenêtre définie avec succès depuis: {icon_path}")
+                return
+            except (tk.TclError, Exception) as e_icon:
+                print(f"AVERTISSEMENT (analyse_gui __init__): Impossible d'appliquer l'icône {icon_path}: {e_icon}")
+
+        print("AVERTISSEMENT (analyse_gui __init__): Icône non appliquée, icône par défaut utilisée.")
+
+    def _set_window_maximized(self, window: tk.Toplevel):
+        """Maximise la fenêtre de façon compatible multi-plateforme."""
+        system_name = platform.system()
+        try:
+            if system_name == "Windows":
+                window.state("zoomed")
+            else:
+                window.attributes("-zoomed", True)
+            return
+        except tk.TclError:
+            # Certains gestionnaires de fenêtres n'implémentent pas -zoomed/state('zoomed')
+            try:
+                screen_w = window.winfo_screenwidth()
+                screen_h = window.winfo_screenheight()
+                window.geometry(f"{screen_w}x{screen_h}+0+0")
+            except tk.TclError as geom_err:
+                print(f"AVERTISSEMENT (analyse_gui): Maximisation non supportée par l'OS ({system_name}): {geom_err}")
 
 
 ###################################################################################################################""
@@ -1259,7 +1307,8 @@ class AstroImageAnalyzerGUI:
             # Créer la fenêtre Toplevel pour la visualisation
             vis_window = tk.Toplevel(self.root)
             vis_window.title(self._("visu_window_title"))
-            vis_window.state('zoomed')
+            # Maximisation multi-plateforme (state('zoomed') n'est pas supporté partout)
+            self._set_window_maximized(vis_window)
             vis_window.transient(self.root) # Lier à la fenêtre principale
             vis_window.grab_set() # Rendre modale
 
@@ -4552,6 +4601,9 @@ def check_dependencies():
 # --- Bloc d'Exécution Principal ---
 if __name__ == "__main__":
     print("DEBUG (analyse_gui main): Parsing des arguments...")
+    system_name = platform.system()
+    release_name = platform.release()
+    print(f"INFO (analyse_gui): OS détecté: {system_name} {release_name} (sys.platform={sys.platform})")
     parser = argparse.ArgumentParser(description="Astro Image Analyzer GUI")
     parser.add_argument(
         "--input-dir",
