@@ -6,11 +6,11 @@ Coche chaque étape quand elle est terminée.
 
 ## 1. Compatibilité Tk – état de fenêtre
 
-- [ ] Créer `safe_set_maximized(root)` dans `analyse_gui.py` qui :
-  - [ ] Essaye `root.state('zoomed')` sous Windows, dans un `try/except tk.TclError`.
-  - [ ] Si erreur (X11/macOS), utilise un fallback inoffensif (`state('normal')`, `wm_attributes`, ou simple geometry), **sans** remonter d’exception.
-- [ ] Remplacer tous les appels directs à `state('zoomed')` par `safe_set_maximized(self.root)`.
-- [ ] Vérifier qu’aucun autre état non standard n’est passé à `state` / `wm_state`.
+- [X] Créer `safe_set_maximized(root)` dans `analyse_gui.py` qui :
+  - [X] Essaye `root.state('zoomed')` sous Windows, dans un `try/except tk.TclError`.
+  - [X] Si erreur (X11/macOS), utilise un fallback inoffensif (`state('normal')`, `wm_attributes`, ou simple geometry), **sans** remonter d’exception.
+- [X] Remplacer tous les appels directs à `state('zoomed')` par `safe_set_maximized(self.root)`.
+- [X] Vérifier qu’aucun autre état non standard n’est passé à `state` / `wm_state`.
 - [ ] Tester sous Windows (doit rester maximisé) et sous Linux (plus d’erreur “bad argument 'zoomed'”).
 
 ## 2. Lancement d’analyse & log en Qt
