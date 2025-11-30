@@ -10,6 +10,27 @@ existing Tkinter UI and project code remain untouched.
 """
 from __future__ import annotations
 
+import os
+import time
+
+# Set Matplotlib backend for Qt before importing matplotlib
+try:
+    from PySide6.QtGui import QPixmap, QColor
+    import matplotlib
+    matplotlib.use('QtAgg')  # Use Qt backend for Matplotlib
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+    from matplotlib.widgets import RangeSlider
+    import numpy as np
+except ImportError:
+    matplotlib = None
+    plt = None
+    FigureCanvas = None
+    NavigationToolbar = None
+    RangeSlider = None
+    np = None
+
 try:
     from PySide6.QtCore import (
         Qt,
@@ -37,6 +58,15 @@ try:
         QTextEdit,
         QFileDialog,
         QHBoxLayout,
+        QDialog,
+        QTreeWidget,
+        QTreeWidgetItem,
+        QHeaderView,
+        QComboBox,
+        QDoubleSpinBox,
+        QCheckBox,
+        QGroupBox,
+        QSlider,
     )
 except Exception:  # pragma: no cover - tests guard for availability
     # Provide graceful fallback types so the module can be imported in
@@ -62,12 +92,52 @@ except Exception:  # pragma: no cover - tests guard for availability
     QThreadPool = object
     Qt = object
     QSettings = object
+    QDialog = object
+    QTreeWidget = object
+    QTreeWidgetItem = object
+    QHeaderView = object
+    QComboBox = object
+    QDoubleSpinBox = object
+    QCheckBox = object
+    QGroupBox = object
+    QSlider = object
 try:
     # small i18n helper used across the project (zone.py provides a local wrapper)
-    from zone import _
+    import zone
+    _ = zone._
 except Exception:  # pragma: no cover - fallback to a no-op name lookup
     def _(k, *a, **kw):
         return k
+    class zone:
+        @staticmethod
+        def _(k, *a, **kw):
+            return k
+
+# Import translations for log formatting
+try:
+    from zone import translations
+except ImportError:
+    translations = {'en': {}, 'fr': {}}
+
+def _translate(key, **kwargs):
+    """Translate key to French with formatting, matching Tk behavior."""
+    lang = 'fr'  # Default to French
+    default_lang_dict = translations.get('en', {})
+    lang_dict = translations.get(lang, default_lang_dict)
+    text = lang_dict.get(key, default_lang_dict.get(key, f"_{key}_"))
+    try:
+        return text.format(**kwargs)
+    except KeyError as e:
+        print(f"WARN: Erreur formatage clé '{key}' langue '{lang}'. Clé manquante: {e}")
+        return text
+    except Exception as e:
+        print(f"WARN: Erreur formatage clé '{key}' langue '{lang}': {e}")
+        return text
+
+# Helper function for finite numbers
+def is_finite_number(value):
+    """Return True if value is a real number and finite."""
+    return isinstance(value, (int, float)) and np.isfinite(value) if np else False
 
 
 class ResultsFilterProxy(QSortFilterProxyModel if 'QSortFilterProxyModel' in globals() else object):
@@ -186,13 +256,52 @@ class ZeAnalyserMainWindow(QMainWindow):
     basic interactions (status updates, progress bar, log) can be tested.
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, command_file_path=None, initial_lang='fr', lock_language=False):
         super().__init__(parent)
         # use the central i18n wrapper so UI text is consistent with Tk
         self.setWindowTitle(_("window_title"))
         self.resize(900, 600)
+        # Store command file path for integration
+        self.command_file_path = command_file_path
+        self.initial_lang = initial_lang
+        self.lock_language = lock_language
+
+        # Detect parent token availability
+        self.parent_project_dir = None
+        self.parent_token_file_path = None
+        self.parent_token_available = False
+        try:
+            analyzer_script_path = os.path.abspath(__file__)
+            beforehand_dir = os.path.dirname(analyzer_script_path)
+            seestar_package_dir = os.path.dirname(beforehand_dir)
+            project_root_dir = os.path.dirname(seestar_package_dir)
+            self.parent_project_dir = project_root_dir
+            self.parent_token_file_path = os.path.normpath(os.path.join(project_root_dir, 'token.zsss'))
+            self.parent_token_available = os.path.isfile(self.parent_token_file_path)
+            if self.parent_token_available:
+                print(f"DEBUG (analyse_gui_qt __init__): token.zsss found in {project_root_dir}.")
+            else:
+                print(f"WARNING (analyse_gui_qt __init__): token.zsss not found in {project_root_dir}. Stacking/communication buttons will remain disabled.")
+        except Exception as e:
+            print(f"Error detecting token: {e}")
 
         self._build_ui()
+
+        # Set initial language and lock if requested
+        if self.initial_lang:
+            try:
+                zone.set_lang(self.initial_lang)
+                if hasattr(self, 'lang_combo') and self.lang_combo is not None:
+                    self.lang_combo.setCurrentText(self.initial_lang)
+            except Exception:
+                pass
+        if self.lock_language and hasattr(self, 'lang_combo') and self.lang_combo is not None:
+            try:
+                self.lang_combo.setEnabled(False)
+            except Exception:
+                pass
+
+        self._retranslate_ui()
 
         # Try to restore saved UI state (QSettings) if available.
         try:
@@ -216,22 +325,84 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self._timer = None
             if not hasattr(self, '_progress_value'):
                 self._progress_value = 0
+            if not hasattr(self, '_current_worker'):
+                self._current_worker = None
         except Exception:
             pass
 
-        # If UI building silently failed (no tabs created) attempt a second
-        # build and finally ensure minimal core widgets exist so tests have
-        # consistent attributes to work with.
+        # Initialize recommendation attributes
+        self.reco_snr_pct_min = 25.0
+        self.reco_fwhm_pct_max = 75.0
+        self.reco_ecc_pct_max = 75.0
+        self.use_starcount_filter = False
+        self.reco_starcount_pct_min = 25.0
+
+    def _compute_recommended_subset(self):
+        """Recompute recommended images using the current percentile sliders."""
+        import numpy as np
+
+        valid_kept = [
+            r for r in self.analysis_results
+            if r.get('status') == 'ok'
+            and r.get('action') == 'kept'
+            and r.get('rejected_reason') is None
+            and is_finite_number(r.get('snr', np.nan))
+        ]
+
+        if not valid_kept:
+            self.recommended_images = []
+            self.reco_snr_min = None
+            self.reco_fwhm_max = None
+            self.reco_ecc_max = None
+            return [], None, None, None
+
+        snrs = [r['snr'] for r in valid_kept if is_finite_number(r.get('snr', np.nan))]
+        fwhms = [r['fwhm'] for r in valid_kept if is_finite_number(r.get('fwhm', np.nan))]
+        eccs = [r['ecc'] for r in valid_kept if is_finite_number(r.get('ecc', np.nan))]
+        scs = [r['starcount'] for r in valid_kept if is_finite_number(r.get('starcount', np.nan))]
+
+        snr_p = np.percentile(snrs, float(self.reco_snr_pct_min)) if snrs else -np.inf
+        fwhm_p = np.percentile(fwhms, float(self.reco_fwhm_pct_max)) if fwhms else np.inf
+        ecc_p = np.percentile(eccs, float(self.reco_ecc_pct_max)) if eccs else np.inf
+        sc_p = None
+        if self.use_starcount_filter and scs:
+            sc_p = np.percentile(scs, float(self.reco_starcount_pct_min))
+
+        def ok(r):
+            import numpy as np
+            ok_snr = (r.get('snr', -np.inf) >= snr_p)
+            ok_fwhm = (r.get('fwhm', np.inf) <= fwhm_p) if is_finite_number(r.get('fwhm', np.nan)) else True
+            ok_ecc = (r.get('ecc', np.inf) <= ecc_p) if is_finite_number(r.get('ecc', np.nan)) else True
+            ok_sc = True
+            if self.use_starcount_filter and sc_p is not None:
+                ok_sc = (r.get('starcount', -np.inf) >= sc_p)
+            return ok_snr and ok_fwhm and ok_ecc and ok_sc
+
+        recos = [r for r in valid_kept if ok(r)]
+        self.recommended_images = recos
+        self.reco_snr_min = snr_p if is_finite_number(snr_p) else None
+        self.reco_fwhm_max = fwhm_p if is_finite_number(fwhm_p) else None
+        self.reco_ecc_max = ecc_p if is_finite_number(ecc_p) else None
+        self.reco_starcount_min = sc_p if sc_p is not None and is_finite_number(sc_p) else None
+        return recos, snr_p, fwhm_p, ecc_p, sc_p
+
+    def _apply_current_recommendations(self):
+        """Apply the currently computed recommended images."""
         try:
-            central = self.centralWidget()
-            if central is None or (hasattr(central, 'count') and central.count() == 0):
-                try:
-                    self._build_ui()
-                except Exception:
-                    # fall through to create safe fallbacks below
-                    pass
+            from PySide6.QtWidgets import QMessageBox
+            if not getattr(self, 'recommended_images', None):
+                QMessageBox.information(
+                    self,
+                    _("msg_info"),
+                    _("visu_recom_no_selection", default='Aucune image recommandée à appliquer.')
+                )
+                return
         except Exception:
-            pass
+            if not getattr(self, 'recommended_images', None):
+                self._log("No recommended images to apply")
+                return
+
+        self._apply_recommendations_gui()
 
         # Ensure minimal core widgets exist even if some UI construction
         # raised an error earlier (defensive for flaky test environments).
@@ -244,7 +415,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     self.analyse_btn = None
             if not hasattr(self, 'cancel_btn'):
                 try:
-                    self.cancel_btn = QPushButton("Annuler", self)
+                    self.cancel_btn = QPushButton(_("cancel_button"), self)
                     self.cancel_btn.setEnabled(False)
                 except Exception:
                     self.cancel_btn = None
@@ -263,55 +434,64 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             pass
 
-        # Provide a tiny, pure-Python click proxy for buttons that may
-        # have been created/destroyed incorrectly in some headless
-        # environments. This ensures tests that call `.click()` still
-        # exercise the expected slots.
-        try:
-            def _ensure_clickable(attr_name, slot):
-                # Avoid accessing the possibly-broken wrapper object and
-                # directly assign a proxy using object.__setattr__ so we
-                # don't trigger 'already deleted' errors.
-                class _Proxy:
-                    def __init__(self, cb):
-                        self._cb = cb
+        # Check if we are in test mode (proxies needed for headless tests)
+        test_mode = os.environ.get('ZEANALYSER_QT_TEST_MODE') == '1'
 
-                    def click(self, *a, **k):
-                        return self._cb()
+        if test_mode:
+            # Provide a tiny, pure-Python click proxy for buttons that may
+            # have been created/destroyed incorrectly in some headless
+            # environments. This ensures tests that call `.click()` still
+            # exercise the expected slots.
+            try:
+                def _ensure_clickable(attr_name, slot):
+                    # Avoid accessing the possibly-broken wrapper object and
+                    # directly assign a proxy using object.__setattr__ so we
+                    # don't trigger 'already deleted' errors.
+                    class _Proxy:
+                        def __init__(self, cb):
+                            self._cb = cb
 
-                try:
-                    object.__setattr__(self, attr_name, _Proxy(slot))
-                except Exception:
-                    # last resort: ignore
-                    pass
+                        def click(self, *a, **k):
+                            return self._cb()
 
-            _ensure_clickable('input_btn', getattr(self, '_choose_input_folder', lambda: None))
-            _ensure_clickable('output_btn', getattr(self, '_open_log_file', lambda: None))
-        except Exception:
-            pass
+                    try:
+                        object.__setattr__(self, attr_name, _Proxy(slot))
+                    except Exception:
+                        # last resort: ignore
+                        pass
 
-        # Provide simple proxy replacements for QLineEdit widgets that may
-        # have been destroyed in headless environments so slots can still
-        # exercise the logic without crashing.
-        try:
-            class _LineProxy:
-                def __init__(self, initial=''):
-                    self._v = initial
+                _ensure_clickable('input_btn', getattr(self, '_choose_input_folder', lambda: None))
+                _ensure_clickable('log_btn', getattr(self, '_open_log_file', lambda: None))
+            except Exception:
+                pass
 
-                def setText(self, v):
-                    self._v = str(v)
+            # Provide simple proxy replacements for QLineEdit widgets that may
+            # have been destroyed in headless environments so slots can still
+            # exercise the logic without crashing.
+            try:
+                class _LineProxy:
+                    def __init__(self, initial=''):
+                        self._v = initial
 
-                def text(self):
-                    return str(self._v)
+                    def setText(self, v):
+                        self._v = str(v)
 
-            for name in ('input_path_edit', 'output_path_edit'):
-                try:
-                    # avoid accessing possibly broken wrappers
-                    object.__setattr__(self, name, _LineProxy())
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                    def text(self):
+                        return str(self._v)
+
+                for name in ('input_path_edit', 'log_path_edit'):
+                    try:
+                        # avoid accessing possibly broken wrappers
+                        object.__setattr__(self, name, _LineProxy())
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+    @property
+    def output_path_edit(self):
+        """Alias for log_path_edit for backward compatibility."""
+        return self.log_path_edit
 
     def _build_ui(self):
         central = QTabWidget(self)
@@ -347,13 +527,13 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.input_path_edit.setPlaceholderText("No input folder chosen")
 
         # This button selects the analysis log file (keep parity with Tk UI)
-        self.output_btn = QPushButton(_("open_log_button"))
-        self.output_path_edit = QLineEdit()
-        self.output_path_edit.setPlaceholderText("No log file chosen")
+        self.log_btn = QPushButton(_("open_log_button"))
+        self.log_path_edit = QLineEdit()
+        self.log_path_edit.setPlaceholderText("No log file chosen")
         paths_layout.addWidget(self.input_btn)
         paths_layout.addWidget(self.input_path_edit)
-        paths_layout.addWidget(self.output_btn)
-        paths_layout.addWidget(self.output_path_edit)
+        paths_layout.addWidget(self.log_btn)
+        paths_layout.addWidget(self.log_path_edit)
         cfg_layout.addLayout(paths_layout)
 
         # include_subfolders checkbox
@@ -392,6 +572,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         try:
             self.lang_combo = QComboBox()
             self.lang_combo.addItems(["en", "fr", "auto"])
+            self.lang_combo.currentTextChanged.connect(self._on_lang_changed)
             cfg_layout.addWidget(self.lang_combo)
         except Exception:
             self.lang_combo = None
@@ -423,7 +604,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         try:
             # Keep existing attribute name for compatibility with other methods/tests
             self.analyze_snr_cb = QCheckBox(_("analyze_snr_check_label"))
-            self.analyze_snr_cb.setChecked(False)
+            self.analyze_snr_cb.setChecked(True)
             snr_layout.addWidget(self.analyze_snr_cb)
         except Exception:
             self.analyze_snr_cb = getattr(self, 'analyze_snr_cb', None)
@@ -450,7 +631,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             # numeric value
             self.snr_value_spin = QDoubleSpinBox()
             self.snr_value_spin.setRange(0.0, 100000.0)
-            self.snr_value_spin.setValue(10.0)
+            self.snr_value_spin.setValue(80.0)
             self.snr_value_spin.setDecimals(2)
             mode_row.addWidget(self.snr_mode_threshold_rb)
             mode_row.addWidget(self.snr_mode_none_rb)
@@ -470,7 +651,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.snr_reject_browse = QPushButton(_("browse_button"))
             self.snr_apply_btn = QPushButton(_("apply_snr_rejection_button"))
             # checkbox to optionally apply actions immediately (no existing key, keep raw text)
-            self.snr_apply_immediately_cb = QCheckBox("Appliquer immédiatement")
+            self.snr_apply_immediately_cb = QCheckBox(_("apply_immediately"))
             rej_row.addWidget(self.snr_reject_dir_edit)
             rej_row.addWidget(self.snr_reject_browse)
             rej_row.addWidget(self.snr_apply_immediately_cb)
@@ -673,6 +854,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             bot_layout.addWidget(self.analyse_and_stack_btn)
             bot_layout.addWidget(self.open_log_btn)
             bot_layout.addWidget(self.create_stack_plan_btn)
+            self.manage_markers_btn.setEnabled(False)
             bot_layout.addWidget(self.manage_markers_btn)
             bot_layout.addWidget(self.visualise_results_btn)
             bot_layout.addWidget(self.apply_recos_btn)
@@ -756,8 +938,8 @@ class ZeAnalyserMainWindow(QMainWindow):
         # lightweight non-destructive actions (export / prepare scripts)
         actions_row = QHBoxLayout()
         try:
-            self.stack_export_csv_btn = QPushButton("Exporter CSV")
-            self.stack_prepare_script_btn = QPushButton("Préparer script d'empilement")
+            self.stack_export_csv_btn = QPushButton(_("stack_export_csv"))
+            self.stack_prepare_script_btn = QPushButton(_("stack_prepare_script"))
             actions_row.addWidget(self.stack_export_csv_btn)
             actions_row.addWidget(self.stack_prepare_script_btn)
             stack_layout.addLayout(actions_row)
@@ -879,12 +1061,33 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             pass
 
+        # Wire additional buttons not in bottom layout
+        try:
+            if isinstance(self.manage_markers_btn, QPushButton):
+                self.manage_markers_btn.clicked.connect(self._manage_markers)
+            if isinstance(self.visualise_results_btn, QPushButton):
+                self.visualise_results_btn.clicked.connect(self._visualise_results)
+            if isinstance(self.apply_recos_btn, QPushButton):
+                self.apply_recos_btn.clicked.connect(self._apply_recommendations_gui)
+            if isinstance(self.send_save_ref_btn, QPushButton):
+                self.send_save_ref_btn.clicked.connect(self.send_reference_to_main)
+            if isinstance(self.organize_btn, QPushButton):
+                self.organize_btn.clicked.connect(self._organize_files)
+            # preview stretch apply (if present)
+            if getattr(self, 'preview_hist_apply', None) is not None:
+                try:
+                    self.preview_hist_apply.clicked.connect(self._apply_preview_stretch)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         # Connections
         # Connect dialog buttons to pickers
         if isinstance(self.input_btn, QPushButton):
             self.input_btn.clicked.connect(self._choose_input_folder)
-        if isinstance(self.output_btn, QPushButton):
-            self.output_btn.clicked.connect(self._choose_output_file)
+        if isinstance(self.log_btn, QPushButton):
+            self.log_btn.clicked.connect(self._choose_output_file)
 
         # SNR browsing and apply actions
         try:
@@ -915,8 +1118,8 @@ class ZeAnalyserMainWindow(QMainWindow):
         # Watch fields to enable/disable analyser
         if isinstance(self.input_path_edit, QLineEdit):
             self.input_path_edit.textChanged.connect(self._update_analyse_enabled)
-        if isinstance(self.output_path_edit, QLineEdit):
-            self.output_path_edit.textChanged.connect(self._update_analyse_enabled)
+        if isinstance(self.log_path_edit, QLineEdit):
+            self.log_path_edit.textChanged.connect(self._update_analyse_enabled)
 
         self._timer = None
         self._progress_value = 0
@@ -939,14 +1142,14 @@ class ZeAnalyserMainWindow(QMainWindow):
                 pass
 
             try:
-                if getattr(self, 'output_btn', None) is not None:
-                    self.output_btn.setToolTip(_('Choose the analysis log file (CSV/text)'))
+                if getattr(self, 'log_btn', None) is not None:
+                    self.log_btn.setToolTip(_('Choose the analysis log file (CSV/text)'))
             except Exception:
                 pass
 
             try:
-                if getattr(self, 'output_path_edit', None) is not None:
-                    self.output_path_edit.setToolTip(_('Path to the analysis log file'))
+                if getattr(self, 'log_path_edit', None) is not None:
+                    self.log_path_edit.setToolTip(_('Path to the analysis log file'))
             except Exception:
                 pass
 
@@ -992,6 +1195,20 @@ class ZeAnalyserMainWindow(QMainWindow):
                     self.sort_by_snr_cb.setToolTip(_('When checked results are sorted by SNR descending'))
             except Exception:
                 pass
+
+            # Set tooltips for token-dependent buttons if token not available
+            if not self.parent_token_available:
+                tooltip_text = _("token_dependency_missing_notice")
+                try:
+                    if self.analyse_and_stack_btn:
+                        self.analyse_and_stack_btn.setToolTip(tooltip_text)
+                except Exception:
+                    pass
+                try:
+                    if self.send_save_ref_btn:
+                        self.send_save_ref_btn.setToolTip(tooltip_text)
+                except Exception:
+                    pass
         except Exception:
             # Non-fatal; tooltips are additive only
             pass
@@ -1054,8 +1271,16 @@ class ZeAnalyserMainWindow(QMainWindow):
         try:
             if getattr(self, 'input_path_edit', None) is not None:
                 self.input_path_edit.setText(settings.value('paths/input', ''))
-            if getattr(self, 'output_path_edit', None) is not None:
-                self.output_path_edit.setText(settings.value('paths/log', ''))
+            if getattr(self, 'log_path_edit', None) is not None:
+                self.log_path_edit.setText(settings.value('paths/log', ''))
+
+            # If input is loaded but log is empty, suggest a default log path
+            if getattr(self, 'input_path_edit', None) is not None and getattr(self, 'log_path_edit', None) is not None:
+                input_path = self.input_path_edit.text().strip()
+                log_path = self.log_path_edit.text().strip()
+                if input_path and not log_path:
+                    suggested = self._suggest_log_path(input_path)
+                    self.log_path_edit.setText(suggested)
             if getattr(self, 'bortle_path_edit', None) is not None:
                 self.bortle_path_edit.setText(settings.value('paths/bortle', ''))
             if getattr(self, 'snr_reject_dir_edit', None) is not None:
@@ -1102,8 +1327,8 @@ class ZeAnalyserMainWindow(QMainWindow):
         try:
             if getattr(self, 'input_path_edit', None) is not None:
                 settings.setValue('paths/input', self.input_path_edit.text())
-            if getattr(self, 'output_path_edit', None) is not None:
-                settings.setValue('paths/log', self.output_path_edit.text())
+            if getattr(self, 'log_path_edit', None) is not None:
+                settings.setValue('paths/log', self.log_path_edit.text())
             if getattr(self, 'bortle_path_edit', None) is not None:
                 settings.setValue('paths/bortle', self.bortle_path_edit.text())
             if getattr(self, 'snr_reject_dir_edit', None) is not None:
@@ -1223,12 +1448,12 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             getattr(worker, 'signals', QObject()).finished.connect(self._on_worker_finished)
 
-        # connect resultsReady -> set_results (if provided by worker)
+        # connect resultsReady -> _on_results_ready (if provided by worker)
         try:
-            worker.resultsReady.connect(self.set_results)
+            worker.resultsReady.connect(self._on_results_ready)
         except Exception:
             try:
-                getattr(worker, 'signals', QObject()).resultsReady.connect(self.set_results)
+                getattr(worker, 'signals', QObject()).resultsReady.connect(self._on_results_ready)
             except Exception:
                 pass
         except Exception:
@@ -1242,6 +1467,29 @@ class ZeAnalyserMainWindow(QMainWindow):
             except Exception:
                 pass
 
+    def _on_status_changed(self, text: str):
+        """Slot for status changes from worker, mirrors Tk 'status' callback."""
+        if hasattr(self, 'statusBar'):
+            self.statusBar().showMessage(str(text))
+
+    def _on_progress_changed(self, value: float):
+        """Slot for progress changes from worker, mirrors Tk 'progress' callback."""
+        try:
+            self.progress.setValue(int(round(float(value))))
+        except Exception:
+            pass
+
+    def _on_log_line(self, text: str):
+        """Slot for log lines from worker, mirrors Tk 'log' callback."""
+        self._log(str(text))
+
+    def _on_results_ready(self, results):
+        """Slot for results ready from worker, populates Results table."""
+        self.set_results(results)
+        # After setting results, enable/disable buttons based on results
+        self._update_buttons_after_analysis()
+        self._update_marker_button_state()
+
     def _on_worker_status(self, text: str):
         if hasattr(self, 'statusBar'):
             self.statusBar().showMessage(str(text))
@@ -1249,6 +1497,19 @@ class ZeAnalyserMainWindow(QMainWindow):
     def _on_worker_progress(self, value: float):
         try:
             self.progress.setValue(int(round(float(value))))
+            # Update elapsed and remaining time
+            if hasattr(self, '_analysis_start_time') and self._analysis_start_time is not None:
+                elapsed = time.monotonic() - self._analysis_start_time
+                elapsed_str = time.strftime('%M:%S', time.gmtime(elapsed))
+                if hasattr(self, 'elapsed_label') and self.elapsed_label is not None:
+                    self.elapsed_label.setText(f"{_('elapsed_time_label')} {elapsed_str}")
+                # Estimate remaining time if value > 0
+                if value > 0:
+                    est_total = elapsed / (value / 100.0)
+                    remaining = max(0.0, est_total - elapsed)
+                    remaining_str = time.strftime('%M:%S', time.gmtime(remaining))
+                    if hasattr(self, 'remaining_label') and self.remaining_label is not None:
+                        self.remaining_label.setText(f"{_('remaining_time_label')} {remaining_str}")
         except Exception:
             pass
 
@@ -1260,11 +1521,26 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def _on_worker_finished(self, cancelled: bool):
         # reset UI state
-        self._log("Worker finished: cancelled=%s" % bool(cancelled))
+        self._log("Worker finished, QThread stopped.")
         if isinstance(self.analyse_btn, QPushButton):
             self.analyse_btn.setEnabled(True)
         if isinstance(self.cancel_btn, QPushButton):
             self.cancel_btn.setEnabled(False)
+        # reset timer labels
+        if hasattr(self, 'elapsed_label') and self.elapsed_label is not None:
+            self.elapsed_label.setText(f"{_('elapsed_time_label')} 00:00")
+        if hasattr(self, 'remaining_label') and self.remaining_label is not None:
+            self.remaining_label.setText(f"{_('remaining_time_label')} 00:00")
+
+        # If analysis completed successfully and stacking was requested, trigger stacking
+        if not cancelled and getattr(self, '_stack_after_analysis', False):
+            self._stack_after_analysis = False  # reset flag
+            self._log("Analysis completed, starting stacking workflow...")
+            try:
+                self._start_stacking_after_analysis()
+            except Exception as e:
+                self._log(f"Error starting stacking: {e}")
+
         # clear reference
         self._current_worker = None
 
@@ -1644,7 +1920,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         """
         opts = {}
         # Analysis toggles
-        opts['analyze_snr'] = bool(getattr(self, 'analyze_snr_cb', None) and self.analyze_snr_cb.isChecked())
+        opts['analyze_snr'] = True  # Force SNR analysis enabled
         opts['detect_trails'] = bool(getattr(self, 'detect_trails_cb', None) and self.detect_trails_cb.isChecked())
 
         # Configuration general
@@ -1674,27 +1950,27 @@ class ZeAnalyserMainWindow(QMainWindow):
         # SNR selection details (Phase 3B)
         try:
             if getattr(self, 'snr_mode_percent_rb', None) is not None and self.snr_mode_percent_rb.isChecked():
-                opts['snr_mode'] = 'percent'
+                opts['snr_selection_mode'] = 'percent'
             elif getattr(self, 'snr_mode_threshold_rb', None) is not None and self.snr_mode_threshold_rb.isChecked():
-                opts['snr_mode'] = 'threshold'
+                opts['snr_selection_mode'] = 'threshold'
             else:
-                opts['snr_mode'] = 'all'
+                opts['snr_selection_mode'] = 'none'
         except Exception:
-            opts['snr_mode'] = 'all'
+            opts['snr_selection_mode'] = 'none'
 
-        # numeric value (either percent or threshold) — keep None if missing
+        # numeric value (either percent or threshold) — keep None if missing or none
         try:
-            if getattr(self, 'snr_value_spin', None) is not None:
-                opts['snr_value'] = float(self.snr_value_spin.value())
+            if getattr(self, 'snr_value_spin', None) is not None and opts['snr_selection_mode'] != 'none':
+                opts['snr_selection_value'] = str(self.snr_value_spin.value())
             else:
-                opts['snr_value'] = None
+                opts['snr_selection_value'] = None
         except Exception:
-            opts['snr_value'] = None
+            opts['snr_selection_value'] = None
 
         try:
-            opts['snr_reject_dir'] = self.snr_reject_dir_edit.text().strip() if getattr(self, 'snr_reject_dir_edit', None) is not None else ''
+            opts['snr_reject_dir'] = self.snr_reject_dir_edit.text().strip() if opts['move_rejected'] else None
         except Exception:
-            opts['snr_reject_dir'] = ''
+            opts['snr_reject_dir'] = None
 
         # Action immediates
         try:
@@ -1720,9 +1996,9 @@ class ZeAnalyserMainWindow(QMainWindow):
             opts['trail_params'] = {}
 
         try:
-            opts['trail_reject_dir'] = self.trail_reject_dir_edit.text().strip() if getattr(self, 'trail_reject_dir_edit', None) is not None else ''
+            opts['trail_reject_dir'] = self.trail_reject_dir_edit.text().strip() if opts['move_rejected'] else None
         except Exception:
-            opts['trail_reject_dir'] = ''
+            opts['trail_reject_dir'] = None
 
         try:
             opts['apply_trail_action_immediately'] = False
@@ -1736,7 +2012,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             opts['input_path'] = ''
         try:
-            opts['output_path'] = self.output_path_edit.text().strip() if getattr(self, 'output_path_edit', None) is not None else ''
+            opts['output_path'] = self.log_path_edit.text().strip() if getattr(self, 'log_path_edit', None) is not None else ''
         except Exception:
             opts['output_path'] = ''
 
@@ -1750,34 +2026,46 @@ class ZeAnalyserMainWindow(QMainWindow):
         with real arguments.
         """
         input_path = self.input_path_edit.text().strip() if hasattr(self, 'input_path_edit') else ''
-        output_path = self.output_path_edit.text().strip() if hasattr(self, 'output_path_edit') else ''
+        output_path = self.log_path_edit.text().strip() if hasattr(self, 'log_path_edit') else ''
 
-        # Allow starting if input_path provided; if output_path is empty we will
-        # default it to a log file inside the input folder (parity with Tk).
-        if not input_path:
-            self._log("Missing input path — cannot start analysis")
+        # Validate input_path (parity with Tk)
+        import os
+        if not input_path or not os.path.isdir(input_path):
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, _("msg_error"), _("msg_input_dir_invalid"))
             return
+
+        # If output_path is empty, default it (parity with Tk)
         if not output_path:
             try:
                 import os
                 output_path = os.path.join(input_path, 'analyse_resultats.log')
                 # reflect default back into UI
                 try:
-                    self.output_path_edit.setText(output_path)
+                    self.log_path_edit.setText(output_path)
                 except Exception:
                     pass
             except Exception:
                 self._log("Missing output path — cannot start analysis")
                 return
 
+        # Log the paths being used
+        self._log(f"Using input dir: {input_path}, log file: {output_path}")
+
         # create the worker
         w = AnalysisWorker(step_ms=5)
         self._current_worker = w
         self._connect_worker_signals(w)
 
+        # log worker start
+        self._log("Worker started in QThread…")
+
         # update UI
         self.analyse_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
+
+        # Start timer for elapsed/remaining time
+        self._analysis_start_time = time.monotonic()
 
         # Build options dict from UI widgets (mirror of Tk behaviour)
         try:
@@ -1795,6 +2083,34 @@ class ZeAnalyserMainWindow(QMainWindow):
                 'apply_snr_action_immediately': False,
                 'apply_trail_action_immediately': False,
             }
+
+        # Prepare log callback that writes to file and emits to widget
+        import datetime
+        log_file_path = output_path
+        def log_callback(text_key, clear=False, **kwargs):
+            try:
+                # Translate the key using _translate like Tk version
+                text = _translate(text_key, **kwargs)
+                # Add timestamp like Tk version
+                timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+                full_text = f"[{timestamp}] {text}"
+                # Write to log file
+                try:
+                    with open(log_file_path, 'a', encoding='utf-8') as f:
+                        f.write(full_text + '\n')
+                except Exception:
+                    pass
+                # Emit to widget
+                w.logLine.emit(full_text)
+            except Exception as e:
+                # Fallback: log raw message
+                fallback_msg = str(text_key) if isinstance(text_key, str) else str(kwargs)
+                try:
+                    with open(log_file_path, 'a', encoding='utf-8') as f:
+                        f.write(fallback_msg + '\n')
+                except Exception:
+                    pass
+                w.logLine.emit(fallback_msg)
 
         # Validate options similarly to Tk: ensure move actions have appropriate target dirs
         # Debug snapshot of UI/options to help unit tests understand what's being validated
@@ -1824,7 +2140,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             # mirror the Tk behaviour and stop with a logged error instead of starting.
             if move_flag:
                 # debug trace for tests/validation
-                debug_msg = f"DEBUG_VALIDATE: move_flag={move_flag}, detect_trails={options.get('detect_trails')}, trail_reject_dir={options.get('trail_reject_dir')!r}, analyze_snr={options.get('analyze_snr')}, snr_mode={options.get('snr_mode')}, snr_reject_dir={options.get('snr_reject_dir')!r}"
+                debug_msg = f"DEBUG_VALIDATE: move_flag={move_flag}, detect_trails={options.get('detect_trails')}, trail_reject_dir={options.get('trail_reject_dir')!r}, analyze_snr={options.get('analyze_snr')}, snr_selection_mode={options.get('snr_selection_mode')}, snr_reject_dir={options.get('snr_reject_dir')!r}"
                 try:
                     self._log(debug_msg)
                 except Exception:
@@ -1839,7 +2155,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     self._log("ERROR: trail reject directory required when moving rejected trail images")
                     return
                 # if analyze_snr is enabled and snr selection isn't 'all', require snr_reject_dir
-                if (options.get('analyze_snr') or (getattr(self, 'analyze_snr_cb', None) is not None and self.analyze_snr_cb.isChecked())) and options.get('snr_mode', 'all') != 'all' and options.get('snr_reject_dir', '') == '':
+                if (options.get('analyze_snr') or (getattr(self, 'analyze_snr_cb', None) is not None and self.analyze_snr_cb.isChecked())) and options.get('snr_selection_mode', 'all') != 'all' and options.get('snr_reject_dir', '') == '':
                     self._log("ERROR: snr reject directory required when moving rejected SNR images")
                     return
         except Exception:
@@ -1849,7 +2165,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             import analyse_logic
 
             if hasattr(analyse_logic, 'perform_analysis'):
-                w.start(analyse_logic.perform_analysis, input_path, output_path, options)
+                w.start(analyse_logic.perform_analysis, input_path, output_path, options, log_callback=log_callback)
                 return
         except Exception:
             # ignore failures importing analyse_logic — run simulation instead
@@ -1858,14 +2174,94 @@ class ZeAnalyserMainWindow(QMainWindow):
         # start simulation-fallback
         w.start()
 
-    def _start_analysis_and_stack(self):
-        """Start analysis and trigger stacking afterwards (stubbed)."""
-        # For now, calling _start_analysis and set a flag to indicate stack-after
+    def _start_stacking_after_analysis(self):
+        """Called after analysis completes to start the stacking workflow."""
+        self._log("Starting stacking workflow after analysis...")
         try:
-            # set a lightweight flag to represent stacking after analysis
-            self.stack_after_analysis = True
-        except Exception:
-            pass
+            # Detection step: check if stacking is available
+            if not self.parent_token_available:
+                self._log("Stacking not available - token.zsss not found")
+                return
+
+            # Apply recommendations automatically
+            self._apply_recommendations_gui()
+            # Organize files automatically
+            self._organize_files_auto()
+            # Send reference to main
+            try:
+                self.send_reference_to_main()
+            except Exception:
+                pass
+            # Create a simple stack plan
+            self._create_simple_stack_plan()
+            # Then attempt to run the stacking script
+            self._run_stacking_script()
+        except Exception as e:
+            self._log(f"Error in stacking workflow: {e}")
+
+    def _create_simple_stack_plan(self):
+        """Create a simple stack plan from current results."""
+        try:
+            # Get analysis results
+            rows = None
+            if getattr(self, '_results_model', None) is not None and hasattr(self._results_model, '_rows'):
+                rows = list(self._results_model._rows)
+            elif getattr(self, '_results_rows', None) is not None:
+                rows = list(self._results_rows)
+
+            if not rows:
+                self._log("No results available for stack plan")
+                return
+
+            # Filter for 'ok' status and 'kept' action
+            kept_results = [r for r in rows if r.get('status') == 'ok' and r.get('action') == 'kept']
+
+            if not kept_results:
+                self._log("No images kept for stacking")
+                return
+
+            # Import stack_plan module
+            import stack_plan
+
+            # Create stack plan with default parameters
+            stack_plan_rows = stack_plan.generate_stacking_plan(
+                kept_results,
+                sort_by=['mount', 'bortle', 'telescope', 'date', 'filter', 'exposure']
+            )
+
+            if stack_plan_rows:
+                # Save to CSV
+                csv_path = os.path.join(os.path.dirname(self.log_path_edit.text().strip() or ''), 'stack_plan.csv')
+                stack_plan.write_stacking_plan_csv(stack_plan_rows, csv_path)
+                self._log(f"Stack plan created: {csv_path} with {len(stack_plan_rows)} batches")
+
+                # Store in the Stack Plan tab
+                self.set_stack_plan_rows(stack_plan_rows)
+                self._last_stack_plan_path = csv_path
+            else:
+                self._log("Stack plan generation returned no results")
+
+        except Exception as e:
+            self._log(f"Error creating stack plan: {e}")
+
+    def _run_stacking_script(self):
+        """Run the stacking script after creating the plan."""
+        try:
+            # For now, just prepare a script preview
+            script_content = self._prepare_stacking_script()
+            if script_content:
+                self._log("Stacking script prepared (preview mode)")
+                # In a full implementation, this would launch main_stacking_script.py
+                # with appropriate arguments
+            else:
+                self._log("No stacking script generated")
+        except Exception as e:
+            self._log(f"Error preparing stacking script: {e}")
+
+    def _start_analysis_and_stack(self):
+        """Start analysis and trigger stacking afterwards."""
+        # Set a lightweight flag to represent stacking after analysis
+        self._stack_after_analysis = True
         self._start_analysis()
 
     def _cancel_current_worker(self):
@@ -1876,6 +2272,11 @@ class ZeAnalyserMainWindow(QMainWindow):
                 # QRunnable-based workers may expose signals only; best-effort
                 self._log('Cancel requested (best-effort)')
 
+    def _suggest_log_path(self, input_dir: str) -> str:
+        """Suggest a default log file path inside the input directory, matching Tk behavior."""
+        import os
+        return os.path.join(input_dir, 'analyse_resultats.log')
+
     def _choose_input_folder(self) -> None:
         if QFileDialog is object:
             # cannot open dialogs in this environment
@@ -1884,18 +2285,29 @@ class ZeAnalyserMainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "Select input folder", "")
         if folder:
             self.input_path_edit.setText(folder)
-            # If there is no log file chosen yet, follow Tk behaviour and
-            # prefill a default log path inside the input folder
+            # Always suggest and set the default log path, matching Tk behavior
             try:
-                current = self.output_path_edit.text().strip() if hasattr(self, 'output_path_edit') else ''
+                suggested_log = self._suggest_log_path(folder)
+                self.log_path_edit.setText(suggested_log)
             except Exception:
-                current = ''
-            if not current:
-                import os
-                try:
-                    self.output_path_edit.setText(os.path.join(folder, 'analyse_resultats.log'))
-                except Exception:
-                    pass
+                pass
+            # Also set default reject dirs, matching Tk
+            try:
+                self.snr_reject_dir_edit.setText(os.path.join(folder, "rejected_low_snr"))
+                self.trail_reject_dir_edit.setText(os.path.join(folder, "rejected_satellite_trails"))
+            except Exception:
+                pass
+            # Save paths to QSettings
+            try:
+                settings = QSettings()
+                settings.setValue('paths/input', folder)
+                settings.setValue('paths/log', suggested_log)
+                settings.setValue('paths/snr_reject', os.path.join(folder, "rejected_low_snr"))
+                settings.setValue('paths/trail_reject', os.path.join(folder, "rejected_satellite_trails"))
+            except Exception:
+                pass
+
+            self._update_marker_button_state()
 
     def _choose_output_file(self) -> None:
         if QFileDialog is object:
@@ -1905,13 +2317,19 @@ class ZeAnalyserMainWindow(QMainWindow):
             self, "Select log file", "", "Log Files (*.log);;All Files (*)"
         )
         if filename:
-            self.output_path_edit.setText(filename)
+            self.log_path_edit.setText(filename)
+            # Save log path to QSettings
+            try:
+                settings = QSettings()
+                settings.setValue('paths/log', filename)
+            except Exception:
+                pass
 
     def _open_log_file(self) -> None:
         """Open the log file with the system default application (best-effort)."""
         try:
             import os, subprocess
-            path = self.output_path_edit.text().strip() if getattr(self, 'output_path_edit', None) is not None else ''
+            path = self.log_path_edit.text().strip() if getattr(self, 'log_path_edit', None) is not None else ''
             if not path:
                 self._log("No log file selected to open")
                 return
@@ -1923,20 +2341,222 @@ class ZeAnalyserMainWindow(QMainWindow):
             self._log(f"Open log failed: {e}")
 
     def _create_stack_plan(self) -> None:
-        """Trigger creation of stack plan via stack_plan.py (best-effort)."""
+        """Create a stack plan from current analysis results."""
         try:
+            rows = self._get_analysis_results_rows()
+            if not rows:
+                self._log(_("stack_plan_alert_no_analysis"))
+                return
+
+            # Filter for 'ok' status and 'kept' action
+            kept_results = [r for r in rows if r.get('status') == 'ok' and r.get('action') == 'kept']
+            if not kept_results:
+                self._log(_("msg_export_no_images"))
+                return
+
+            # Import stack_plan module
             import stack_plan
-            # If stack_plan exposes a function, call it; otherwise log
-            if hasattr(stack_plan, 'create_stack_plan'):
-                try:
-                    res = stack_plan.create_stack_plan()
-                    self._log(f"Stack plan created: {res}")
-                except Exception as e:
-                    self._log(f"Stack plan creation error: {e}")
+
+            # Generate stacking plan with default parameters
+            stack_plan_rows = stack_plan.generate_stacking_plan(
+                kept_results,
+                sort_by=['mount', 'bortle', 'telescope', 'date', 'filter', 'exposure']
+            )
+
+            if not stack_plan_rows:
+                self._log(_("msg_export_no_images"))
+                return
+
+            # Save to CSV in the same folder as the log
+            log_path = getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip()
+            if log_path:
+                csv_path = os.path.join(os.path.dirname(log_path), 'stack_plan.csv')
             else:
-                self._log("stack_plan module detected (no create function) — TODO call with real args")
-        except Exception:
-            self._log("stack_plan module unavailable or errored — cannot create stack plan from Qt yet")
+                csv_path = 'stack_plan.csv'
+
+            stack_plan.write_stacking_plan_csv(stack_plan_rows, csv_path)
+            self._last_stack_plan_path = csv_path
+            self._log(f"Stack plan created: {csv_path} with {len(stack_plan_rows)} batches")
+            # Store in the Stack Plan tab
+            self.set_stack_plan_rows(stack_plan_rows)
+
+        except Exception as e:
+            self._log(f"Error creating stack plan: {e}")
+
+    def open_stack_plan_window(self):
+        """Open a window to create a stacking plan CSV with advanced options."""
+        try:
+            rows = self._get_analysis_results_rows()
+            if not rows:
+                self._log(_("stack_plan_alert_no_analysis"))
+                return
+
+            kept_results = [r for r in rows if r.get('status') == 'ok' and r.get('action') == 'kept']
+
+            if not kept_results:
+                self._log(_("msg_export_no_images"))
+                return
+
+            # Create advanced dialog
+            from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QComboBox, QPushButton, QGroupBox, QScrollArea, QWidget, QMessageBox
+            from PySide6.QtCore import Qt
+
+            dialog = QDialog(self)
+            dialog.setWindowTitle(_("stack_plan_window_title"))
+            dialog.resize(800, 600)
+
+            layout = QVBoxLayout(dialog)
+
+            # Scroll area for criteria
+            scroll = QScrollArea()
+            scroll_widget = QWidget()
+            scroll_layout = QVBoxLayout(scroll_widget)
+
+            # Get unique values
+            unique = {
+                'mount': sorted(set(r.get('mount', '') for r in kept_results if r.get('mount'))),
+                'bortle': sorted(set(str(r.get('bortle', '')) for r in kept_results if r.get('bortle') is not None)),
+                'telescope': sorted(set(r.get('telescope', 'Unknown') for r in kept_results if r.get('telescope'))),
+                'session_date': sorted(set((r.get('date_obs', '').split('T')[0]) for r in kept_results if r.get('date_obs'))),
+                'filter': sorted(set(r.get('filter', '') for r in kept_results if r.get('filter'))),
+                'exposure': sorted(set(str(r.get('exposure', '')) for r in kept_results if r.get('exposure') is not None)),
+            }
+
+            criteria_vars = {}
+            sort_vars = {}
+
+            for cat, values in unique.items():
+                group = QGroupBox(_(cat) if _(cat) != cat else cat.capitalize())
+                group_layout = QVBoxLayout(group)
+
+                # Checkboxes for values
+                val_layout = QHBoxLayout()
+                val_vars = {}
+                for val in values:
+                    cb = QCheckBox(str(val))
+                    cb.setChecked(True)
+                    val_layout.addWidget(cb)
+                    val_vars[val] = cb
+                group_layout.addLayout(val_layout)
+
+                # Sort order combo
+                sort_layout = QHBoxLayout()
+                sort_layout.addWidget(QLabel(_("sort_order")))
+                sort_combo = QComboBox()
+                sort_combo.addItems([_("ascending"), _("descending")])
+                sort_combo.setCurrentText(_("ascending"))
+                sort_layout.addWidget(sort_combo)
+                group_layout.addLayout(sort_layout)
+
+                criteria_vars[cat] = val_vars
+                sort_vars[cat] = sort_combo
+
+                scroll_layout.addWidget(group)
+
+            scroll.setWidget(scroll_widget)
+            scroll.setWidgetResizable(True)
+            layout.addWidget(scroll)
+
+            # Preview labels
+            preview_layout = QHBoxLayout()
+            total_label = QLabel(_("stack_plan_preview_total", count=0))
+            batch_label = QLabel(_("stack_plan_preview_batches", count=0))
+            preview_layout.addWidget(total_label)
+            preview_layout.addWidget(batch_label)
+            layout.addLayout(preview_layout)
+
+            # Buttons
+            button_layout = QHBoxLayout()
+            generate_btn = QPushButton(_("generate_plan_button"))
+            cancel_btn = QPushButton(_("cancel_button"))
+            button_layout.addStretch()
+            button_layout.addWidget(cancel_btn)
+            button_layout.addWidget(generate_btn)
+            layout.addLayout(button_layout)
+
+            def update_preview():
+                criteria = {}
+                for cat, var_map in criteria_vars.items():
+                    selected = [v for v, cb in var_map.items() if cb.isChecked()]
+                    if len(selected) != len(var_map):
+                        criteria[cat] = selected
+
+                sort_spec = []
+                for cat in ['mount', 'bortle', 'telescope', 'session_date', 'filter', 'exposure']:
+                    if cat in sort_vars:
+                        order = sort_vars[cat].currentText()
+                        reverse = order == _("descending")
+                        sort_spec.append((cat, reverse))
+
+                import stack_plan
+                plan_rows = stack_plan.generate_stacking_plan(
+                    kept_results,
+                    criteria=criteria,
+                    sort_by=sort_spec
+                )
+
+                total_count = len(plan_rows)
+                batch_count = len(set(r.get('batch_id', 0) for r in plan_rows))
+
+                total_label.setText(_("stack_plan_preview_total", count=total_count))
+                batch_label.setText(_("stack_plan_preview_batches", count=batch_count))
+
+            def generate_plan():
+                criteria = {}
+                for cat, var_map in criteria_vars.items():
+                    selected = [v for v, cb in var_map.items() if cb.isChecked()]
+                    if len(selected) != len(var_map):
+                        criteria[cat] = selected
+
+                sort_spec = []
+                for cat in ['mount', 'bortle', 'telescope', 'session_date', 'filter', 'exposure']:
+                    if cat in sort_vars:
+                        order = sort_vars[cat].currentText()
+                        reverse = order == _("descending")
+                        sort_spec.append((cat, reverse))
+
+                import stack_plan
+                plan_rows = stack_plan.generate_stacking_plan(
+                    kept_results,
+                    criteria=criteria,
+                    sort_by=sort_spec
+                )
+
+                if not plan_rows:
+                    QMessageBox.warning(dialog, _("msg_warning"), _("msg_export_no_images"))
+                    return
+
+                log_path = getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip()
+                if log_path:
+                    csv_path = os.path.join(os.path.dirname(log_path), 'stack_plan.csv')
+                else:
+                    csv_path = 'stack_plan.csv'
+
+                try:
+                    stack_plan.write_stacking_plan_csv(plan_rows, csv_path)
+                    self._last_stack_plan_path = csv_path
+                    self._log(f"Stack plan created: {csv_path} with {len(plan_rows)} batches")
+                    self.set_stack_plan_rows(plan_rows)
+                    QMessageBox.information(dialog, _("msg_info"), _("stack_plan_created", path=csv_path))
+                    dialog.accept()
+                except Exception as e:
+                    QMessageBox.critical(dialog, _("msg_error"), str(e))
+
+            # Connect signals
+            for cat_vars in criteria_vars.values():
+                for cb in cat_vars.values():
+                    cb.stateChanged.connect(update_preview)
+            for combo in sort_vars.values():
+                combo.currentTextChanged.connect(update_preview)
+
+            generate_btn.clicked.connect(generate_plan)
+            cancel_btn.clicked.connect(dialog.reject)
+
+            update_preview()
+            dialog.exec()
+
+        except Exception as e:
+            self._log(f"Error opening stack plan window: {e}")
 
     def _export_stack_plan_csv(self, dest_path: str = None) -> str:
         """Export the current stack plan to CSV.
@@ -2133,6 +2753,16 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         return
 
+    def _on_visual_apply_snr(self) -> None:
+        """Apply SNR filter from visualization dialog."""
+        # For now, just log that this would apply the current slider range
+        self._log("Apply SNR filter from visualization (not yet implemented)")
+
+    def _on_visual_apply_fwhm(self) -> None:
+        """Apply FWHM filter from visualization dialog."""
+        # For now, just log that this would apply the current slider range
+        self._log("Apply FWHM filter from visualization (not yet implemented)")
+
     def _on_apply_trail_rejection(self) -> None:
         """Mirror of Tk: flag rows for trail pending action and call logic."""
         try:
@@ -2192,9 +2822,1402 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             pass
 
+    def _on_lang_changed(self, lang: str) -> None:
+        """Handle language change from the combo box."""
+        if lang == 'auto':
+            lang = 'fr'  # default to French for now
+        try:
+            zone.set_lang(lang)
+            self._retranslate_ui()
+        except Exception:
+            pass
+
+    def _retranslate_ui(self) -> None:
+        """Update UI texts when language changes."""
+        try:
+            # Update window title
+            self.setWindowTitle(zone._("window_title"))
+            # Update group box titles
+            if hasattr(self, 'snr_group_box') and self.snr_group_box is not None:
+                self.snr_group_box.setTitle(zone._("snr_frame_title"))
+            if hasattr(self, 'trail_group_box') and self.trail_group_box is not None:
+                self.trail_group_box.setTitle(zone._("trail_frame_title"))
+            # Update buttons
+            if hasattr(self, 'cancel_btn') and self.cancel_btn is not None:
+                self.cancel_btn.setText(zone._("cancel_button"))
+            # Update placeholders
+            if hasattr(self, 'results_filter') and self.results_filter is not None:
+                self.results_filter.setPlaceholderText(zone._("filter_results_placeholder"))
+            if hasattr(self, 'stack_filter') and self.stack_filter is not None:
+                self.stack_filter.setPlaceholderText(zone._("filter_stack_plan_placeholder"))
+            # Update preview label
+            if hasattr(self, 'preview_image_label') and self.preview_image_label is not None:
+                self.preview_image_label.setText(zone._("no_preview_selected"))
+            # Update stack buttons
+            if hasattr(self, 'stack_export_csv_btn') and self.stack_export_csv_btn is not None:
+                self.stack_export_csv_btn.setText(zone._("stack_export_csv"))
+            if hasattr(self, 'stack_prepare_script_btn') and self.stack_prepare_script_btn is not None:
+                self.stack_prepare_script_btn.setText(zone._("stack_prepare_script"))
+            # Update checkbox
+            if hasattr(self, 'snr_apply_immediately_cb') and self.snr_apply_immediately_cb is not None:
+                self.snr_apply_immediately_cb.setText(zone._("apply_immediately"))
+            # Update status bar
+            if hasattr(self, 'statusBar'):
+                self.statusBar().showMessage(zone._("status_ready"))
+
+            # Update bottom buttons (Qt)
+            if hasattr(self, 'analyse_images_btn') and self.analyse_images_btn is not None:
+                self.analyse_images_btn.setText(zone._("analyse_button"))
+            if hasattr(self, 'analyse_and_stack_btn') and self.analyse_and_stack_btn is not None:
+                self.analyse_and_stack_btn.setText(zone._("analyse_stack_button"))
+            if hasattr(self, 'open_log_btn') and self.open_log_btn is not None:
+                self.open_log_btn.setText(zone._("open_log_button"))
+            if hasattr(self, 'create_stack_plan_btn') and self.create_stack_plan_btn is not None:
+                self.create_stack_plan_btn.setText(zone._("create_stack_plan_button"))
+            if hasattr(self, 'manage_markers_btn') and self.manage_markers_btn is not None:
+                self.manage_markers_btn.setText(zone._("manage_markers_button"))
+            if hasattr(self, 'visualise_results_btn') and self.visualise_results_btn is not None:
+                self.visualise_results_btn.setText(zone._("visualize_button"))
+            if hasattr(self, 'apply_recos_btn') and self.apply_recos_btn is not None:
+                self.apply_recos_btn.setText(zone._("apply_reco_button"))
+            if hasattr(self, 'send_save_ref_btn') and self.send_save_ref_btn is not None:
+                self.send_save_ref_btn.setText(zone._("use_best_reference_button"))
+            if hasattr(self, 'quit_btn') and self.quit_btn is not None:
+                self.quit_btn.setText(zone._("quit_button"))
+        except Exception:
+            pass
+
+    def _has_markers_in_input_dir(self) -> bool:
+        import os
+        input_dir = self.input_path_edit.text().strip() if hasattr(self, 'input_path_edit') else ''
+        if not input_dir or not os.path.isdir(input_dir):
+            return False
+
+        marker_filename = ".astro_analyzer_run_complete"
+        abs_input_dir = os.path.abspath(input_dir)
+
+        # Exclude reject directories like in _manage_markers
+        reject_dirs_to_exclude_abs = []
+        try:
+            if getattr(self, 'reject_move_rb', None) is not None and self.reject_move_rb.isChecked():
+                snr_dir = self.snr_reject_dir_edit.text().strip() if hasattr(self, 'snr_reject_dir_edit') else ''
+                trail_dir = self.trail_reject_dir_edit.text().strip() if hasattr(self, 'trail_reject_dir_edit') else ''
+                if snr_dir:
+                    reject_dirs_to_exclude_abs.append(os.path.abspath(snr_dir))
+                if trail_dir:
+                    reject_dirs_to_exclude_abs.append(os.path.abspath(trail_dir))
+        except Exception:
+            pass
+
+        try:
+            for dirpath, dirnames, filenames in os.walk(abs_input_dir, topdown=True):
+                current_dir_abs = os.path.abspath(dirpath)
+                # Exclude reject directories from traversal
+                dirs_to_remove = [d for d in dirnames if os.path.abspath(os.path.join(current_dir_abs, d)) in reject_dirs_to_exclude_abs]
+                for dname in dirs_to_remove:
+                    dirnames.remove(dname)
+                if marker_filename in filenames:
+                    return True
+        except OSError:
+            return False
+
+        return False
+
+    def _update_marker_button_state(self):
+        has_markers = self._has_markers_in_input_dir()
+        try:
+            if self.manage_markers_btn:
+                self.manage_markers_btn.setEnabled(has_markers)
+        except Exception:
+            pass
+
+    def _update_buttons_after_analysis(self) -> None:
+        """Enable/disable buttons after analysis completes."""
+        has_results = bool(getattr(self, '_results_model', None) or getattr(self, '_results_rows', None))
+        has_log = bool(getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip())
+        has_recos = bool(getattr(self, '_results_rows', None) and any(r.get('recommended') for r in self._results_rows))
+
+        # Enable/disable based on presence of results
+        try:
+            if self.visualise_results_btn:
+                self.visualise_results_btn.setEnabled(has_results)
+            if self.apply_recos_btn:
+                self.apply_recos_btn.setEnabled(has_recos)
+            if self.manage_markers_btn:
+                self._update_marker_button_state()  # Enable only if markers present
+            if self.open_log_btn:
+                self.open_log_btn.setEnabled(has_log)
+            if self.create_stack_plan_btn:
+                self.create_stack_plan_btn.setEnabled(has_results)
+            # Enable reference buttons if best reference exists and token is available
+            best_ref = self._get_best_reference()
+            if self.send_save_ref_btn:
+                self.send_save_ref_btn.setEnabled(bool(best_ref) and self.parent_token_available)
+        except Exception:
+            pass
+
+    def _get_analysis_results_rows(self):
+        """Retrieve the list of analysis result dicts from the current model or fallback."""
+        if getattr(self, '_results_model', None) is not None and hasattr(self._results_model, '_rows'):
+            return list(self._results_model._rows)
+        elif getattr(self, '_results_rows', None) is not None:
+            return list(self._results_rows)
+        return []
+
+    def _get_best_reference(self):
+        """Get the best reference image path from results."""
+        rows = self._get_analysis_results_rows()
+        if not rows:
+            return None
+
+        # Simple selection: highest SNR image
+        valid = [r for r in rows if r.get('status') == 'ok' and r.get('snr') is not None]
+        if not valid:
+            return None
+        best = max(valid, key=lambda r: r['snr'])
+        return best.get('path') or best.get('file_path')
+
+    def send_reference_to_main(self):
+        """Send the selected reference path to the parent GUI or command file."""
+        path = self._get_best_reference()
+        if not path:
+            self._log("No best reference available to send")
+            return
+
+        # Try to find command file or token file
+        command_file = getattr(self, 'command_file_path', None) or os.environ.get('ZEANALYSER_COMMAND_FILE')
+        if not command_file:
+            # Look for common token/command files
+            possible_files = [
+                os.path.join(os.getcwd(), 'zeanalyser_command.txt'),
+                os.path.join(os.getcwd(), 'stacker_command.txt'),
+                os.path.join(os.path.expanduser('~'), '.zeanalyser_command.txt')
+            ]
+            for f in possible_files:
+                if os.path.exists(f):
+                    command_file = f
+                    break
+
+        if command_file:
+            try:
+                # Read existing content
+                existing_content = ""
+                if os.path.exists(command_file):
+                    with open(command_file, 'r', encoding='utf-8') as f:
+                        existing_content = f.read().strip()
+
+                # Append or update reference info
+                import datetime
+                timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                ref_line = f"REFERENCE={path}"
+                time_line = f"TIMESTAMP={timestamp}"
+
+                lines = existing_content.split('\n') if existing_content else []
+                # Remove old reference lines
+                lines = [l for l in lines if not l.startswith('REFERENCE=') and not l.startswith('TIMESTAMP=')]
+                # Add new lines
+                lines.extend([ref_line, time_line])
+
+                # Write back
+                with open(command_file, 'w', encoding='utf-8') as f:
+                    f.write('\n'.join(lines))
+
+                self._log(f"Reference sent to command file: {command_file} -> {path}")
+
+            except Exception as e:
+                self._log(f"Error writing to command file {command_file}: {e}")
+        else:
+            # Fallback: just log the reference
+            self._log(f"Best reference selected: {path} (no command file found)")
+
+    def _on_save_reference(self):
+        """Open a dialog to save the computed reference image."""
+        path = self._get_best_reference()
+        if not path:
+            self._log("No reference to save")
+            return
+
+        try:
+            from PySide6.QtWidgets import QFileDialog
+            save_path, _ = QFileDialog.getSaveFileName(
+                self, "Save Reference Image", "",
+                "FITS Files (*.fits *.fit);;All Files (*)"
+            )
+            if save_path:
+                # Copy the reference file to the new location
+                import shutil
+                shutil.copy2(path, save_path)
+                self._log(f"Reference image saved to: {save_path}")
+        except Exception as e:
+            self._log(f"Error saving reference image: {e}")
+
+    def _manage_markers(self):
+        """Manage analysis markers by scanning input directory for marker files."""
+        try:
+            from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QHBoxLayout, QMessageBox
+
+            input_dir = self.input_path_edit.text().strip() if hasattr(self, 'input_path_edit') else ''
+            if not input_dir or not os.path.isdir(input_dir):
+                QMessageBox.warning(self, _("msg_warning"), _("msg_input_dir_invalid"))
+                return
+
+            marker_filename = ".astro_analyzer_run_complete"
+            marked_dirs_rel = []
+            marked_dirs_abs = []
+            abs_input_dir = os.path.abspath(input_dir)
+
+            # Exclude reject directories from scan
+            reject_dirs_to_exclude_abs = []
+            try:
+                if hasattr(self, 'reject_move_rb') and self.reject_move_rb.isChecked():
+                    snr_dir = self.snr_reject_dir_edit.text().strip() if hasattr(self, 'snr_reject_dir_edit') else ''
+                    trail_dir = self.trail_reject_dir_edit.text().strip() if hasattr(self, 'trail_reject_dir_edit') else ''
+                    if snr_dir:
+                        reject_dirs_to_exclude_abs.append(os.path.abspath(snr_dir))
+                    if trail_dir:
+                        reject_dirs_to_exclude_abs.append(os.path.abspath(trail_dir))
+            except Exception:
+                pass
+
+            # Scan directories for markers
+            try:
+                for dirpath, dirnames, filenames in os.walk(abs_input_dir, topdown=True):
+                    current_dir_abs = os.path.abspath(dirpath)
+
+                    # Exclude reject directories from traversal
+                    dirs_to_remove = [d for d in dirnames if os.path.abspath(os.path.join(current_dir_abs, d)) in reject_dirs_to_exclude_abs]
+                    for dname in dirs_to_remove:
+                        dirnames.remove(dname)
+
+                    # Check for marker presence
+                    marker_path = os.path.join(current_dir_abs, marker_filename)
+                    if os.path.exists(marker_path):
+                        rel_path = os.path.relpath(current_dir_abs, abs_input_dir)
+                        marked_dirs_rel.append('.' if rel_path == '.' else rel_path)
+                        marked_dirs_abs.append(current_dir_abs)
+            except OSError as e:
+                QMessageBox.critical(self, _("msg_error"), f"Error scanning directories:\n{e}")
+                return
+
+            # Create dialog
+            dialog = QDialog(self)
+            dialog.setWindowTitle(_("marker_window_title", default="Manage Analysis Markers"))
+            dialog.resize(600, 400)
+
+            layout = QVBoxLayout(dialog)
+
+            # Info label
+            info_label = QLabel(_("marker_info_label", default="Directories marked as analyzed (contain marker file):"))
+            layout.addWidget(info_label)
+
+            # List widget for marked directories
+            list_widget = QListWidget()
+            layout.addWidget(list_widget)
+
+            # Fill list and create mapping
+            rel_to_abs_map = {}
+            for rel, abs_p in zip(marked_dirs_rel, marked_dirs_abs):
+                rel_to_abs_map[rel] = abs_p
+                item = QListWidgetItem(rel)
+                list_widget.addItem(item)
+
+            if not marked_dirs_rel:
+                list_widget.addItem(_("marker_none_found", default="No marked directories found."))
+                list_widget.setEnabled(False)
+
+            # Buttons
+            button_layout = QHBoxLayout()
+
+            delete_selected_btn = QPushButton(_("marker_delete_selected_button", default="Delete Selected"))
+            delete_selected_btn.clicked.connect(lambda: self._delete_selected_markers(dialog, list_widget, rel_to_abs_map, marker_filename, abs_input_dir, reject_dirs_to_exclude_abs))
+            button_layout.addWidget(delete_selected_btn)
+
+            delete_all_btn = QPushButton(_("marker_delete_all_button", default="Delete All"))
+            delete_all_btn.clicked.connect(lambda: self._delete_all_markers(dialog, list_widget, rel_to_abs_map, marker_filename))
+            button_layout.addWidget(delete_all_btn)
+
+            close_btn = QPushButton(_("close_button"))
+            close_btn.clicked.connect(dialog.accept)
+            button_layout.addWidget(close_btn)
+
+            layout.addLayout(button_layout)
+
+            # Disable buttons if no markers
+            if not marked_dirs_rel:
+                delete_selected_btn.setEnabled(False)
+                delete_all_btn.setEnabled(False)
+
+            dialog.exec()
+
+        except Exception as e:
+            self._log(f"Error managing markers: {e}")
+
+    def _delete_selected_markers(self, dialog, list_widget, rel_to_abs_map, marker_filename, abs_input_dir, reject_dirs_to_exclude_abs):
+        """Delete markers for selected directories."""
+        from PySide6.QtWidgets import QMessageBox
+
+        selected_items = list_widget.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(dialog, _("msg_warning"), _("marker_select_none", default="Please select one or more directories."))
+            return
+
+        count = len(selected_items)
+        confirm_msg = _("marker_confirm_delete_selected", default="Delete markers for {count} selected directories?\nThis will force re-analysis on next run.").format(count=count)
+        if QMessageBox.question(dialog, _("msg_warning"), confirm_msg) != QMessageBox.Yes:
+            return
+
+        deleted_count = 0
+        errors = []
+
+        for item in selected_items:
+            rel_path = item.text()
+            abs_path = rel_to_abs_map.get(rel_path)
+            if not abs_path:
+                errors.append(f"{rel_path}: Absolute path not found")
+                continue
+            marker_path = os.path.join(abs_path, marker_filename)
+            try:
+                if os.path.exists(marker_path):
+                    os.remove(marker_path)
+                    deleted_count += 1
+                else:
+                    deleted_count += 1  # Count as success if already gone
+            except Exception as e:
+                errors.append(f"{rel_path}: {e}")
+
+        # Refresh list
+        self._refresh_marker_list(list_widget, rel_to_abs_map, marker_filename, abs_input_dir, reject_dirs_to_exclude_abs)
+
+        self._update_marker_button_state()
+
+        if errors:
+            QMessageBox.warning(dialog, _("msg_error"), _("marker_delete_errors", default="Errors deleting some markers:\n") + "\n".join(errors))
+        elif deleted_count > 0:
+            QMessageBox.information(dialog, _("msg_info"), _("marker_delete_selected_success", default="{count} marker(s) deleted.").format(count=deleted_count))
+
+    def _delete_all_markers(self, dialog, list_widget, rel_to_abs_map, marker_filename):
+        """Delete all markers."""
+        from PySide6.QtWidgets import QMessageBox
+
+        abs_paths = list(rel_to_abs_map.values())
+        if not abs_paths:
+            QMessageBox.information(dialog, _("msg_info"), _("marker_none_found", default="No marked directories found."))
+            return
+
+        count = len(abs_paths)
+        folder = os.path.basename(list(rel_to_abs_map.keys())[0]) if rel_to_abs_map else "folder"
+        confirm_msg = _("marker_confirm_delete_all", default="Delete ALL markers ({count}) in folder '{folder}' and subfolders?\nThis will force complete re-analysis.").format(count=count, folder=folder)
+        if QMessageBox.question(dialog, _("msg_warning"), confirm_msg) != QMessageBox.Yes:
+            return
+
+        deleted_count = 0
+        errors = []
+
+        for abs_path in abs_paths:
+            marker_path = os.path.join(abs_path, marker_filename)
+            try:
+                if os.path.exists(marker_path):
+                    os.remove(marker_path)
+                    deleted_count += 1
+            except Exception as e:
+                errors.append(f"{os.path.relpath(abs_path, os.path.dirname(abs_path))}: {e}")
+
+        # Clear list
+        list_widget.clear()
+        list_widget.addItem(_("marker_none_found", default="No marked directories found."))
+        list_widget.setEnabled(False)
+        rel_to_abs_map.clear()
+
+        self._update_marker_button_state()
+
+        if errors:
+            QMessageBox.warning(dialog, _("msg_error"), _("marker_delete_errors", default="Errors deleting some markers:\n") + "\n".join(errors))
+        elif deleted_count > 0:
+            QMessageBox.information(dialog, _("msg_info"), _("marker_delete_all_success", default="All {count} marker(s) deleted.").format(count=deleted_count))
+
+    def _refresh_marker_list(self, list_widget, rel_to_abs_map, marker_filename, abs_input_dir, reject_dirs_to_exclude_abs):
+        """Refresh the marker list after deletions."""
+        list_widget.clear()
+        rel_to_abs_map.clear()
+
+        marked_dirs_rel = []
+        marked_dirs_abs = []
+
+        try:
+            for dirpath, dirnames, filenames in os.walk(abs_input_dir, topdown=True):
+                current_dir_abs = os.path.abspath(dirpath)
+                dirs_to_remove = [d for d in dirnames if os.path.abspath(os.path.join(current_dir_abs, d)) in reject_dirs_to_exclude_abs]
+                for dname in dirs_to_remove:
+                    dirnames.remove(dname)
+                marker_path = os.path.join(current_dir_abs, marker_filename)
+                if os.path.exists(marker_path):
+                    rel_path = os.path.relpath(current_dir_abs, abs_input_dir)
+                    marked_dirs_rel.append('.' if rel_path == '.' else rel_path)
+                    marked_dirs_abs.append(current_dir_abs)
+        except Exception:
+            list_widget.addItem("Error re-scanning")
+            list_widget.setEnabled(False)
+            return
+
+        for rel, abs_p in zip(marked_dirs_rel, marked_dirs_abs):
+            rel_to_abs_map[rel] = abs_p
+            item = QListWidgetItem(rel)
+            list_widget.addItem(item)
+
+        if not marked_dirs_rel:
+            list_widget.addItem(_("marker_none_found", default="No marked directories found."))
+            list_widget.setEnabled(False)
+
+    def _visualise_results(self):
+        """Visualise results in a dialog window with matplotlib graphs."""
+        try:
+            # Ensure Qt widgets are available
+            try:
+                from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton, QDialog, QTextEdit, QMessageBox, QTabWidget
+            except ImportError:
+                self._log("Qt not available for visualization")
+                return
+
+            # Get results
+            rows = None
+            if getattr(self, '_results_model', None) is not None and hasattr(self._results_model, '_rows'):
+                rows = list(self._results_model._rows)
+            elif getattr(self, '_results_rows', None) is not None:
+                rows = list(self._results_rows)
+
+            if not rows:
+                self._log("No results to visualise")
+                return
+
+            if not matplotlib or not plt or not FigureCanvas or not np:
+                # Fallback to text if matplotlib not available
+                stats_text = self._generate_results_stats(rows)
+                dialog = QDialog(self)
+                dialog.setWindowTitle(_("results_visualisation_title"))
+                dialog.resize(600, 400)
+
+                layout = QVBoxLayout(dialog)
+                text_edit = QTextEdit()
+                text_edit.setPlainText(stats_text)
+                text_edit.setReadOnly(True)
+                layout.addWidget(text_edit)
+
+                button_layout = QHBoxLayout()
+                close_btn = QPushButton(_("close_button"))
+                close_btn.clicked.connect(dialog.accept)
+                button_layout.addStretch()
+                button_layout.addWidget(close_btn)
+                layout.addLayout(button_layout)
+
+                dialog.exec()
+                return
+
+            # Create dialog with tabs
+            dialog = QDialog(self)
+            dialog.setWindowTitle(_("results_visualisation_title"))
+            dialog.resize(1200, 800)
+
+            layout = QVBoxLayout(dialog)
+            tab_widget = QTabWidget()
+            layout.addWidget(tab_widget)
+
+            # Store references for cleanup
+            dialog._canvases = []
+            dialog._figures = []
+
+            # --- SNR Distribution Tab ---
+            snr_tab = QWidget()
+            snr_layout = QVBoxLayout(snr_tab)
+
+            fig_snr, ax_snr = plt.subplots(figsize=(8, 6))
+            dialog._figures.append(fig_snr)
+
+            valid_snrs = [r['snr'] for r in rows if r.get('status') == 'ok' and is_finite_number(r.get('snr'))]
+            if valid_snrs:
+                n, bins, patches = ax_snr.hist(valid_snrs, bins=20, color='skyblue', edgecolor='black', alpha=0.7)
+                ax_snr.set_title(_("visu_snr_dist_title"))
+                ax_snr.set_xlabel(_("visu_snr_dist_xlabel"))
+                ax_snr.set_ylabel(_("visu_snr_dist_ylabel"))
+                ax_snr.grid(axis='y', linestyle='--', alpha=0.7)
+
+                # Add RangeSlider
+                fig_snr.subplots_adjust(bottom=0.25)
+                ax_slider = fig_snr.add_axes([0.15, 0.1, 0.7, 0.05])
+                snr_slider = RangeSlider(ax_slider, "SNR", min(valid_snrs), max(valid_snrs), valinit=(min(valid_snrs), max(valid_snrs)))
+                self._snr_slider_lines = (ax_snr.axvline(min(valid_snrs), color='red', linestyle='--'),
+                                        ax_snr.axvline(max(valid_snrs), color='red', linestyle='--'))
+
+                def update_snr_lines(val):
+                    lo, hi = val
+                    self._snr_slider_lines[0].set_xdata([lo, lo])
+                    self._snr_slider_lines[1].set_xdata([hi, hi])
+                    fig_snr.canvas.draw_idle()
+
+                snr_slider.on_changed(update_snr_lines)
+            else:
+                ax_snr.text(0.5, 0.5, _("visu_snr_dist_no_data"), ha='center', va='center', fontsize=12, color='red')
+
+            canvas_snr = FigureCanvas(fig_snr)
+            dialog._canvases.append(canvas_snr)
+            snr_layout.addWidget(canvas_snr)
+
+            toolbar_snr = NavigationToolbar(canvas_snr, snr_tab)
+            snr_layout.addWidget(toolbar_snr)
+
+            tab_widget.addTab(snr_tab, _("visu_tab_snr_dist"))
+
+            # --- FWHM Distribution Tab ---
+            fwhm_tab = QWidget()
+            fwhm_layout = QVBoxLayout(fwhm_tab)
+
+            fig_fwhm, ax_fwhm = plt.subplots(figsize=(8, 6))
+            dialog._figures.append(fig_fwhm)
+
+            valid_fwhms = [r['fwhm'] for r in rows if is_finite_number(r.get('fwhm'))]
+            if valid_fwhms:
+                ax_fwhm.hist(valid_fwhms, bins=20, color='skyblue', edgecolor='black', alpha=0.7)
+                ax_fwhm.set_title(_("fwhm_distribution_title"))
+                ax_fwhm.set_xlabel("FWHM")
+                ax_fwhm.set_ylabel(_("number_of_images"))
+                ax_fwhm.grid(axis='y', linestyle='--', alpha=0.7)
+
+                fig_fwhm.subplots_adjust(bottom=0.25)
+                ax_slider_fwhm = fig_fwhm.add_axes([0.15, 0.1, 0.7, 0.05])
+                fwhm_slider = RangeSlider(ax_slider_fwhm, _("filter_fwhm"), min(valid_fwhms), max(valid_fwhms), valinit=(min(valid_fwhms), max(valid_fwhms)))
+            else:
+                ax_fwhm.text(0.5, 0.5, _("visu_fwhm_no_data"), ha='center', va='center', fontsize=12, color='red')
+
+            canvas_fwhm = FigureCanvas(fig_fwhm)
+            dialog._canvases.append(canvas_fwhm)
+            fwhm_layout.addWidget(canvas_fwhm)
+
+            toolbar_fwhm = NavigationToolbar(canvas_fwhm, fwhm_tab)
+            fwhm_layout.addWidget(toolbar_fwhm)
+
+            tab_widget.addTab(fwhm_tab, _("visu_tab_fwhm_dist"))
+
+            # --- Scatter Plot FWHM vs Eccentricity ---
+            scatter_tab = QWidget()
+            scatter_layout = QVBoxLayout(scatter_tab)
+
+            fig_scatter, ax_scatt = plt.subplots(figsize=(8, 6))
+            dialog._figures.append(fig_scatter)
+
+            valid_pairs = [(r['fwhm'], r['ecc']) for r in rows if is_finite_number(r.get('fwhm')) and is_finite_number(r.get('ecc'))]
+            if valid_pairs:
+                fwhm_vals, ecc_vals = zip(*valid_pairs)
+                ax_scatt.scatter(fwhm_vals, ecc_vals, alpha=0.6)
+                ax_scatt.set_xlabel("FWHM")
+                ax_scatt.set_ylabel("e")
+                ax_scatt.set_title("FWHM vs e")
+                ax_scatt.grid(True, linestyle='--', alpha=0.7)
+            else:
+                ax_scatt.text(0.5, 0.5, _("visu_snr_dist_no_data"), ha='center', va='center', fontsize=12, color='red')
+
+            canvas_scatter = FigureCanvas(fig_scatter)
+            dialog._canvases.append(canvas_scatter)
+            scatter_layout.addWidget(canvas_scatter)
+
+            toolbar_scatter = NavigationToolbar(canvas_scatter, scatter_tab)
+            scatter_layout.addWidget(toolbar_scatter)
+
+            tab_widget.addTab(scatter_tab, "FWHM vs e")
+
+            # --- Satellite Trails Pie Chart ---
+            detect_trails_was_active = any('has_trails' in r for r in rows)
+            if detect_trails_was_active:
+                sat_tab = QWidget()
+                sat_layout = QVBoxLayout(sat_tab)
+
+                fig_sat, ax_sat = plt.subplots(figsize=(6, 6))
+                dialog._figures.append(fig_sat)
+
+                sat_count = sum(1 for r in rows if r.get('has_trails', False))
+                no_sat_count = sum(1 for r in rows if 'has_trails' in r and not r.get('has_trails'))
+                total_analyzed_for_trails = sat_count + no_sat_count
+
+                if total_analyzed_for_trails > 0:
+                    labels = [_("visu_sat_pie_without"), _("visu_sat_pie_with")]
+                    sizes = [no_sat_count, sat_count]
+                    colors = ['#66b3ff', '#ff9999']
+                    explode = (0, 0.1 if sat_count > 0 and no_sat_count > 0 else 0)
+                    wedges, texts, autotexts = ax_sat.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%', shadow=True, startangle=90)
+                    ax_sat.axis('equal')
+                    ax_sat.set_title(_("visu_sat_pie_title"))
+                    plt.setp(autotexts, size=10, weight="bold", color="white")
+                    plt.setp(texts, size=10)
+                else:
+                    ax_sat.text(0.5, 0.5, _("visu_sat_pie_no_data"), ha='center', va='center', fontsize=12, color='red')
+
+                canvas_sat = FigureCanvas(fig_sat)
+                dialog._canvases.append(canvas_sat)
+                sat_layout.addWidget(canvas_sat)
+
+                toolbar_sat = NavigationToolbar(canvas_sat, sat_tab)
+                sat_layout.addWidget(toolbar_sat)
+
+                tab_widget.addTab(sat_tab, _("visu_tab_sat_trails"))
+
+            # --- Raw Data Table ---
+            data_tab = QWidget()
+            data_layout = QVBoxLayout(data_tab)
+
+            tree = QTreeWidget()
+            tree.setColumnCount(11)
+            tree.setHeaderLabels([
+                _("visu_data_col_file"), _("visu_data_col_snr"), "FWHM", "e", _("visu_data_col_bg"),
+                _("visu_data_col_noise"), _("visu_data_col_pixsig"), _("visu_data_col_trails"),
+                _("visu_data_col_nbseg"), _("Action", default="Action"), _("Commentaire", default="Comment")
+            ])
+
+            for r in rows:
+                item = QTreeWidgetItem(tree)
+                item.setText(0, os.path.basename(r.get('file', '?')))
+
+                snr = r.get('snr')
+                item.setText(1, f"{snr:.2f}" if is_finite_number(snr) else "N/A")
+
+                fwhm = r.get('fwhm')
+                item.setText(2, f"{fwhm:.2f}" if is_finite_number(fwhm) else "N/A")
+
+                ecc = r.get('ecc')
+                item.setText(3, f"{ecc:.3f}" if is_finite_number(ecc) else "N/A")
+
+                bg = r.get('sky_bg')
+                item.setText(4, f"{bg:.2f}" if is_finite_number(bg) else "N/A")
+
+                noise = r.get('sky_noise')
+                item.setText(5, f"{noise:.2f}" if is_finite_number(noise) else "N/A")
+
+                sig = r.get('signal_pixels')
+                item.setText(6, str(sig) if sig is not None else "N/A")
+
+                trails = r.get('has_trails')
+                item.setText(7, _("logic_trail_yes") if trails else _("logic_trail_no"))
+
+                nbseg = r.get('num_trails')
+                item.setText(8, str(nbseg) if nbseg is not None else "N/A")
+
+                action = r.get('action', '?')
+                item.setText(9, str(action))
+
+                comment = r.get('error_message', '') + r.get('action_comment', '')
+                item.setText(10, comment)
+
+                if r.get('status') == 'error':
+                    item.setBackground(0, QColor('#ffcccc'))  # light red
+                elif r.get('rejected_reason'):
+                    item.setBackground(0, QColor('#ffffcc'))  # light yellow
+
+            tree.resizeColumnToContents(0)
+            tree.setSortingEnabled(True)
+            data_layout.addWidget(tree)
+
+            tab_widget.addTab(data_tab, _("visu_tab_raw_data"))
+
+            # --- Recommandations Stacking Tab ---
+            recom_tab = QWidget()
+            recom_layout = QVBoxLayout(recom_tab)
+
+            try:
+                recom_group = QGroupBox(_("visu_recom_frame_title"))
+                recom_group_layout = QVBoxLayout(recom_group)
+
+                sliders_layout = QVBoxLayout()
+
+                # SNR min percentile
+                snr_layout = QHBoxLayout()
+                snr_label = QLabel(_("reco_snr_min_pct"))
+                self.reco_snr_slider = QSlider(Qt.Horizontal)
+                self.reco_snr_slider.setRange(0, 100)
+                self.reco_snr_slider.setValue(int(self.reco_snr_pct_min))
+                self.reco_snr_val_label = QLabel(str(int(self.reco_snr_pct_min)))
+                snr_layout.addWidget(snr_label)
+                snr_layout.addWidget(self.reco_snr_slider)
+                snr_layout.addWidget(self.reco_snr_val_label)
+                sliders_layout.addLayout(snr_layout)
+
+                # FWHM max percentile
+                fwhm_layout = QHBoxLayout()
+                fwhm_label = QLabel(_("reco_fwhm_max_pct"))
+                self.reco_fwhm_slider = QSlider(Qt.Horizontal)
+                self.reco_fwhm_slider.setRange(0, 100)
+                self.reco_fwhm_slider.setValue(int(self.reco_fwhm_pct_max))
+                self.reco_fwhm_val_label = QLabel(str(int(self.reco_fwhm_pct_max)))
+                fwhm_layout.addWidget(fwhm_label)
+                fwhm_layout.addWidget(self.reco_fwhm_slider)
+                fwhm_layout.addWidget(self.reco_fwhm_val_label)
+                sliders_layout.addLayout(fwhm_layout)
+
+                # Ecc max percentile
+                ecc_layout = QHBoxLayout()
+                ecc_label = QLabel(_("reco_ecc_max_pct"))
+                self.reco_ecc_slider = QSlider(Qt.Horizontal)
+                self.reco_ecc_slider.setRange(0, 100)
+                self.reco_ecc_slider.setValue(int(self.reco_ecc_pct_max))
+                self.reco_ecc_val_label = QLabel(str(int(self.reco_ecc_pct_max)))
+                ecc_layout.addWidget(ecc_label)
+                ecc_layout.addWidget(self.reco_ecc_slider)
+                ecc_layout.addWidget(self.reco_ecc_val_label)
+                sliders_layout.addLayout(ecc_layout)
+
+                # Use starcount checkbox
+                self.use_starcount_cb = QCheckBox(_("use_starcount_chk"))
+                self.use_starcount_cb.setChecked(self.use_starcount_filter)
+                sliders_layout.addWidget(self.use_starcount_cb)
+
+                # Starcount min percentile
+                sc_layout = QHBoxLayout()
+                sc_label = QLabel(_("reco_starcount_min_pct"))
+                self.reco_sc_slider = QSlider(Qt.Horizontal)
+                self.reco_sc_slider.setRange(0, 100)
+                self.reco_sc_slider.setValue(int(self.reco_starcount_pct_min))
+                self.reco_sc_val_label = QLabel(str(int(self.reco_starcount_pct_min)))
+                sc_layout.addWidget(sc_label)
+                sc_layout.addWidget(self.reco_sc_slider)
+                sc_layout.addWidget(self.reco_sc_val_label)
+                sliders_layout.addLayout(sc_layout)
+
+                recom_group_layout.addLayout(sliders_layout)
+
+                # Resume label
+                self.resume_label = QLabel("")
+                recom_group_layout.addWidget(self.resume_label)
+
+                # Tree widget
+                self.rec_tree = QTreeWidget()
+                self.rec_tree.setColumnCount(5)
+                self.rec_tree.setHeaderLabels([_("visu_recom_col_file"), _("visu_recom_col_snr"), "FWHM", "e", _("visu_recom_col_starcount")])
+                self.rec_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+                recom_group_layout.addWidget(self.rec_tree)
+
+                # Buttons
+                btns_layout = QHBoxLayout()
+                self.apply_reco_btn = QPushButton(_("apply_reco_button"))
+                self.apply_reco_btn.setEnabled(False)
+                btns_layout.addStretch()
+                btns_layout.addWidget(self.apply_reco_btn)
+                recom_group_layout.addLayout(btns_layout)
+
+                recom_layout.addWidget(recom_group)
+
+                # Connect signals
+                def update_recos():
+                    self.reco_snr_pct_min = float(self.reco_snr_slider.value())
+                    self.reco_fwhm_pct_max = float(self.reco_fwhm_slider.value())
+                    self.reco_ecc_pct_max = float(self.reco_ecc_slider.value())
+                    self.use_starcount_filter = self.use_starcount_cb.isChecked()
+                    self.reco_starcount_pct_min = float(self.reco_sc_slider.value())
+
+                    # Update labels
+                    self.reco_snr_val_label.setText(str(self.reco_snr_slider.value()))
+                    self.reco_fwhm_val_label.setText(str(self.reco_fwhm_slider.value()))
+                    self.reco_ecc_val_label.setText(str(self.reco_ecc_slider.value()))
+                    self.reco_sc_val_label.setText(str(self.reco_sc_slider.value()))
+
+                    # Compute recommended
+                    recos, snr_p, fwhm_p, ecc_p, sc_p = self._compute_recommended_subset()
+
+                    # Update resume
+                    txt = _("visu_recom_text_all", count=len(recos))
+                    if txt.startswith("_visu_recom_text_all_"):
+                        txt = f"Images recommandées : {len(recos)}"
+                    if snr_p is not None and is_finite_number(snr_p):
+                        txt += f" | SNR ≥ {snr_p:.2f}"
+                    if fwhm_p is not None and is_finite_number(fwhm_p):
+                        txt += f" | FWHM ≤ {fwhm_p:.2f}"
+                    if ecc_p is not None and is_finite_number(ecc_p):
+                        txt += f" | e ≤ {ecc_p:.3f}"
+                    if self.use_starcount_filter and sc_p is not None and is_finite_number(sc_p):
+                        txt += f" | Starcount ≥ {sc_p:.0f}"
+                    self.resume_label.setText(txt)
+
+                    # Clear tree
+                    self.rec_tree.clear()
+
+                    # Add items
+                    for r in recos:
+                        item = QTreeWidgetItem(self.rec_tree)
+                        file_name = r.get('rel_path', os.path.basename(r.get('file', '?')))
+                        item.setText(0, file_name)
+                        snr = r.get('snr')
+                        item.setText(1, f"{snr:.2f}" if is_finite_number(snr) else "N/A")
+                        fwhm = r.get('fwhm')
+                        item.setText(2, f"{fwhm:.2f}" if is_finite_number(fwhm) else "N/A")
+                        ecc = r.get('ecc')
+                        item.setText(3, f"{ecc:.3f}" if is_finite_number(ecc) else "N/A")
+                        sc = r.get('starcount')
+                        item.setText(4, f"{sc:.0f}" if is_finite_number(sc) else "N/A")
+
+                    # Enable/disable apply button
+                    self.apply_reco_btn.setEnabled(bool(recos))
+
+                def update_starcount_slider_state():
+                    enabled = self.use_starcount_cb.isChecked()
+                    self.reco_sc_slider.setEnabled(enabled)
+                    self.reco_sc_val_label.setEnabled(enabled)
+                    sc_label.setEnabled(enabled)
+                    update_recos()
+
+                self.reco_snr_slider.valueChanged.connect(update_recos)
+                self.reco_fwhm_slider.valueChanged.connect(update_recos)
+                self.reco_ecc_slider.valueChanged.connect(update_recos)
+                self.reco_sc_slider.valueChanged.connect(update_recos)
+                self.use_starcount_cb.stateChanged.connect(update_starcount_slider_state)
+                self.apply_reco_btn.clicked.connect(self._apply_current_recommendations)
+
+                # Initial state
+                update_starcount_slider_state()
+                update_recos()
+
+            except Exception as e:
+                recom_layout.addWidget(QLabel(f"Error loading recommendations tab: {e}"))
+
+            tab_widget.addTab(recom_tab, _("visu_tab_recom"))
+
+            # --- Bottom buttons ---
+            button_layout = QHBoxLayout()
+
+            # Apply buttons for filters
+            self.apply_snr_button_visu = QPushButton(_("visual_apply_snr_button", default="Apply SNR Rejection"))
+            self.apply_snr_button_visu.clicked.connect(lambda: self._on_visual_apply_snr())
+            button_layout.addWidget(self.apply_snr_button_visu)
+
+            self.apply_fwhm_button_visu = QPushButton(_("filter_fwhm", default="Filter FWHM"))
+            self.apply_fwhm_button_visu.clicked.connect(lambda: self._on_visual_apply_fwhm())
+            button_layout.addWidget(self.apply_fwhm_button_visu)
+
+            close_btn = QPushButton(_("close_button"))
+            close_btn.clicked.connect(dialog.accept)
+            button_layout.addStretch()
+            button_layout.addWidget(close_btn)
+
+            layout.addLayout(button_layout)
+
+            # Cleanup function
+            def cleanup():
+                for canvas in dialog._canvases:
+                    try:
+                        canvas.close()
+                    except Exception:
+                        pass
+                for fig in dialog._figures:
+                    try:
+                        plt.close(fig)
+                    except Exception:
+                        pass
+                dialog.accept()
+
+            dialog.finished.connect(cleanup)
+            dialog.exec()
+
+        except ImportError as ie:
+            self._log(f"Qt visualization not available: {ie}")
+        except Exception as e:
+            self._log(f"Error visualising results: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _generate_results_stats(self, rows):
+        """Generate statistics text from results."""
+        if not rows:
+            return "No data"
+
+        lines = []
+        lines.append(_("results_summary_title"))
+        lines.append("=" * 50)
+
+        total_images = len(rows)
+        ok_images = len([r for r in rows if r.get('status') == 'ok'])
+        rejected_images = total_images - ok_images
+
+        lines.append(f"{_('total_images_label')}: {total_images}")
+        lines.append(f"{_('accepted_images_label')}: {ok_images}")
+        lines.append(f"{_('rejected_images_label')}: {rejected_images}")
+
+        # SNR statistics
+        snr_values = [r.get('snr') for r in rows if r.get('snr') is not None and isinstance(r.get('snr'), (int, float))]
+        if snr_values:
+            lines.append("")
+            lines.append(_("snr_statistics_title"))
+            lines.append(f"  {_('snr_min_label')}: {min(snr_values):.2f}")
+            lines.append(f"  {_('snr_max_label')}: {max(snr_values):.2f}")
+            lines.append(f"  {_('snr_avg_label')}: {sum(snr_values)/len(snr_values):.2f}")
+
+        # FWHM statistics
+        fwhm_values = [r.get('fwhm') for r in rows if r.get('fwhm') is not None and isinstance(r.get('fwhm'), (int, float))]
+        if fwhm_values:
+            lines.append("")
+            lines.append(_("fwhm_statistics_title"))
+            lines.append(f"  {_('fwhm_min_label')}: {min(fwhm_values):.2f}")
+            lines.append(f"  {_('fwhm_max_label')}: {max(fwhm_values):.2f}")
+            lines.append(f"  {_('fwhm_avg_label')}: {sum(fwhm_values)/len(fwhm_values):.2f}")
+
+        # Group by Bortle
+        bortle_stats = {}
+        for r in rows:
+            bortle = r.get('bortle', 'unknown')
+            if bortle not in bortle_stats:
+                bortle_stats[bortle] = {'total': 0, 'ok': 0}
+            bortle_stats[bortle]['total'] += 1
+            if r.get('status') == 'ok':
+                bortle_stats[bortle]['ok'] += 1
+
+        if bortle_stats:
+            lines.append("")
+            lines.append(_("bortle_distribution_title"))
+            for bortle, stats in sorted(bortle_stats.items()):
+                pct = (stats['ok'] / stats['total'] * 100) if stats['total'] > 0 else 0
+                lines.append(f"  {_('bortle_label')} {bortle}: {stats['ok']}/{stats['total']} ({pct:.1f}%)")
+
+        return '\n'.join(lines)
+
+    def _apply_recommendations_gui(self):
+        """Apply recommended images selection."""
+        try:
+            # Get results
+            rows = None
+            if getattr(self, '_results_model', None) is not None and hasattr(self._results_model, '_rows'):
+                rows = self._results_model._rows
+            elif getattr(self, '_results_rows', None) is not None:
+                rows = self._results_rows
+
+            if not rows:
+                self._log("No results available to apply recommendations")
+                return
+
+            # Find recommended images
+            recommended = [r for r in rows if r.get('recommended', False)]
+            if not recommended:
+                self._log("No images are recommended for application")
+                return
+
+            self._log(f"Applying recommendations for {len(recommended)} images")
+
+            # Build options from UI
+            try:
+                opts = self._build_options_from_ui()
+            except Exception:
+                opts = {}
+
+            # Mark recommended images as pending actions
+            for r in recommended:
+                r['recommended_applied'] = True
+                # Set action based on recommendation type (could be refined)
+                if 'action' not in r:
+                    r['action'] = 'recommended'
+
+            # Apply recommendations using analyse_logic if available
+            def _run_apply_recommendations():
+                try:
+                    import analyse_logic
+                    # This is a simplified version - in full implementation would
+                    # call appropriate analyse_logic functions based on recommendation type
+                    analyse_logic.apply_recommended_actions(
+                        rows,
+                        log_callback=(lambda *a, **k: self._log(a[0]) if a else None),
+                        status_callback=(lambda *a, **k: self.statusBar().showMessage(a[0]) if hasattr(self, 'statusBar') and a else None),
+                        progress_callback=(lambda v: None)
+                    )
+                    self._log(f"Successfully applied recommendations for {len(recommended)} images")
+                except Exception as e:
+                    self._log(f"Error applying recommendations: {e}")
+
+            try:
+                import threading
+                t = threading.Thread(target=_run_apply_recommendations, daemon=True)
+                t.start()
+            except Exception:
+                # Fallback: run inline
+                _run_apply_recommendations()
+
+        except Exception as e:
+            self._log(f"Error in apply recommendations: {e}")
+
+    def _mark_good_images(self, rows):
+        """Mark all images with status 'ok'."""
+        marked = 0
+        for r in rows:
+            if r.get('status') == 'ok':
+                r['marked'] = True
+                marked += 1
+        self._log(f"Marked {marked} good images")
+
+    def _unmark_all_images(self, rows):
+        """Unmark all images."""
+        unmarked = 0
+        for r in rows:
+            if r.get('marked', False):
+                r['marked'] = False
+                unmarked += 1
+        self._log(f"Unmarked {unmarked} images")
+
+    def _organize_files_auto(self):
+        """Applique les actions différées sur les fichiers automatiquement (sans UI)."""
+        # Get options
+        try:
+            opts = self._build_options_from_ui()
+        except Exception:
+            opts = {}
+
+        delete_flag = opts.get('delete_rejected', False)
+        move_flag = opts.get('move_rejected', False)
+
+        callbacks = {
+            'log': lambda msg: self._log(str(msg)),
+            'status': lambda msg: None,  # No status update for auto
+            'progress': lambda v: None,  # No progress update for auto
+        }
+
+        input_dir = opts.get('input_path', '')
+
+        rows = self._get_analysis_results_rows()
+
+        total = 0
+        try:
+            import analyse_logic
+
+            total += analyse_logic.apply_pending_snr_actions(
+                rows,
+                opts.get('snr_reject_dir'),
+                delete_rejected_flag=delete_flag,
+                move_rejected_flag=move_flag,
+                log_callback=callbacks['log'],
+                status_callback=callbacks['status'],
+                progress_callback=callbacks['progress'],
+                input_dir_abs=input_dir,
+            )
+
+            total += analyse_logic.apply_pending_reco_actions(
+                rows,
+                opts.get('snr_reject_dir'),
+                delete_rejected_flag=delete_flag,
+                move_rejected_flag=move_flag,
+                log_callback=callbacks['log'],
+                status_callback=callbacks['status'],
+                progress_callback=callbacks['progress'],
+                input_dir_abs=input_dir,
+            )
+
+            if hasattr(analyse_logic, 'apply_pending_trail_actions'):
+                total += analyse_logic.apply_pending_trail_actions(
+                    rows,
+                    opts.get('trail_reject_dir'),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
+
+            if hasattr(analyse_logic, 'apply_pending_starcount_actions'):
+                total += analyse_logic.apply_pending_starcount_actions(
+                    rows,
+                    opts.get('starcount_reject_dir', opts.get('snr_reject_dir')),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
+
+            if hasattr(analyse_logic, 'apply_pending_fwhm_actions'):
+                total += analyse_logic.apply_pending_fwhm_actions(
+                    rows,
+                    opts.get('fwhm_reject_dir', opts.get('snr_reject_dir')),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
+
+            if hasattr(analyse_logic, 'apply_pending_ecc_actions'):
+                total += analyse_logic.apply_pending_ecc_actions(
+                    rows,
+                    opts.get('ecc_reject_dir', opts.get('snr_reject_dir')),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
+
+            total += analyse_logic.apply_pending_organization(
+                rows,
+                log_callback=callbacks['log'],
+                status_callback=callbacks['status'],
+                progress_callback=callbacks['progress'],
+                input_dir_abs=input_dir,
+            )
+
+        except Exception as e:
+            self._log(f"Error in auto organize: {e}")
+
+        finally:
+            try:
+                self._regenerate_stack_plan()
+            except Exception:
+                pass
+
+            try:
+                if self.log_path_edit.text().strip():
+                    current_options = {
+                        'analyze_snr': opts.get('analyze_snr', False),
+                        'detect_trails': opts.get('detect_trails', False),
+                        'include_subfolders': opts.get('include_subfolders', False),
+                        'move_rejected': move_flag,
+                        'delete_rejected': delete_flag,
+                        'snr_reject_dir': opts.get('snr_reject_dir'),
+                        'trail_reject_dir': opts.get('trail_reject_dir'),
+                        'snr_selection_mode': opts.get('snr_selection_mode'),
+                        'snr_selection_value': opts.get('snr_selection_value'),
+                        'trail_params': opts.get('trail_params', {}),
+                    }
+                    analyse_logic.write_log_summary(
+                        self.log_path_edit.text().strip(),
+                        input_dir,
+                        current_options,
+                        results_list=rows,
+                    )
+            except Exception:
+                pass
+
+            self._update_log_and_vis_buttons_state()
+
+    def _organize_files(self):
+        """Applique les actions différées sur les fichiers via le GUI."""
+        if self.organize_btn:
+            self.organize_btn.setEnabled(False)
+
+        # Get options
+        try:
+            opts = self._build_options_from_ui()
+        except Exception:
+            opts = {}
+
+        delete_flag = opts.get('delete_rejected', False)
+        move_flag = opts.get('move_rejected', False)
+
+        callbacks = {
+            'log': lambda msg: self._log(str(msg)),
+            'status': lambda msg: self.statusBar().showMessage(str(msg)) if hasattr(self, 'statusBar') else None,
+            'progress': lambda v: self.progress.setValue(int(v)) if hasattr(self, 'progress') else None,
+        }
+
+        input_dir = opts.get('input_path', '')
+
+        rows = self._get_analysis_results_rows()
+
+        total = 0
+        try:
+            import analyse_logic
+
+            total += analyse_logic.apply_pending_snr_actions(
+                rows,
+                opts.get('snr_reject_dir'),
+                delete_rejected_flag=delete_flag,
+                move_rejected_flag=move_flag,
+                log_callback=callbacks['log'],
+                status_callback=callbacks['status'],
+                progress_callback=callbacks['progress'],
+                input_dir_abs=input_dir,
+            )
+
+            total += analyse_logic.apply_pending_reco_actions(
+                rows,
+                opts.get('snr_reject_dir'),
+                delete_rejected_flag=delete_flag,
+                move_rejected_flag=move_flag,
+                log_callback=callbacks['log'],
+                status_callback=callbacks['status'],
+                progress_callback=callbacks['progress'],
+                input_dir_abs=input_dir,
+            )
+
+            if hasattr(analyse_logic, 'apply_pending_trail_actions'):
+                total += analyse_logic.apply_pending_trail_actions(
+                    rows,
+                    opts.get('trail_reject_dir'),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
+
+            if hasattr(analyse_logic, 'apply_pending_starcount_actions'):
+                total += analyse_logic.apply_pending_starcount_actions(
+                    rows,
+                    opts.get('starcount_reject_dir', opts.get('snr_reject_dir')),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
+
+            if hasattr(analyse_logic, 'apply_pending_fwhm_actions'):
+                total += analyse_logic.apply_pending_fwhm_actions(
+                    rows,
+                    opts.get('fwhm_reject_dir', opts.get('snr_reject_dir')),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
+
+            if hasattr(analyse_logic, 'apply_pending_ecc_actions'):
+                total += analyse_logic.apply_pending_ecc_actions(
+                    rows,
+                    opts.get('ecc_reject_dir', opts.get('snr_reject_dir')),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
+
+            total += analyse_logic.apply_pending_organization(
+                rows,
+                log_callback=callbacks['log'],
+                status_callback=callbacks['status'],
+                progress_callback=callbacks['progress'],
+                input_dir_abs=input_dir,
+            )
+
+            # Show message if not auto
+            try:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    self,
+                    _("msg_info"),
+                    _("msg_organize_done", count=total),
+                )
+            except Exception:
+                pass
+
+        except Exception as e:
+            try:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.showerror(
+                    self,
+                    _("msg_error"),
+                    _("msg_organize_failed", e=e),
+                )
+            except Exception:
+                pass
+
+        finally:
+            try:
+                self._regenerate_stack_plan()
+            except Exception:
+                pass
+
+            try:
+                if self.log_path_edit.text().strip():
+                    current_options = {
+                        'analyze_snr': opts.get('analyze_snr', False),
+                        'detect_trails': opts.get('detect_trails', False),
+                        'include_subfolders': opts.get('include_subfolders', False),
+                        'move_rejected': move_flag,
+                        'delete_rejected': delete_flag,
+                        'snr_reject_dir': opts.get('snr_reject_dir'),
+                        'trail_reject_dir': opts.get('trail_reject_dir'),
+                        'snr_selection_mode': opts.get('snr_selection_mode'),
+                        'snr_selection_value': opts.get('snr_selection_value'),
+                        'trail_params': opts.get('trail_params', {}),
+                    }
+                    analyse_logic.write_log_summary(
+                        self.log_path_edit.text().strip(),
+                        input_dir,
+                        current_options,
+                        results_list=rows,
+                    )
+            except Exception:
+                pass
+
+            self._update_log_and_vis_buttons_state()
+
+        # Re-enable button
+        if self.organize_btn:
+            self.organize_btn.setEnabled(True)
+
+    def _apply_pending_actions(self, action_type, opts, callbacks, input_dir):
+        """Apply pending actions for a specific type."""
+        try:
+            import analyse_logic
+        except ImportError:
+            return 0
+
+        rows = self._get_analysis_results_rows()
+        if not rows:
+            return 0
+
+        func_name = f'apply_pending_{action_type}_actions'
+        if not hasattr(analyse_logic, func_name):
+            return 0
+
+        func = getattr(analyse_logic, func_name)
+
+        # Prepare arguments based on action type
+        if action_type == 'snr':
+            reject_dir = opts.get('snr_reject_dir')
+        elif action_type == 'trail':
+            reject_dir = opts.get('trail_reject_dir')
+        elif action_type == 'starcount':
+            reject_dir = opts.get('starcount_reject_dir', opts.get('snr_reject_dir'))  # fallback
+        elif action_type == 'fwhm':
+            reject_dir = opts.get('fwhm_reject_dir', opts.get('snr_reject_dir'))  # fallback
+        elif action_type == 'ecc':
+            reject_dir = opts.get('ecc_reject_dir', opts.get('snr_reject_dir'))  # fallback
+        elif action_type == 'reco':
+            reject_dir = opts.get('snr_reject_dir')
+        else:
+            reject_dir = opts.get('snr_reject_dir')
+
+        delete_flag = opts.get('delete_rejected', False)
+        move_flag = opts.get('move_rejected', False)
+
+        try:
+            actions_done = func(
+                rows,
+                reject_dir,
+                delete_rejected_flag=delete_flag,
+                move_rejected_flag=move_flag,
+                log_callback=callbacks['log'],
+                status_callback=callbacks['status'],
+                progress_callback=callbacks['progress'],
+                input_dir_abs=input_dir,
+            )
+            return actions_done
+        except Exception as e:
+            self._log(f"Error applying {action_type} actions: {e}")
+            return 0
+
+    def _refresh_results_display(self):
+        """Refresh the results table display after changes."""
+        try:
+            if hasattr(self, '_results_model') and self._results_model:
+                # Force update of the model
+                self._results_model.layoutChanged.emit()
+            if hasattr(self, '_results_proxy') and self._results_proxy:
+                self._results_proxy.invalidate()
+        except Exception:
+            pass
+
     def _update_analyse_enabled(self) -> None:
         a = getattr(self, "input_path_edit", None)
-        b = getattr(self, "output_path_edit", None)
+        b = getattr(self, "log_path_edit", None)
         # enable when input exists — output may be empty, in which case
         # defaulting will be applied when starting the analysis (Tk parity)
         ena = bool(a and a.text().strip())
@@ -2304,14 +4327,15 @@ class AnalysisWorker(QObject):
 
     @Slot()
     def _tick(self):
-        self._progress_value += 1
-        self.progress.setValue(self._progress_value)
-        if self._progress_value % 20 == 0:
-            self._log(f"Simulation: progress {self._progress_value}%")
-        if self._progress_value >= 100:
+        self._progress += 1
+        self.progressChanged.emit(self._progress)
+        if self._progress % 20 == 0:
+            self.logLine.emit(f"Simulation: progress {self._progress}%")
+        if self._progress >= 100:
             if isinstance(self._timer, QTimer):
                 self._timer.stop()
-            self._finish_run()
+            self.finished.emit(False)
+            self._clean_thread()
 
     def _run_analysis_callable(self, analysis_callable, *args, **kwargs):
         """Run a provided analysis callable inside the worker thread.
@@ -2322,25 +4346,20 @@ class AnalysisWorker(QObject):
         cleans up the thread before returning.
         """
         try:
+            # Use custom log_callback if provided, otherwise default to emit
+            log_cb = kwargs.pop('log_callback', lambda key, **kw: self.logLine.emit(str(key) if isinstance(key, str) else str(kw)))
             callbacks = {
                 'status': lambda key, **kw: self.statusChanged.emit(str(key)),
                 'progress': lambda v: self.progressChanged.emit(float(v)),
-                'log': lambda key, **kw: self.logLine.emit(str(key) if isinstance(key, str) else str(kw)),
+                'log': log_cb,
                 'is_cancelled': lambda: bool(self._cancelled),
             }
 
+            # pass callbacks to the analysis callable as positional arg
+            args = args + (callbacks,)
+
             # call with flexible signature and capture a result if returned
-            kwargs_with_callbacks = dict(kwargs)
-            result = None
-            if 'callbacks' in kwargs_with_callbacks:
-                kwargs_with_callbacks['callbacks'] = callbacks
-                result = analysis_callable(*args, **kwargs_with_callbacks)
-            else:
-                try:
-                    result = analysis_callable(*args, callbacks=callbacks, **kwargs)
-                except TypeError:
-                    # fallback if function doesn't accept callbacks kw
-                    result = analysis_callable(*args, **kwargs)
+            result = analysis_callable(*args, **kwargs)
 
             # ensure full progress delivered
             self.progressChanged.emit(100.0)
@@ -2379,7 +4398,8 @@ class AnalysisWorker(QObject):
         # stop and quit the thread if present
         if isinstance(self._thread, QThread) and self._thread is not None:
             self._thread.quit()
-            self._thread.wait(100)
+            # Do not wait here to avoid "Thread tried to wait on itself" error
+            # Wait should be done from GUI thread if needed
 
 
 class AnalysisRunnable(QRunnable):
@@ -2413,18 +4433,11 @@ class AnalysisRunnable(QRunnable):
                 'log': lambda key, **kw: self.signals.logLine.emit(str(key) if isinstance(key, str) else str(kw)),
             }
 
+            # Add callbacks as positional argument
+            args = self._args + (callbacks,)
 
             # call with flexible signature and capture a result if returned
-            kwargs_with_callbacks = dict(self._kwargs)
-            result = None
-            if 'callbacks' in kwargs_with_callbacks:
-                kwargs_with_callbacks['callbacks'] = callbacks
-                result = self._analysis_callable(*self._args, **kwargs_with_callbacks)
-            else:
-                try:
-                    result = self._analysis_callable(*self._args, callbacks=callbacks, **self._kwargs)
-                except TypeError:
-                    result = self._analysis_callable(*self._args, **self._kwargs)
+            result = self._analysis_callable(*args, **self._kwargs)
 
             try:
                 if result is not None:
@@ -2450,13 +4463,34 @@ def main(argv=None, run_for: int | None = None):
     if QApplication is object:
         raise RuntimeError("PySide6 is not available in the environment")
 
-    app = QApplication(argv or [])
+    # Parse command line arguments similar to Tk version
+    import argparse
+    parser = argparse.ArgumentParser(description="ZeAnalyser Qt")
+    parser.add_argument('--input-dir', help='Input directory')
+    parser.add_argument('--log-file', help='Log file path')
+    parser.add_argument('--lang', default='fr', help='Language (en/fr)')
+    parser.add_argument('--lock-lang', action='store_true', help='Lock language selection')
+
+    args, remaining_argv = parser.parse_known_args(argv or [])
+
+    app = QApplication.instance() or QApplication(remaining_argv)
     # For tests / CI it is useful to optionally auto-quit the event loop
     # after a small delay (milliseconds). Pass run_for to do this.
     if run_for is not None and isinstance(run_for, int):
         # schedule a quit so tests can call main() without blocking forever
         QTimer.singleShot(run_for, app.quit)
-    win = ZeAnalyserMainWindow()
+    win = ZeAnalyserMainWindow(command_file_path=None, initial_lang=args.lang, lock_language=args.lock_lang)
+    # Pre-fill from CLI args
+    if args.input_dir:
+        win.input_path_edit.setText(args.input_dir)
+        # Auto-suggest log path
+        try:
+            suggested_log = win._suggest_log_path(args.input_dir)
+            win.log_path_edit.setText(suggested_log)
+        except Exception:
+            pass
+    if args.log_file:
+        win.log_path_edit.setText(args.log_file)
     win.show()
 
     return app.exec()

@@ -134,7 +134,9 @@ translations = {
         'msg_stack_plan_write_error': "Impossible d'écrire '{path}'. Fichier utilisé ou dossier non accessible.",
 
         # --- Fenêtre Visualisation ---
-        'visu_window_title': "Visualisation des résultats", 'visu_tab_snr_dist': "Distribution SNR", 'visu_tab_snr_comp': "Comparaison SNR", 'visu_tab_sat_trails': "Traînées Détectées", 'visu_tab_raw_data': "Données Détaillées", 'visu_tab_recom': "Recommandations Stacking",
+        'visu_window_title': "Visualisation des résultats",
+        'results_visualisation_title': "Résultats visuels",
+        'visu_tab_snr_dist': "Distribution SNR", 'visu_tab_snr_comp': "Comparaison SNR", 'visu_tab_sat_trails': "Traînées Détectées", 'visu_tab_raw_data': "Données Détaillées", 'visu_tab_recom': "Recommandations Stacking",
         'visu_snr_dist_title': 'Distribution du Rapport Signal/Bruit (SNR)', 'visu_snr_dist_xlabel': 'SNR', 'visu_snr_dist_ylabel': 'Nombre d\'images', 'visu_snr_dist_no_data': "Aucune donnée SNR valide",
         'starcount_distribution_tab': "Distribution Starcount",
         'starcount_distribution_title': "Distribution Starcount",

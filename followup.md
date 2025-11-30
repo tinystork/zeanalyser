@@ -1,180 +1,168 @@
-# 📋 ZeAnalyser Qt – Suivi & Check-list
+# followup.md — Suivi mission ZeAnalyser Qt (analyse_gui_qt.py)
 
-Ce fichier est le journal de bord pour la migration Tk → PySide6.
+## 🔎 Rappel rapide de la mission
 
-Coche les cases `[x]` au fur et à mesure et ajoute des notes si besoin.
+Objectif : finaliser l’intégration Qt de ZeAnalyser pour que :
 
----
-
-## Phase 1 – Base PySide6 (terminée)
-
-- [x] `analyse_gui_qt.py` créé, avec `ZeAnalyserMainWindow(QMainWindow)`.
-- [x] `QApplication` + boucle d’événements fonctionnelle.
-- [x] Onglet/panneau “Project” minimal (chemins + bouton “Analyser”).
-- [x] Simulation de progression (sans vraie analyse) opérationnelle.
-- [x] Test manuel : l’app Qt démarre et se ferme proprement.
-
-Notes :
-- OK, base Qt stable.
+- l’analyse réelle tourne via `analyse_logic.perform_analysis`,
+- le **log** soit correctement alimenté (fichier + zone texte),
+- les **résultats complets** remontent dans l’onglet *Results*,
+- les **boutons bas de fenêtre** (stack plan, markers, visualisation, recos…) fonctionnent comme prévu,
+- le tout sans casser le comportement existant (Tk, logique d’analyse).
 
 ---
 
-## Phase 2 – Worker & vrais calculs (terminée)
+## ✅ État courant (à vérifier avant de modifier)
 
-- [x] `AnalysisWorker(QObject)` créé avec signaux Qt.
-- [x] Intégration de `perform_analysis()` (logique existante).
-- [x] Mise en place de `QThread`/`QThreadPool`.
-- [x] Connexion des signaux aux widgets (status, log, barre de progression).
-- [x] Test : une vraie analyse complète se termine sans freeze UI.
-- [x] Signal `resultsReady` émis avec les résultats d'analyse; connexion à `set_results()`.
-- [x] Callbacks `status`, `progress`, `log`, `is_cancelled` transmis à `perform_analysis()`.
-
-Notes :
-- Phase 2 validée ✅ (tests d’intégration worker/GUI OK).
+- [x] Le projet compile et `python analyse_gui_qt.py` lance bien la fenêtre principale.
+- [x] La sélection de dossier d’entrée met à jour :
+  - [x] `input_path_edit`
+  - [x] `log_path_edit`
+  - [x] les dossiers de rejet SNR / traînées
+- [x] Le bouton **Analyser** déclenche bien la création d’un `AnalysisWorker` et la connexion de ses signaux.
+- [x] Le fichier `analyse_resultats.log` est créé lors d’une analyse (même si elle est encore en mode “simulation”).
 
 ---
 
-## Phase 3 – Tableau de résultats (terminée)
+## 🧩 Étape 1 — Corriger et consolider `AnalysisWorker`
 
-- [x] Structure des résultats d’analyse identifiée (dicts).
-- [x] `AnalysisResultsModel` implémenté (QAbstractTableModel).
-- [x] `QTableView` + `ResultsFilterProxy` branchés.
-- [x] Filtres numériques / booléens (SNR, FWHM, ecc, has_trails) opérationnels.
-- [x] Test : tri + filtres OK sur un dataset réel.
+### 1.1 Réécrire proprement `_tick` (dans `AnalysisWorker`)
 
-Notes :
-- L’onglet **Results** sert de référence pour la suite (logique de filtres).
+- [x] Supprimer toute référence directe à des widgets (progress bar, etc.) dans `_tick`.
+- [x] Utiliser un compteur interne (par ex. `self._progress`) pour simuler la progression si besoin.
+- [x] Émettre `self.progressChanged.emit(value)` à chaque tick.
+- [x] Arrêter le timer et émettre `self.finished(False)` lorsque la progression atteint 100%.
+- [x] Appeler `_clean_thread()` dans tous les cas (fin normale ou annulée).
 
----
+### 1.2 S’assurer que `_run_analysis_callable` respecte le protocole de callbacks
 
-## Phase 3A – Parité “Configuration générale” (à faire)
-
- - [X] GroupBox “Configuration générale” ajouté dans l’onglet Project.
-- [X] Checkbox **Inclure les sous-dossiers** branchée sur `options['include_subfolders']`.
-- [X] Champ **Base Bortle (GeoTIFF/KMZ)** + bouton `Parcourir`.
-- [X] Checkbox **Utiliser le classement Bortle** (`options['use_bortle']`).
-- [X] Bouton **Organiser fichiers** (reprend la logique Tk existante).
-- [X] Sélecteur de langue (combo) relié à `zone.py` / config.
-- [X] Méthode `_build_options_from_ui()` créée (ou complétée) pour construire le dict `options` en miroir de Tk.
-
-Notes :
+- [x] Récupérer correctement `log_callback` depuis `kwargs.pop('log_callback', ...)`.
+- [x] Construire `callbacks = {'status', 'progress', 'log', 'is_cancelled'}`.
+- [x] Passer `callbacks` en **dernier argument positionnel** au `analysis_callable`.
+- [x] Émettre :
+  - [x] `progressChanged(100.0)` en fin de run.
+  - [x] `resultsReady(result)` si `result` est non nul.
+  - [x] `finished(self._cancelled)` dans un bloc `finally`.
+- [x] En cas d’exception, émettre aussi `error(str(e))` avant `finished(...)`.
 
 ---
 
-## Phase 3B – Parité “Analyse SNR & Sélection” (à faire)
+## 🧠 Étape 2 — Intégration avec `analyse_logic.perform_analysis`
 
-- [X] GroupBox “Analyse SNR & Sélection” ajouté.  
-  *(implémenté dans `analyse_gui_qt.py`; test ajouté `tests/test_analyse_gui_snr.py`)*
-- [X] Checkbox `Activer l’analyse SNR` ↔ `options['analyze_snr']`.  
-  *(implémenté et testé : `analyse_gui_qt.py` / `tests/test_analyse_gui_snr.py`)*
-- [X] Radios de mode : Top Pourcentage / Seuil SNR / Tout garder.  
-  *(implemented in `analyse_gui_qt.py` — test ensures mode/value captured in options)*
-- [X] Champ numérique pour valeur de pourcentage / seuil.  
-  *(implemented as `snr_value_spin` and included in `_build_options_from_ui()` tests)*
-- [X] Champ `Dossier Rejet (Faible SNR)` (`snr_reject_dir`).  
-  *(text field + browse implemented and value included in options)*
-- [X] Bouton `Appliquer Rejet SNR` branché sur la même logique que Tk.  
-  *(calls `analyse_logic.apply_pending_snr_actions` in background; tested by `tests/test_analyse_gui_snr.py`)*
-- [X] `_build_options_from_ui()` met à jour `options` (mode de sélection, `apply_snr_action_immediately`, etc.).  
-  *(function expanded to include `snr_mode`,`snr_value`,`snr_reject_dir`,`apply_snr_action_immediately` — see `tests/test_analyse_gui_snr.py`)*
-- [X] Test : comparer comportement Qt/Tk sur un dataset (mêmes fichiers rejetés/déplacés).  
-  *(lightweight parity test added: `tests/test_analyse_gui_snr.py::test_qt_and_tk_apply_parity` — validates both frontends flag the same files for SNR apply)*
+### 2.1 Aligner la signature de `perform_analysis`
 
-Notes :
+- [x] Vérifier la signature actuelle de `analyse_logic.perform_analysis`.
+- [x] L’adapter si nécessaire pour qu’elle accepte :  
+      `perform_analysis(input_path, output_path, options, callbacks)`.
+- [x] Garantir que la fonction utilise **exclusivement** `callbacks['log']`, `callbacks['progress']`, etc. pour communiquer.
 
----
+### 2.2 Remontée des résultats dans le modèle Qt
 
-## Phase 3C – Parité “Détection Traînées + Actions rejet” (à faire)
+- [x] Faire en sorte que `perform_analysis(...)` retourne une **liste de dicts** de résultats (idéalement la même structure que Tk).
+- [x] Adapter (si besoin) `AnalysisResultsModel` pour mapper ces clés :
+  - [x] SNR
+  - [x] FWHM
+  - [x] e (excentricité)
+  - [x] fond / bruit / PixSig
+  - [x] starcount (si disponible)
+  - [x] traînées (bool + nombre)
+  - [x] statut / action
+- [x] Dans `_on_results_ready`, appeler `self.set_results(results)` AVANT toute logique de boutons.
+- [x] Vérifier que le tri par SNR fonctionne (données numériques bien exposées via `Qt.UserRole`).
 
- - [X] GroupBox “Détection Traînées” ajouté.
- - [X] Checkbox `Activer détection traînées` ↔ `options['detect_trails']`.
- - [X] Paramètres (sigma, low_thr, high_thr, line_len, small_edge, line_gap) exposés et passés à `perform_analysis()`.
- - [X] Champ `Dossier Rejet (Traînées)` (`trail_reject_dir`).
- - [X] GroupBox “Détection Traînées” ajouté.  
-   *(implémenté dans `analyse_gui_qt.py` — widgets and `tests/test_analyse_gui_trails.py` added)*
- - [X] Checkbox `Activer détection traînées` ↔ `options['detect_trails']`.
- - [X] Paramètres (sigma, low_thr, high_thr, line_len, small_edge, line_gap) exposés et passés à `perform_analysis()`.
- - [X] Champ `Dossier Rejet (Traînées)` (`trail_reject_dir`).
-- [X] GroupBox “Action sur images rejetées” avec radios move/delete/none.  
-  *(implemented in `analyse_gui_qt.py`; see `tests/test_analyse_gui_reject_actions.py`)*
-- [X] `_build_options_from_ui()` met à jour `move_rejected`, `delete_rejected`, etc.  
-  *(radio selection flows into options; validations implemented in `_start_analysis` — see `tests/test_analyse_gui_validations.py`)*
- - [X] Test : comparer comportement Qt/Tk sur un dataset (rejets identiques).  
-   *(parity tests added for trails: `tests/test_analyse_gui_trails.py`)*
-
-Notes :
+> Si `perform_analysis` ne peut pas raisonnablement renvoyer les résultats :
+> - [ ] Ajouter une fonction utilitaire dans `analyse_logic` (ex. `load_analysis_results(log_file)`) pour parser le log ou CSV.
+> - [ ] L’appeler dans `_on_worker_finished` si `results` est `None`.
 
 ---
 
-## Phase 3D – Barre d’actions + tris (à faire)
+## 📝 Étape 3 — Log (fichier + widget)
 
-- [X] Checkbox `Trier les résultats par SNR décroissant` reliée au `QSortFilterProxyModel` ou au `QTableView`.
-  *(implemented — checkbox calls `_on_sort_by_snr_changed` and sorts proxy by `snr` column)*
-- [X] Bouton `Analyser les images` (alias de l’action actuelle).
-- [X] Bouton `Analyser et Empiler` implémenté (logique de `start_analysis_and_stack()` portée).
-  *(added `analyse_and_stack_btn`, calls `_start_analysis_and_stack` which sets stack-after flag and starts analysis)*
-- [X] Bouton `Ouvrir le fichier log` opérationnel.  *(best-effort opening of log file via `_open_log_file`)*
-- [X] Bouton `Créer plan de stack` → appelle `stack_plan.py` comme Tk.  *(stubbed call implemented; logs when module absent)*
- - [X] Boutons `Envoyer Référence` / `Sauvegarder Référence` / `Visualiser les résultats` / `Gérer Marqueurs` / `Appliquer Recommandations` :
-  - [X] présents visuellement,
-  - [X] soit connectés, soit explicitement désactivés avec TODO.
-- [X] Bouton `Quitter` ferme la fenêtre Qt proprement.
-- [X] Labels `Temps écoulé` / `Temps restant` ajoutés et mis à jour.  *(placeholders implemented in action bar)*
+### 3.1 Pipeline `callbacks['log']` → `log_callback` → widget
 
-Notes :
+- [x] Vérifier que `log_callback` dans `_start_analysis` :
+  - [x] traduit correctement `text_key` via `_translate`,
+  - [x] ajoute le timestamp `[HH:MM:SS]`,
+  - [x] écrit dans le fichier `analyse_resultats.log`,
+  - [x] émet `w.logLine.emit(full_text)`.
+- [x] S’assurer que `AnalysisWorker` utilise uniquement `callbacks['log']` pour ses messages (pas d’accès direct au GUI).
 
----
+### 3.2 Nettoyage des logs “parallèles”
 
-## Phase 4 – Stack Plan viewer (à venir)
-
-  - [X] `StackPlanModel` implémenté.  
-   *(implemented in `analysis_model.py` — `StackPlanModel` available)*
- - [X] Onglet “Stack Plan” avec tableau triable + filtrable.  
-   *(implemented `analyse_gui_qt.set_stack_plan_rows()` with QTableView + proxy)*
-    - [X] Indicateurs visuels par groupe/nuit/Bortle.
- - [X] Test : contenu du tableau identique au CSV.  
-   *(tests added: `tests/test_stack_plan_model.py`, `tests/test_stack_plan_tab.py` — verify CSV round-trip and UI integration)*
-
-Notes :
+- [x] Rechercher dans `analyse_logic.py` et modules associés :
+  - [x] toute écriture directe dans le log file,
+  - [x] tout `print` ou logging “silencieux”.
+- [x] Réorienter ces sorties vers les `callbacks` lorsque c’est pertinent.
 
 ---
 
- ## Phase 5 – Preview image (à venir)
+## 🧲 Étape 4 — Boutons bas de fenêtre & markers
 
-- [X] Onglet/panneau “Preview” créé.
-- [X] Sélection d’une image dans la table des résultats met à jour la preview.
-- [X] Affichage FITS/PNG de base (zoom/pan).
-- [X] Histogramme + stretch min/max simple.
+### 4.1 Mise à jour des boutons après analyse
 
-Notes :
+- [x] Confirmer que `_on_results_ready` :
+  - [x] appelle `set_results(results)` (ou équivalent) avant d’activer les boutons.
+  - [x] appelle `self._update_buttons_after_analysis()`.
+- [x] Dans `_update_buttons_after_analysis` vérifier :
+  - [x] **Visualiser résultats** activé si `self._results_model` contient des lignes.
+  - [x] **Appliquer recommandations** activé si des images sont marquées "kept/recommended".
+  - [x] **Créer Stack Plan** activé si résultats présents.
+  - [x] **Ouvrir log** activé si `log_path_edit` est non vide.
+  - [x] **Gérer les marqueurs** délégué à `_update_marker_button_state()`.
 
----
+### 4.2 Bouton "Gérer les marqueurs"
 
-## Phase 6 – Traductions & zones (à venir)
- [X] Analyse de `zone.py` et du système de tokens réalisée.
-- [X] Wrapper de traduction Qt créé.
-- [X] Textes UI Qt remplacés par le wrapper.
-- [ ] Test : libellés Tk vs Qt identiques pour un même run.
-
-Notes :
-
----
-
-## Phase 7 – Confort UX (à venir)
-
-- [X] `QSettings` pour mémoriser dossiers, taille/position, paramètres.
-- [X] Menu `Aide → À propos` ajouté.
-- [X] Tooltips sur les contrôles critiques.
-- [ ] Sauvegarde/restauration de l’état à la fermeture.
-
-Notes :
+- [x] Vérifier que `_choose_input_folder` appelle bien `_update_marker_button_state()` après sélection.
+- [x] Vérifier que `_has_markers_in_input_dir` :
+  - [x] détecte `.astro_analyzer_run_complete` récursivement,
+  - [x] exclut les dossiers de rejet (`snr_reject_dir`, `trail_reject_dir`) si `move_rejected=True`.
+- [x] Après `manage_markers` :
+  - [x] rappeler `_update_marker_button_state()` pour re-griser le bouton si nécessaire.
 
 ---
 
-## Phase 8 – Coexistence Tk / Qt (à venir)
+## 📊 Étape 5 — Visualisation & Stack Plan (sanity check)
 
-- [ ] Entrypoint Qt dédié (ex. `python -m zeanalyser_qt`).
-- [ ] UI Tk vérifiée comme toujours fonctionnelle.
-- [ ] Doc/README mis à jour (Qt en option, statut BETA).
+> Le but ici est de s’assurer que ce qui existe déjà fonctionne avec la nouvelle chaîne d’analyse.
 
-Notes :
+- [x] Lancer une analyse complète et cliquer sur **Visualiser résultats** :
+  - [x] Les plots SNR/FWHM/scatter se basent bien sur les **nouvelles** données.
+  - [x] L’onglet “Données détaillées” correspond à la table de l’onglet Results.
+- [x] Cliquer sur **Créer un Stack Plan** :
+  - [x] Le fichier CSV est bien généré.
+  - [x] L’onglet stack plan se remplit comme dans la version Tk.
+- [x] Vérifier que l’éventuelle gestion des recos dans la visualisation (sélection d’images) est cohérente avec les actions possibles dans l’onglet Results.
+
+---
+
+## 🧪 Étape 6 — Tests manuels finaux
+
+### 6.1 Scénario “dossier sans markers”
+
+- [ ] Choisir un dossier sans `.astro_analyzer_run_complete`.
+- [ ] Vérifier que le bouton **Gérer les marqueurs** reste grisé avant et après analyse.
+
+### 6.2 Scénario “dossier avec markers”
+
+- [ ] Ajouter manuellement un fichier `.astro_analyzer_run_complete` dans un sous-dossier.
+- [ ] Relancer le GUI et sélectionner ce dossier.
+- [ ] Vérifier que le bouton **Gérer les marqueurs** est activé dès la sélection.
+
+### 6.3 Scénario “grosse analyse”
+
+- [ ] Lancer une analyse sur un dataset conséquent (plusieurs centaines d’images).
+- [ ] Confirmer :
+  - [ ] progression visible (barre + log),
+  - [ ] pas de blocage du GUI (thread bien séparé),
+  - [ ] log complet (fichier + fenêtre),
+  - [ ] boutons et visualisation OK en fin de run.
+
+---
+
+## 🧷 Notes / questions à garder en tête
+
+- [ ] Faut-il faire remonter **exactement** la même structure de résultats que Tk pour faciliter la parité complète des visualisations ?
+- [ ] La logique de recommandations stack (percentiles SNR/FWHM/e/starcount) sera-t-elle gérée côté Qt ou réutilisera-t-on une fonction de `analyse_logic` ?
+- [ ] Une fois tout ça stable, prévoir une étape séparée pour **parité parfaite de la fenêtre de visualisation** (onglet “Recommandations Stacking” identique au Tk).
+
+---

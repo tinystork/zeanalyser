@@ -3,6 +3,9 @@ import pytest
 import analysis_schema
 import analysis_model
 
+if analysis_model.Qt is not None:
+    from PySide6.QtCore import Qt
+
 
 pytestmark = pytest.mark.skipif(
     analysis_model.QAbstractTableModel is object, reason="Qt not available"
@@ -39,10 +42,10 @@ def test_model_shape_and_headers():
     assert model.columnCount() == len(keys)
 
     # check header names for first few columns
-    header0 = model.headerData(0, 1)
+    header0 = model.headerData(0, Qt.Horizontal)
     assert header0 == keys[0]
 
-    header1 = model.headerData(1, 1)
+    header1 = model.headerData(1, Qt.Horizontal)
     assert header1 == keys[1]
 
 
@@ -61,5 +64,3 @@ def test_model_data_display():
     # second row, ra should display empty string when None
     idx3 = model.index(1, analysis_schema.get_result_keys().index('ra'))
     assert model.data(idx3) == ''
-
-*** End Patch
