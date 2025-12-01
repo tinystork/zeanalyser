@@ -270,6 +270,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.parent_project_dir = None
         self.parent_token_file_path = None
         self.parent_token_available = False
+        self.analysis_results = []
         try:
             analyzer_script_path = os.path.abspath(__file__)
             beforehand_dir = os.path.dirname(analyzer_script_path)
@@ -341,8 +342,10 @@ class ZeAnalyserMainWindow(QMainWindow):
         """Recompute recommended images using the current percentile sliders."""
         import numpy as np
 
+        rows = getattr(self, 'analysis_results', None) or self._get_analysis_results_rows()
+
         valid_kept = [
-            r for r in self.analysis_results
+            r for r in rows
             if r.get('status') == 'ok'
             and r.get('action') == 'kept'
             and r.get('rejected_reason') is None
@@ -354,7 +357,8 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.reco_snr_min = None
             self.reco_fwhm_max = None
             self.reco_ecc_max = None
-            return [], None, None, None
+            self.reco_starcount_min = None
+            return [], None, None, None, None
 
         snrs = [r['snr'] for r in valid_kept if is_finite_number(r.get('snr', np.nan))]
         fwhms = [r['fwhm'] for r in valid_kept if is_finite_number(r.get('fwhm', np.nan))]
