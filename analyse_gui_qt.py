@@ -2342,29 +2342,31 @@ class ZeAnalyserMainWindow(QMainWindow):
         log_file_path = output_path
 
         def log_callback(text_key, clear=False, **kwargs):
+            """Mirror the Tk logger: translate, timestamp, write file, emit UI."""
             try:
-                # Translate the key using _translate like Tk version
-                text = _translate(text_key, **kwargs)
-                # Add timestamp like Tk version
+                processed = dict(kwargs)
+                if 'has_trails' in processed:
+                    # Match Tk behaviour: convert boolean to translated status
+                    processed['status'] = _translate('logic_trail_yes' if processed['has_trails'] else 'logic_trail_no')
+
+                # Translate message using the same keys as analyse_logic/analyse_gui
+                text = zone._(text_key, **processed)
                 timestamp = datetime.datetime.now().strftime("%H:%M:%S")
                 full_text = f"[{timestamp}] {text}"
-                # Write to log file
-                try:
-                    with open(log_file_path, 'a', encoding='utf-8') as f:
-                        f.write(full_text + '\n')
-                except Exception:
-                    pass
-                # Emit to widget
+            except Exception:
+                # Fallback to raw content to avoid dropping log lines
+                full_text = f"{text_key} {kwargs if kwargs else ''}".strip()
+
+            try:
+                with open(log_file_path, 'a', encoding='utf-8') as f:
+                    f.write(full_text + '\n')
+            except Exception:
+                pass
+
+            try:
                 w.logLine.emit(full_text)
             except Exception:
-                # Fallback: log raw message
-                fallback_msg = str(text_key) if isinstance(text_key, str) else str(kwargs)
-                try:
-                    with open(log_file_path, 'a', encoding='utf-8') as f:
-                        f.write(fallback_msg + '\n')
-                except Exception:
-                    pass
-                w.logLine.emit(fallback_msg)
+                pass
 
         # Prefer to run the real perform_analysis if available, otherwise
         # fall back to the worker's built-in timer-driven simulation.
