@@ -1564,6 +1564,25 @@ class ZeAnalyserMainWindow(QMainWindow):
             log_path = self.log_path_edit.text().strip()
             if log_path:
                 self._last_loaded_log_path = log_path
+                # If the log file is empty/missing visualization markers, append the JSON block
+                try:
+                    log_dir = os.path.dirname(log_path)
+                    if log_dir:
+                        os.makedirs(log_dir, exist_ok=True)
+                    append_block = True
+                    if os.path.isfile(log_path):
+                        with open(log_path, "r", encoding="utf-8") as f:
+                            log_text = f.read()
+                        if "--- BEGIN VISUALIZATION DATA ---" in log_text and "--- END VISUALIZATION DATA ---" in log_text:
+                            append_block = False
+                    if append_block and self.analysis_results:
+                        with open(log_path, "a", encoding="utf-8") as f:
+                            f.write("\n--- BEGIN VISUALIZATION DATA ---\n")
+                            json.dump(self.analysis_results, f, indent=4)
+                            f.write("\n--- END VISUALIZATION DATA ---\n")
+                        self._log("DEBUG: visualization block appended to log from worker results.")
+                except Exception:
+                    pass
         except Exception:
             pass
         try:
