@@ -87,8 +87,17 @@ except Exception:  # pragma: no cover - tests guard for availability
     QTableView = object
     QTimer = object
     QObject = object
-    Signal = lambda *a, **k: None
-    Slot = lambda *a, **k: None
+
+    def Signal(*args, **kwargs):
+        def _dummy(*_a, **_k):
+            return None
+        return _dummy
+
+    def Slot(*args, **kwargs):
+        def _decorator(func):
+            return func
+        return _decorator
+
     QThread = object
     QRunnable = object
     QThreadPool = object
@@ -2396,7 +2405,16 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             pass
 
+        self._analysis_completed_successfully = False
         self.analysis_results = []
+        self._last_loaded_log_path = None
+        try:
+            self.recommended_images = []
+            self.reco_snr_min = None
+            self.reco_fwhm_max = None
+            self.reco_ecc_max = None
+        except Exception:
+            pass
         if not log_path or not os.path.isfile(log_path):
             return False
 
@@ -2430,7 +2448,11 @@ class ZeAnalyserMainWindow(QMainWindow):
             if not json_str.strip():
                 return False
 
-            loaded_data = json.loads(json_str)
+            try:
+                loaded_data = json.loads(json_str)
+            except json.JSONDecodeError:
+                return False
+
             if isinstance(loaded_data, list):
                 self.analysis_results = loaded_data
                 self._analysis_completed_successfully = bool(self.analysis_results)
@@ -2449,6 +2471,8 @@ class ZeAnalyserMainWindow(QMainWindow):
                 return True
             return False
         except Exception:
+            self._analysis_completed_successfully = False
+            self.analysis_results = []
             return False
 
     def _start_stacking_after_analysis(self):
@@ -4800,8 +4824,8 @@ def main(argv=None, run_for: int | None = None):
     # Parse command line arguments similar to Tk version
     import argparse
     parser = argparse.ArgumentParser(description="ZeAnalyser Qt")
-    parser.add_argument('--input-dir', help='Input directory')
-    parser.add_argument('--log-file', help='Log file path')
+    parser.add_argument('-i', '--input-dir', help='Input directory')
+    parser.add_argument('-l', '--log-file', help='Log file path')
     parser.add_argument('--lang', default='fr', help='Language (en/fr)')
     parser.add_argument('--lock-lang', action='store_true', help='Lock language selection')
 
