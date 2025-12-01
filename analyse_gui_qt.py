@@ -370,7 +370,8 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.reco_snr_min = None
             self.reco_fwhm_max = None
             self.reco_ecc_max = None
-            return [], None, None, None
+            self.reco_starcount_min = None
+            return [], None, None, None, None
 
         snrs = [r['snr'] for r in valid_kept if is_finite_number(r.get('snr', np.nan))]
         fwhms = [r['fwhm'] for r in valid_kept if is_finite_number(r.get('fwhm', np.nan))]
@@ -2354,7 +2355,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     processed['status'] = _translate('logic_trail_yes' if processed['has_trails'] else 'logic_trail_no')
 
                 # Translate message using the same keys as analyse_logic/analyse_gui
-                text = zone._(text_key, **processed)
+                text = _translate(text_key, **processed)
                 timestamp = datetime.datetime.now().strftime("%H:%M:%S")
                 full_text = f"[{timestamp}] {text}"
             except Exception:
