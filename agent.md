@@ -38,7 +38,7 @@ Ne touche pas aux modules lourds (snr, ecc, starcount, trails…) sauf si tu as 
 
 ## ✅ Étape 1 – Comprendre le pipeline actuel
 
-[ ] 1.1. Dans `analyse_gui.py` (Tk), repérer **toute la chaîne** :
+[X] 1.1. Dans `analyse_gui.py` (Tk), repérer **toute la chaîne** :
 
 - où l’analyse est lancée,
 - où le chemin du log est défini,
