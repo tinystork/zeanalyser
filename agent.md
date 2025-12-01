@@ -46,7 +46,7 @@ Ne touche pas aux modules lourds (snr, ecc, starcount, trails…) sauf si tu as 
 - comment le tableau des résultats est rempli,
 - comment les boutons de visu sont activés / désactivés.
 
-[ ] 1.2. Dans `analyse_gui_qt.py`, repérer les équivalents :
+[X] 1.2. Dans `analyse_gui_qt.py`, repérer les équivalents :
 
 - slot qui lance l’analyse (bouton “Analyser”),
 - comment le log path est construit (généralement `.../analyse_resultats.log`),
@@ -55,7 +55,7 @@ Ne touche pas aux modules lourds (snr, ecc, starcount, trails…) sauf si tu as 
 - gestion des boutons : `_update_buttons_after_analysis()`, `_update_marker_button_state()`, etc.,
 - méthode de visu : `_visualise_results()`.
 
-[ ] 1.3. Vérifier que **le backend** (dans `main_stacking_script.py`) écrit bien :
+[X] 1.3. Vérifier que **le backend** (dans `main_stacking_script.py`) écrit bien :
 
 - le tableau “Analyse individuelle…”,
 - le **résumé** “Résumé de l’analyse”,
@@ -67,16 +67,16 @@ Ne touche pas aux modules lourds (snr, ecc, starcount, trails…) sauf si tu as 
 
 ## ✅ Étape 2 – S’aligner sur la logique Tk pour la lecture du log
 
-[ ] 2.1. Ouvrir dans `analyse_gui.py` la fonction qui lit le bloc de visualisation (nom proche de `_load_visualization_data_from_log`).
+[X] 2.1. Ouvrir dans `analyse_gui.py` la fonction qui lit le bloc de visualisation (nom proche de `_load_visualization_data_from_log`).
 
-[ ] 2.2. **Comprendre exactement** ce que fait cette fonction :
+[X] 2.2. **Comprendre exactement** ce que fait cette fonction :
 
 - comment elle cherche **le dernier** `--- END VISUALIZATION DATA ---`,
 - comment elle remonte jusqu’au `--- BEGIN VISUALIZATION DATA ---` précédent,
 - comment elle agrège les lignes JSON entre ces deux marqueurs,
 - comment elle gère les cas d’erreur (pas de marqueurs, JSON vide, JSON invalide).
 
-[ ] 2.3. Dans `analyse_gui_qt.py`, **faire en sorte que** `_load_visualisation_from_log_path(log_path)` :
+[X] 2.3. Dans `analyse_gui_qt.py`, **faire en sorte que** `_load_visualisation_from_log_path(log_path)` :
 
 - utilise **le même algorithme** pour localiser la section JSON (avec les mêmes marqueurs),
 - parse le JSON et remplit `self.analysis_results` avec une **liste de dict**,
@@ -92,17 +92,17 @@ Ne touche pas aux modules lourds (snr, ecc, starcount, trails…) sauf si tu as 
 
 ## ✅ Étape 3 – S’assurer que le log path est correct et exploité
 
-[ ] 3.1. Vérifier dans `analyse_gui_qt.py` :
+[X] 3.1. Vérifier dans `analyse_gui_qt.py` :
 
 - la construction de `self.log_path_edit` et `_suggest_log_path(input_dir)`,
 - le comportement de `_choose_input_folder()` : après sélection d’un dossier d’entrée, `log_path_edit` doit automatiquement pointer vers `input_dir/analyse_resultats.log`, comme en Tk.
 
-[ ] 3.2. Vérifier que lors d’un lancement via CLI (`python analyse_gui_qt.py -i D:\ASTRO\lights`), le `main()` :
+[X] 3.2. Vérifier que lors d’un lancement via CLI (`python analyse_gui_qt.py -i D:\ASTRO\lights`), le `main()` :
 
 - remplit `input_path_edit` **et**
 - appelle `_suggest_log_path()` pour initialiser `log_path_edit`.
 
-[ ] 3.3. Vérifier dans le slot de fin d’analyse (callback du worker Qt) que :
+[X] 3.3. Vérifier dans le slot de fin d’analyse (callback du worker Qt) que :
 
 - `self.log_path_edit` contient bien le chemin du log qui vient d’être écrit,
 - si `self.analysis_results` est vide après le run, le code appelle :
@@ -119,14 +119,14 @@ Ne touche pas aux modules lourds (snr, ecc, starcount, trails…) sauf si tu as 
 
 ## ✅ Étape 4 – Modèle Qt & remplissage du tableau
 
-[ ] 4.1. Dans `analysis_model.py`, vérifier quelles clés sont attendues dans chaque `row` (par ex. `file`, `status`, `snr`, `background`, `noise`, `pixsig`, `starcount`, `fwhm`, `ecc`, etc.).
+[X] 4.1. Dans `analysis_model.py`, vérifier quelles clés sont attendues dans chaque `row` (par ex. `file`, `status`, `snr`, `background`, `noise`, `pixsig`, `starcount`, `fwhm`, `ecc`, etc.).
 
-[ ] 4.2. Comparer ces clés avec celles présentes dans le JSON du log (fichier fourni `analyse_resultats.log`).
+[X] 4.2. Comparer ces clés avec celles présentes dans le JSON du log (fichier fourni `analyse_resultats.log`).
 
 * Si certaines colonnes sont optionnelles (ex. `starcount`, `fwhm`, `ecc` pour ce run), le modèle doit gérer les valeurs `None` sans planter.
 * Ne change pas la structure du JSON si la version Tk la consomme déjà correctement.
 
-[ ] 4.3. Vérifier que `set_results(rows)` :
+[X] 4.3. Vérifier que `set_results(rows)` :
 
 * stocke bien `rows` dans le modèle (`AnalysisResultsModel`),
 * met à jour le `QTableView` via `QSortFilterProxyModel`,
@@ -136,12 +136,12 @@ Ne touche pas aux modules lourds (snr, ecc, starcount, trails…) sauf si tu as 
 
 ## ✅ Étape 5 – Visualisation (dialogue & graphes)
 
-[ ] 5.1. Dans `_visualise_results()` :
+[X] 5.1. Dans `_visualise_results()` :
 
 * s’assurer que, si `self.analysis_results` est vide mais `log_path` est défini, la fonction appelle bien `_load_visualisation_from_log_path(log_path)` **avant** de conclure “No results to visualise”.
 * après rechargement, `rows` doit être basé sur le modèle Qt (`_results_model._rows`) ou directement sur `self.analysis_results`.
 
-[ ] 5.2. Vérifier que :
+[X] 5.2. Vérifier que :
 
 * si `matplotlib` n’est pas dispo → fallback texte (stats) fonctionne,
 * si `matplotlib` est dispo → les onglets (SNR, FWHM, Ecc, Traînées, Données brutes) utilisent bien les colonnes disponibles.
@@ -152,7 +152,7 @@ Ne touche pas aux modules lourds (snr, ecc, starcount, trails…) sauf si tu as 
 
 ## ✅ Étape 6 – Tests rapides obligatoires
 
-[ ] 6.1. À partir du log fourni (`analyse_resultats.log`), écrire dans `analyse_gui_qt.py` **un petit test manuel** (si possible dans un `if __name__ == "__main__":` de debug ou un test unitaire séparé) :
+[X] 6.1. À partir du log fourni (`analyse_resultats.log`), écrire dans `analyse_gui_qt.py` **un petit test manuel** (si possible dans un `if __name__ == "__main__":` de debug ou un test unitaire séparé) :
 
 * instancier `ZeAnalyserMainWindow`,
 * appeler `_load_visualisation_from_log_path(path_du_log_exemple)`,

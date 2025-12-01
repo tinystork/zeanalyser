@@ -2413,6 +2413,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.reco_snr_min = None
             self.reco_fwhm_max = None
             self.reco_ecc_max = None
+            self.reco_starcount_min = None
         except Exception:
             pass
         if not log_path or not os.path.isfile(log_path):
@@ -2446,30 +2447,47 @@ class ZeAnalyserMainWindow(QMainWindow):
             json_lines = lines[start_idx + 1:end_idx]
             json_str = "".join(json_lines)
             if not json_str.strip():
+                self._analysis_completed_successfully = False
                 return False
 
             try:
                 loaded_data = json.loads(json_str)
             except json.JSONDecodeError:
+                self._analysis_completed_successfully = False
                 return False
 
-            if isinstance(loaded_data, list):
-                self.analysis_results = loaded_data
-                self._analysis_completed_successfully = bool(self.analysis_results)
-                self.set_results(self.analysis_results)
-                try:
-                    self._compute_recommended_subset()
-                except Exception:
-                    pass
-                self._update_buttons_after_analysis()
-                self._update_marker_button_state()
-                self._last_loaded_log_path = log_path
-                try:
-                    self._log(f"DEBUG: visualisation JSON loaded: {len(self.analysis_results)} rows.")
-                except Exception:
-                    pass
-                return True
-            return False
+            if not isinstance(loaded_data, list):
+                self._analysis_completed_successfully = False
+                return False
+
+            self.analysis_results = loaded_data
+            self._analysis_completed_successfully = bool(self.analysis_results)
+
+            try:
+                import analyse_logic
+
+                if hasattr(analyse_logic, "build_recommended_images"):
+                    recos, snr_min, fwhm_max, ecc_max = analyse_logic.build_recommended_images(self.analysis_results)
+                    self.recommended_images = list(recos or [])
+                    self.reco_snr_min = snr_min if is_finite_number(snr_min) else None
+                    self.reco_fwhm_max = fwhm_max if is_finite_number(fwhm_max) else None
+                    self.reco_ecc_max = ecc_max if is_finite_number(ecc_max) else None
+            except Exception:
+                pass
+
+            self.set_results(self.analysis_results)
+            try:
+                self._compute_recommended_subset()
+            except Exception:
+                pass
+            self._update_buttons_after_analysis()
+            self._update_marker_button_state()
+            self._last_loaded_log_path = log_path
+            try:
+                self._log(f"DEBUG: visualisation JSON loaded: {len(self.analysis_results)} rows.")
+            except Exception:
+                pass
+            return True
         except Exception:
             self._analysis_completed_successfully = False
             self.analysis_results = []
@@ -3253,13 +3271,14 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def _update_buttons_after_analysis(self) -> None:
         """Enable/disable buttons after analysis completes."""
-        has_results = bool(getattr(self, '_results_model', None) or getattr(self, '_results_rows', None))
+        rows = self._get_analysis_results_rows()
+        has_results = bool(rows)
         has_log = bool(getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip())
         try:
             recos = getattr(self, 'recommended_images', None)
             has_recos = bool(recos)
         except Exception:
-            has_recos = bool(getattr(self, '_results_rows', None) and any(r.get('recommended') for r in self._results_rows))
+            has_recos = bool(rows and any(r.get('recommended') for r in rows))
 
         # Enable/disable based on presence of results
         try:
