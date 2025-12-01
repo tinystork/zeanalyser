@@ -268,6 +268,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.command_file_path = command_file_path
         self.initial_lang = initial_lang
         self.lock_language = lock_language
+        self._last_loaded_log_path = None
 
         # Detect parent token availability (align with Tk logic)
         self.parent_project_dir = None
@@ -1519,8 +1520,6 @@ class ZeAnalyserMainWindow(QMainWindow):
                 getattr(worker, 'signals', QObject()).resultsReady.connect(self._on_results_ready)
             except Exception:
                 pass
-        except Exception:
-            getattr(worker, 'signals', QObject()).finished.connect(self._on_worker_finished)
 
         try:
             worker.error.connect(self._on_worker_error)
@@ -1561,6 +1560,35 @@ class ZeAnalyserMainWindow(QMainWindow):
         # After setting results, enable/disable buttons based on results
         self._update_buttons_after_analysis()
         self._update_marker_button_state()
+        try:
+            log_path = self.log_path_edit.text().strip()
+            if log_path:
+                self._last_loaded_log_path = log_path
+                # If the log file is empty/missing visualization markers, append the JSON block
+                try:
+                    log_dir = os.path.dirname(log_path)
+                    if log_dir:
+                        os.makedirs(log_dir, exist_ok=True)
+                    append_block = True
+                    if os.path.isfile(log_path):
+                        with open(log_path, "r", encoding="utf-8") as f:
+                            log_text = f.read()
+                        if "--- BEGIN VISUALIZATION DATA ---" in log_text and "--- END VISUALIZATION DATA ---" in log_text:
+                            append_block = False
+                    if append_block and self.analysis_results:
+                        with open(log_path, "a", encoding="utf-8") as f:
+                            f.write("\n--- BEGIN VISUALIZATION DATA ---\n")
+                            json.dump(self.analysis_results, f, indent=4)
+                            f.write("\n--- END VISUALIZATION DATA ---\n")
+                        self._log("DEBUG: visualization block appended to log from worker results.")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            self._log(f"DEBUG: resultsReady received {len(self.analysis_results)} rows from worker.")
+        except Exception:
+            pass
 
     def _on_worker_status(self, text: str):
         if hasattr(self, 'statusBar'):
@@ -1620,6 +1648,11 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self._log(f"Error starting stacking: {e}")
         else:
             self._stack_after_analysis = False
+
+        if not getattr(self, 'analysis_results', None):
+            log_path = self.log_path_edit.text().strip() if hasattr(self, 'log_path_edit') else ''
+            if log_path and os.path.isfile(log_path):
+                self._load_visualisation_from_log_path(log_path)
 
         # clear reference
         self._current_worker = None
@@ -2277,6 +2310,8 @@ class ZeAnalyserMainWindow(QMainWindow):
         # With validations passed, persist flags for finish callback
         self._stack_after_analysis = bool(stack_after)
         self._stack_input_path = input_path
+        self._analysis_completed_successfully = False
+        self.analysis_results = []
 
         # Log the paths being used
         self._log(f"Using input dir: {input_path}, log file: {output_path}")
@@ -2354,6 +2389,11 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def _load_visualisation_from_log_path(self, log_path: str) -> bool:
         """Load visualization data from a log file and populate results."""
+        try:
+            self._log(f"DEBUG: loading visualisation from log: {log_path}")
+        except Exception:
+            pass
+
         self.analysis_results = []
         if not log_path or not os.path.isfile(log_path):
             return False
@@ -2362,29 +2402,48 @@ class ZeAnalyserMainWindow(QMainWindow):
             with open(log_path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
 
-            # find the last BEGIN/END block
             end_indices = [i for i, line in enumerate(lines) if line.strip() == "--- END VISUALIZATION DATA ---"]
             if not end_indices:
+                try:
+                    self._log("DEBUG: visualization END marker not found.")
+                except Exception:
+                    pass
                 return False
             end_idx = end_indices[-1]
+
             begin_candidates = [i for i, line in enumerate(lines[:end_idx]) if line.strip() == "--- BEGIN VISUALIZATION DATA ---"]
             if not begin_candidates:
+                try:
+                    self._log("DEBUG: visualization BEGIN marker not found before END.")
+                except Exception:
+                    pass
                 return False
             start_idx = begin_candidates[-1]
 
-            json_str = "".join(lines[start_idx + 1:end_idx])
+            if start_idx >= end_idx:
+                return False
+
+            json_lines = lines[start_idx + 1:end_idx]
+            json_str = "".join(json_lines)
             if not json_str.strip():
                 return False
 
             loaded_data = json.loads(json_str)
             if isinstance(loaded_data, list):
                 self.analysis_results = loaded_data
+                self._analysis_completed_successfully = bool(self.analysis_results)
                 self.set_results(self.analysis_results)
                 try:
                     self._compute_recommended_subset()
                 except Exception:
                     pass
                 self._update_buttons_after_analysis()
+                self._update_marker_button_state()
+                self._last_loaded_log_path = log_path
+                try:
+                    self._log(f"DEBUG: visualisation JSON loaded: {len(self.analysis_results)} rows.")
+                except Exception:
+                    pass
                 return True
             return False
         except Exception:
@@ -3530,6 +3589,20 @@ class ZeAnalyserMainWindow(QMainWindow):
                 return
 
             # Get results
+            log_path = self.log_path_edit.text().strip() if hasattr(self, 'log_path_edit') else ''
+            need_reload = False
+            try:
+                current_rows = list(self.analysis_results)
+            except Exception:
+                current_rows = []
+            if not current_rows:
+                need_reload = True
+            elif log_path and self._last_loaded_log_path and log_path != self._last_loaded_log_path:
+                need_reload = True
+
+            if need_reload and log_path:
+                self._load_visualisation_from_log_path(log_path)
+
             rows = None
             if getattr(self, '_results_model', None) is not None and hasattr(self._results_model, '_rows'):
                 rows = list(self._results_model._rows)
@@ -4618,12 +4691,14 @@ class AnalysisWorker(QObject):
             # call with flexible signature and capture a result if returned
             result = analysis_callable(*args, **kwargs)
 
+            if result is None:
+                result = []
+
             # ensure full progress delivered
             self.progressChanged.emit(100.0)
             # emit results if callable returned something
             try:
-                if 'result' in locals() and result is not None:
-                    self.resultsReady.emit(result)
+                self.resultsReady.emit(result)
             except Exception:
                 pass
             # If the worker was requested to cancel while the analysis ran,
