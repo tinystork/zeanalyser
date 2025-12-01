@@ -2933,7 +2933,8 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def _update_buttons_after_analysis(self) -> None:
         """Enable/disable buttons after analysis completes."""
-        has_results = bool(getattr(self, '_results_model', None) or getattr(self, '_results_rows', None))
+        rows = self._get_analysis_results_rows()
+        has_results = bool(rows)
         has_log = bool(getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip())
         has_recos = bool(getattr(self, '_results_rows', None) and any(r.get('recommended') for r in self._results_rows))
 
