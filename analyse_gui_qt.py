@@ -1808,7 +1808,11 @@ class ZeAnalyserMainWindow(QMainWindow):
                 p.has_trails = True
             else:
                 p.has_trails = False
-            p.invalidateFilter()
+            try:
+                # Qt6 recommends invalidate() over invalidateFilter()
+                p.invalidate()
+            except Exception:
+                p.invalidateFilter()
         except Exception:
             pass
 
