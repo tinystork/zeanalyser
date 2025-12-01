@@ -2349,13 +2349,8 @@ class ZeAnalyserMainWindow(QMainWindow):
         def log_callback(text_key, clear=False, **kwargs):
             """Mirror the Tk logger: translate, timestamp, write file, emit UI."""
             try:
-                processed = dict(kwargs)
-                if 'has_trails' in processed:
-                    # Match Tk behaviour: convert boolean to translated status
-                    processed['status'] = _translate('logic_trail_yes' if processed['has_trails'] else 'logic_trail_no')
-
                 # Translate message using the same keys as analyse_logic/analyse_gui
-                text = _translate(text_key, **processed)
+                text = _translate(text_key, **kwargs)
                 timestamp = datetime.datetime.now().strftime("%H:%M:%S")
                 full_text = f"[{timestamp}] {text}"
             except Exception:
