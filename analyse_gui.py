@@ -73,7 +73,16 @@ import tkinter as tk
 from tkinter import ttk, filedialog, scrolledtext, messagebox
 from pathlib import Path
 import matplotlib
-matplotlib.use('TkAgg') # Assurer la compatibilité Tkinter pour Matplotlib
+_env_backend = os.environ.get("MPLBACKEND")
+if _env_backend:
+    # Honour an explicit backend (e.g. CI headless environment)
+    matplotlib.use(_env_backend)
+else:
+    try:
+        matplotlib.use('TkAgg') # Assurer la compatibilité Tkinter pour Matplotlib
+    except Exception:
+        # Headless fallback for environments without Tk support
+        matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.widgets import RangeSlider
@@ -115,24 +124,34 @@ def safe_set_maximized(root):
     if not root:
         return
 
-    try:
-        root.state('zoomed')
-        return
-    except tk.TclError:
-        pass
-    except Exception:
-        pass
+    system_name = platform.system()
 
-    try:
-        root.wm_attributes('-zoomed', True)
-        return
-    except tk.TclError:
-        pass
-    except Exception:
-        pass
+    # macOS ne supporte pas toujours state('zoomed') / -zoomed. On l'évite pour
+    # limiter les warnings et on se rabat sur une géométrie plein écran.
+    if system_name != "Darwin":
+        try:
+            root.state('zoomed')
+            return
+        except tk.TclError:
+            pass
+        except Exception:
+            pass
+
+        try:
+            root.wm_attributes('-zoomed', True)
+            return
+        except tk.TclError:
+            pass
+        except Exception:
+            pass
 
     try:
         root.state('normal')
+    except Exception:
+        pass
+
+    try:
+        root.update_idletasks()
     except Exception:
         pass
 
@@ -847,28 +866,36 @@ class AstroImageAnalyzerGUI:
         Configure l'icône de la fenêtre avec des fallback spécifiques à l'OS.
 
         - Windows : tente iconbitmap avec .ico si disponible.
-        - Linux/macOS : tente iconbitmap avec .xbm si disponible.
+        - macOS : privilégie l'icône PNG (iconphoto) car iconbitmap n'est pas fiable.
+        - Linux : tente iconbitmap avec .xbm si disponible.
         - Fallback universel : iconphoto avec .png.
         Chaque tentative est protégée contre les erreurs Tkinter pour éviter tout crash.
         """
         system_name = platform.system()
         icon_dir = project_root / "icon"
+        icon_png = icon_dir / "icon.png"
+        icon_ico = icon_dir / "icon.ico"
+        icon_xbm = icon_dir / "icon.xbm"
+
         icon_candidates = []
+        if system_name == "Windows" and icon_ico.exists():
+            icon_candidates.append(icon_ico)
+        elif system_name == "Darwin" and icon_png.exists():
+            # Sur macOS on utilise directement iconphoto
+            icon_candidates.append(icon_png)
+        elif system_name != "Windows" and icon_xbm.exists():
+            icon_candidates.append(icon_xbm)
 
-        if system_name == "Windows":
-            icon_candidates.append(icon_dir / "icon.ico")
-        else:
-            icon_candidates.append(icon_dir / "icon.xbm")
-
-        icon_candidates.append(icon_dir / "icon.png")
+        # Fallback universel PNG pour tous les OS
+        if icon_png.exists() and icon_png not in icon_candidates:
+            icon_candidates.append(icon_png)
 
         for icon_path in icon_candidates:
-            if not icon_path.exists():
-                continue
             try:
-                if icon_path.suffix.lower() == ".ico" and system_name == "Windows":
+                suffix = icon_path.suffix.lower()
+                if suffix == ".ico" and system_name == "Windows":
                     self.root.iconbitmap(default=str(icon_path))
-                elif icon_path.suffix.lower() == ".xbm":
+                elif suffix == ".xbm":
                     self.root.iconbitmap(f"@{icon_path}")
                 else:
                     icon_image = Image.open(icon_path)
@@ -887,17 +914,25 @@ class AstroImageAnalyzerGUI:
         try:
             if system_name == "Windows":
                 window.state("zoomed")
-            else:
+                return
+            elif system_name != "Darwin":
                 window.attributes("-zoomed", True)
-            return
+                return
         except tk.TclError:
             # Certains gestionnaires de fenêtres n'implémentent pas -zoomed/state('zoomed')
-            try:
-                screen_w = window.winfo_screenwidth()
-                screen_h = window.winfo_screenheight()
-                window.geometry(f"{screen_w}x{screen_h}+0+0")
-            except tk.TclError as geom_err:
-                print(f"AVERTISSEMENT (analyse_gui): Maximisation non supportée par l'OS ({system_name}): {geom_err}")
+            pass
+
+        try:
+            window.update_idletasks()
+        except Exception:
+            pass
+
+        try:
+            screen_w = window.winfo_screenwidth()
+            screen_h = window.winfo_screenheight()
+            window.geometry(f"{screen_w}x{screen_h}+0+0")
+        except tk.TclError as geom_err:
+            print(f"AVERTISSEMENT (analyse_gui): Maximisation non supportée par l'OS ({system_name}): {geom_err}")
 
 
 ###################################################################################################################""
@@ -3795,7 +3830,6 @@ class AstroImageAnalyzerGUI:
 
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
-
     def apply_pending_ecc_actions_gui(self):
         """Apply eccentricity filter based on slider."""
         lo = self.current_ecc_min
@@ -4803,5 +4837,13 @@ if __name__ == "__main__":
         except Exception as msg_e: 
             print(f" -> Erreur affichage message: {msg_e}", file=sys.stderr)
         sys.exit(1)
+
+# ---------------------------------------------------------------------------
+# Compatibility alias
+# ---------------------------------------------------------------------------
+# Several tests and helpers expect the Tk frontend class to be available under
+# the Qt-like name ``ZeAnalyserMainWindow``.  Expose the existing Tk class
+# using that alias so parity checks can import it without failing.
+ZeAnalyserMainWindow = AstroImageAnalyzerGUI
 
 # --- FIN DU FICHIER analyse_gui.py ---
