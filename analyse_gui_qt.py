@@ -2128,10 +2128,10 @@ class ZeAnalyserMainWindow(QMainWindow):
             p.snr_max = self._parse_float_or_none(self.snr_max_edit.text())
             p.fwhm_max = self._parse_float_or_none(self.fwhm_max_edit.text())
             p.ecc_max = self._parse_float_or_none(self.ecc_max_edit.text())
-            choice = self.has_trails_box.currentText() if hasattr(self, 'has_trails_box') else 'Any'
-            if choice == 'Any':
+            choice_idx = self.has_trails_box.currentIndex() if hasattr(self, 'has_trails_box') else 0
+            if choice_idx == 0:
                 p.has_trails = None
-            elif choice == 'Yes':
+            elif choice_idx == 1:
                 p.has_trails = True
             else:
                 p.has_trails = False
