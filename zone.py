@@ -26,7 +26,7 @@ translations = {
     'fr': {
             
         # --- Fenêtre principale ---
-        'window_title': "ZeAnalyser V2.3 Analyseur d'Images Astronomiques",
+        'window_title': "Zeanalyser V3.0 Analyseur d'Images Astronomiques",
         'status_ready': "Prêt",
         'status_analysis_start': "Démarrage de l'analyse...",
         'status_analysis_prep': "Préparation de l'analyse...",
@@ -292,7 +292,7 @@ translations = {
     },
     'en': {
         # --- Main Window ---
-        'window_title': "ZeAnalyser V2.3 Astronomical Image Analyzer",
+        'window_title': "Zeanalyser V3.0 Astronomical Image Analyzer",
         'status_ready': "Ready", 'status_analysis_start': "Starting analysis...", 'status_analysis_prep': "Preparing analysis...",
         'status_discovery_start': "Discovering FITS files...", # NEW
         'status_satdet_wait': "Detecting trails (acstools)... Please wait...", 'status_satdet_no_file': "Trail detection: No FITS files found.",

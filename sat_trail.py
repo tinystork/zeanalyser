@@ -71,7 +71,7 @@ except Exception as e:
 class AstroImageAnalyzerGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("ZeAnalyser V2.3 Analyseur d'Images Astronomiques")
+        self.root.title("Zeanalyser V3.0 Analyseur d'Images Astronomiques")
         self.root.geometry("900x730") # Ajusté la hauteur
         self.root.minsize(900, 730)
 
