@@ -10,15 +10,17 @@ existing Tkinter UI and project code remain untouched.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import logging
+import locale
 import os
 import time
 import traceback
 
 # Set Matplotlib backend for Qt before importing matplotlib
 try:
-    from PySide6.QtGui import QPixmap, QColor
+    from PySide6.QtGui import QPixmap, QColor, QPalette
     import matplotlib
     matplotlib.use('QtAgg')  # Use Qt backend for Matplotlib
     import matplotlib.pyplot as plt
@@ -104,6 +106,7 @@ except Exception:  # pragma: no cover - tests guard for availability
     QCheckBox = object
     QGroupBox = object
     QSlider = object
+    QPalette = object
 try:
     # small i18n helper used across the project (zone.py provides a local wrapper)
     import zone
@@ -111,6 +114,7 @@ try:
 except Exception:  # pragma: no cover - fallback to a no-op name lookup
     def _(k, *a, **kw):
         return k
+
     class zone:
         @staticmethod
         def _(k, *a, **kw):
@@ -122,13 +126,132 @@ try:
 except ImportError:
     translations = {'en': {}, 'fr': {}}
 
+# ---------------------------------------------------------------------------
+# Language helpers
+# ---------------------------------------------------------------------------
+_i18n_spec = importlib.util.find_spec("zeseestarstacker.i18n")
+_i18n_module = None
+if _i18n_spec is not None:
+    _i18n_module = importlib.util.module_from_spec(_i18n_spec)
+    try:
+        _i18n_spec.loader.exec_module(_i18n_module)
+    except Exception:
+        _i18n_module = None
+
+_external_get_initial_language = getattr(_i18n_module, "get_initial_language", None) if _i18n_module else None
+_external_set_language = getattr(_i18n_module, "set_language", None) if _i18n_module else None
+_external_lock_language = getattr(_i18n_module, "lock_language", None) if _i18n_module else None
+
+
+def _fallback_initial_language() -> str:
+    """Determine a default language using the system locale and translations."""
+
+    try:
+        loc = locale.getdefaultlocale()
+        if loc and loc[0]:
+            lang_code = loc[0].split("_")[0].lower()
+            if lang_code in translations:
+                return lang_code
+    except Exception:
+        pass
+
+    if "en" in translations:
+        return "en"
+    if translations:
+        return next(iter(translations.keys()))
+    return "en"
+
+
+def get_initial_language() -> str:
+    """Retrieve the initial language from the optional i18n module or fallback."""
+
+    if _external_get_initial_language:
+        try:
+            return _external_get_initial_language()
+        except Exception:
+            pass
+    return _fallback_initial_language()
+
+
+_ACTIVE_LANGUAGE = get_initial_language()
+_LANGUAGE_LOCKED = False
+
+
+def _make_translator(lang: str):
+    default_lang_dict = translations.get("en", {})
+    lang_dict = translations.get(lang, translations.get("fr", default_lang_dict))
+
+    def translate(key, *args, **kwargs):
+        text = lang_dict.get(key, default_lang_dict.get(key, f"_{key}_"))
+        try:
+            return text.format(*args, **kwargs)
+        except Exception:
+            return text
+
+    return translate
+
+
+def _update_translator(lang: str) -> None:
+    global _
+    if _external_set_language:
+        _ = zone._
+    else:
+        translator = _make_translator(lang)
+        _ = translator
+        try:
+            zone._ = translator
+        except Exception:
+            pass
+
+
+def set_language(lang: str) -> str:
+    """Set the active language using external i18n hooks when available."""
+
+    global _ACTIVE_LANGUAGE
+    if _LANGUAGE_LOCKED and _ACTIVE_LANGUAGE:
+        return _ACTIVE_LANGUAGE
+
+    if not lang or str(lang).lower() == "system":
+        lang = _fallback_initial_language()
+    if _external_set_language:
+        try:
+            _external_set_language(lang)
+        except Exception:
+            pass
+
+    _ACTIVE_LANGUAGE = str(lang)
+    _update_translator(_ACTIVE_LANGUAGE)
+    return _ACTIVE_LANGUAGE
+
+
+def lock_language(lang: str | None = None) -> None:
+    """Lock the language to avoid subsequent changes."""
+
+    global _LANGUAGE_LOCKED
+    if lang:
+        set_language(lang)
+    if _external_lock_language:
+        try:
+            _external_lock_language(lang or _ACTIVE_LANGUAGE)
+        except Exception:
+            pass
+    _LANGUAGE_LOCKED = True
+
+
+def get_current_language() -> str:
+    return _ACTIVE_LANGUAGE or _fallback_initial_language()
+
+
+_update_translator(_ACTIVE_LANGUAGE)
+
 logger = logging.getLogger(__name__)
 
 def _translate(key, **kwargs):
-    """Translate key to French with formatting, matching Tk behavior."""
-    lang = 'fr'  # Default to French
+    """Translate key using the active language with formatting, matching Tk behavior."""
+
+    lang = get_current_language()
     default_lang_dict = translations.get('en', {})
-    lang_dict = translations.get(lang, default_lang_dict)
+    lang_dict = translations.get(lang, translations.get('fr', default_lang_dict))
     text = lang_dict.get(key, default_lang_dict.get(key, f"_{key}_"))
     try:
         return text.format(**kwargs)
@@ -138,6 +261,19 @@ def _translate(key, **kwargs):
     except Exception as e:
         print(f"WARN: Erreur formatage clé '{key}' langue '{lang}': {e}")
         return text
+
+
+def _tr(key: str, fallback: str) -> str:
+    """Translate a key when available, otherwise return the fallback string."""
+
+    lang = get_current_language()
+    lang_dict = translations.get(lang, translations.get('fr', {}))
+    default_lang_dict = translations.get('en', {})
+    if key in lang_dict:
+        return lang_dict[key]
+    if key in default_lang_dict:
+        return default_lang_dict[key]
+    return fallback
 
 # Helper function for finite numbers
 def is_finite_number(value):
@@ -269,7 +405,27 @@ class ZeAnalyserMainWindow(QMainWindow):
         # Store command file path for integration
         self.command_file_path = command_file_path
         self.initial_lang = initial_lang
-        self.lock_language = lock_language
+        self.language_locked_cli = lock_language
+
+        # Read persisted preferences early so language and skin are available
+        self._stored_language_pref = self._read_setting_value("options/language")
+        self._stored_skin_pref = self._read_setting_value("options/skin")
+
+        preferred_lang = self.initial_lang or self._stored_language_pref or "system"
+        lang_to_apply = preferred_lang
+        if preferred_lang == "system":
+            lang_to_apply = get_initial_language()
+        set_language(lang_to_apply)
+        if self.language_locked_cli:
+            lock_language(lang_to_apply)
+
+        self._preferred_language = preferred_lang
+        self._preferred_skin = self._stored_skin_pref or "system"
+
+        try:
+            self.apply_skin(self._preferred_skin, persist=False)
+        except Exception:
+            pass
 
         # Detect parent token availability
         self.parent_project_dir = None
@@ -293,20 +449,6 @@ class ZeAnalyserMainWindow(QMainWindow):
             print(f"Error detecting token: {e}")
 
         self._build_ui()
-
-        # Set initial language and lock if requested
-        if self.initial_lang:
-            try:
-                zone.set_lang(self.initial_lang)
-                if hasattr(self, 'lang_combo') and self.lang_combo is not None:
-                    self.lang_combo.setCurrentText(self.initial_lang)
-            except Exception:
-                pass
-        if self.lock_language and hasattr(self, 'lang_combo') and self.lang_combo is not None:
-            try:
-                self.lang_combo.setEnabled(False)
-            except Exception:
-                pass
 
         self._retranslate_ui()
 
@@ -346,6 +488,20 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         try:
             self._update_log_and_vis_buttons_state()
+        except Exception:
+            pass
+
+    def _set_combo_to_value(self, combo, value: str) -> None:
+        """Set a combo box to the entry matching the given userData or text."""
+
+        if combo is None:
+            return
+
+        try:
+            for idx in range(combo.count()):
+                if combo.itemData(idx) == value or combo.itemText(idx) == value:
+                    combo.setCurrentIndex(idx)
+                    return
         except Exception:
             pass
 
@@ -530,6 +686,16 @@ class ZeAnalyserMainWindow(QMainWindow):
         """Alias for log_path_edit for backward compatibility."""
         return self.log_path_edit
 
+    def _read_setting_value(self, key: str, default=None):
+        """Safely read a value from QSettings if available."""
+
+        try:
+            if QSettings is object:
+                return default
+            return QSettings().value(key, default)
+        except Exception:
+            return default
+
     def _build_ui(self):
         central = QTabWidget(self)
         self.setCentralWidget(central)
@@ -604,15 +770,6 @@ class ZeAnalyserMainWindow(QMainWindow):
             cfg_layout.addWidget(self.organize_btn)
         except Exception:
             self.organize_btn = None
-
-        # Language selector (combo) – prefill with a small set; will be wired to zone.py later
-        try:
-            self.lang_combo = QComboBox()
-            self.lang_combo.addItems(["en", "fr", "auto"])
-            self.lang_combo.currentTextChanged.connect(self._on_lang_changed)
-            cfg_layout.addWidget(self.lang_combo)
-        except Exception:
-            self.lang_combo = None
 
         # finally add groupbox to the project layout (or fallback to direct layout)
         if cfg_box is not None:
@@ -843,7 +1000,8 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.log.setReadOnly(True)
         project_layout.addWidget(self.log)
 
-        central.addTab(project_widget, "Project")
+        self.central_tabs = central
+        self.project_tab_index = central.addTab(project_widget, "Project")
 
         # --- Menu bar / Help → About (Phase 7) -------------------------
         try:
@@ -957,7 +1115,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.results_view = QTableView()
         results_layout.addWidget(self.results_view)
 
-        central.addTab(results_widget, "Results")
+        self.results_tab_index = central.addTab(results_widget, "Results")
 
         # --- Stack Plan tab (Phase 4) ----------------------------------
         stack_widget = QWidget()
@@ -985,7 +1143,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.stack_export_csv_btn = getattr(self, 'stack_export_csv_btn', None)
             self.stack_prepare_script_btn = getattr(self, 'stack_prepare_script_btn', None)
 
-        central.addTab(stack_widget, "Stack Plan")
+        self.stack_tab_index = central.addTab(stack_widget, "Stack Plan")
 
         # --- Preview tab (Phase 5) ----------------------------------
         preview_widget = QWidget()
@@ -1035,7 +1193,59 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.preview_hist_max = getattr(self, 'preview_hist_max', None)
             self.preview_hist_apply = getattr(self, 'preview_hist_apply', None)
 
-        central.addTab(preview_widget, "Preview")
+        self.preview_tab_index = central.addTab(preview_widget, "Preview")
+
+        # --- Settings tab (Language / Skin) -----------------------------
+        settings_widget = QWidget()
+        settings_layout = QVBoxLayout(settings_widget)
+
+        self.settings_language_group = QGroupBox(_tr('language_group_title', 'Language / Langue'))
+        language_layout = QVBoxLayout(self.settings_language_group)
+
+        lang_label_text = translations.get(get_current_language(), {}).get("lang_label", "Language / Langue")
+        language_layout.addWidget(QLabel(lang_label_text))
+
+        self.lang_combo = QComboBox()
+        language_choices = ["system"]
+        for code in ("fr", "en"):
+            if code not in language_choices:
+                language_choices.append(code)
+        for extra_lang in translations.keys():
+            if extra_lang not in language_choices:
+                language_choices.append(extra_lang)
+        for code in language_choices:
+            label = "System" if code == "system" else code
+            self.lang_combo.addItem(label, code)
+        language_layout.addWidget(self.lang_combo)
+
+        self.settings_skin_group = QGroupBox(_tr('skin_group_title', 'Skin / Apparence'))
+        skin_layout = QVBoxLayout(self.settings_skin_group)
+
+        skin_label = QLabel(_tr('skin_group_title', 'Skin / Apparence'))
+        skin_layout.addWidget(skin_label)
+
+        self.skin_combo = QComboBox()
+        self.skin_combo.addItem("System default", "system")
+        self.skin_combo.addItem("Dark", "dark")
+        skin_layout.addWidget(self.skin_combo)
+
+        settings_layout.addWidget(self.settings_language_group)
+        settings_layout.addWidget(self.settings_skin_group)
+        settings_layout.addStretch(1)
+
+        self.settings_tab_index = central.addTab(settings_widget, _tr('settings_tab_title', 'Settings / Préférences'))
+
+        try:
+            if self.lang_combo is not None:
+                self.lang_combo.currentIndexChanged.connect(self._on_language_selected)
+                self._set_combo_to_value(self.lang_combo, self._preferred_language)
+                if self.language_locked_cli:
+                    self.lang_combo.setEnabled(False)
+            if self.skin_combo is not None:
+                self.skin_combo.currentIndexChanged.connect(self._on_skin_selected)
+                self._set_combo_to_value(self.skin_combo, self._preferred_skin)
+        except Exception:
+            pass
 
         # wire stack filter
         try:
@@ -1331,6 +1541,12 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.use_bortle_cb.setChecked(_truthy(settings.value('options/use_bortle', False)))
             if getattr(self, 'analyze_snr_cb', None) is not None:
                 self.analyze_snr_cb.setChecked(_truthy(settings.value('options/analyze_snr', False)))
+            if getattr(self, 'lang_combo', None) is not None and not self.language_locked_cli:
+                lang_pref = settings.value('options/language', self._preferred_language)
+                self._set_combo_to_value(self.lang_combo, lang_pref)
+            if getattr(self, 'skin_combo', None) is not None:
+                skin_pref = settings.value('options/skin', self._preferred_skin)
+                self._set_combo_to_value(self.skin_combo, skin_pref)
         except Exception:
             # don't fail on broken stored values
             pass
@@ -1379,6 +1595,10 @@ class ZeAnalyserMainWindow(QMainWindow):
                 settings.setValue('options/use_bortle', bool(self.use_bortle_cb.isChecked()))
             if getattr(self, 'analyze_snr_cb', None) is not None:
                 settings.setValue('options/analyze_snr', bool(self.analyze_snr_cb.isChecked()))
+            if getattr(self, 'lang_combo', None) is not None:
+                settings.setValue('options/language', self.lang_combo.currentData())
+            if getattr(self, 'skin_combo', None) is not None:
+                settings.setValue('options/skin', self.skin_combo.currentData())
         except Exception:
             # swallow any errors
             pass
@@ -2939,26 +3159,109 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             pass
 
-    def _on_lang_changed(self, lang: str) -> None:
-        """Handle language change from the combo box."""
-        if lang == 'auto':
-            lang = 'fr'  # default to French for now
+    def _on_language_selected(self, *_args) -> None:
+        """Handle language change from the Settings tab combo box."""
+
         try:
-            zone.set_lang(lang)
+            if getattr(self, 'lang_combo', None) is None:
+                return
+            data = self.lang_combo.currentData()
+            lang_code = data if data is not None else self.lang_combo.currentText()
+            set_language(lang_code)
+            try:
+                settings = QSettings()
+                settings.setValue('options/language', lang_code)
+            except Exception:
+                pass
             self._retranslate_ui()
+            if self.analysis_results:
+                self._refresh_analysis_tables()
+            if getattr(self, 'visual_dialog', None) is not None:
+                try:
+                    self.visual_dialog.setWindowTitle(_("visu_window_title"))
+                except Exception:
+                    pass
         except Exception:
             pass
+
+    def _on_skin_selected(self, *_args) -> None:
+        """Handle skin selection changes."""
+
+        try:
+            if getattr(self, 'skin_combo', None) is None:
+                return
+            mode = self.skin_combo.currentData() or self.skin_combo.currentText()
+            self.apply_skin(mode)
+        except Exception:
+            pass
+
+    def apply_skin(self, mode: str, persist: bool = True) -> None:
+        """Apply the requested skin to the QApplication."""
+
+        if QApplication is object:
+            return
+
+        app = QApplication.instance()
+        if app is None:
+            return
+
+        normalized = (mode or "system").lower()
+        if normalized == "dark":
+            try:
+                app.setStyle("Fusion")
+            except Exception:
+                pass
+
+            palette = QPalette()
+            palette.setColor(QPalette.Window, QColor(53, 53, 53))
+            palette.setColor(QPalette.WindowText, Qt.white)
+            palette.setColor(QPalette.Base, QColor(25, 25, 25))
+            palette.setColor(QPalette.AlternateBase, QColor(53, 53, 53))
+            palette.setColor(QPalette.ToolTipBase, Qt.white)
+            palette.setColor(QPalette.ToolTipText, Qt.white)
+            palette.setColor(QPalette.Text, Qt.white)
+            palette.setColor(QPalette.Button, QColor(53, 53, 53))
+            palette.setColor(QPalette.ButtonText, Qt.white)
+            palette.setColor(QPalette.BrightText, Qt.red)
+            palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
+            palette.setColor(QPalette.HighlightedText, Qt.black)
+            app.setPalette(palette)
+        else:
+            try:
+                app.setPalette(app.style().standardPalette())
+            except Exception:
+                pass
+
+        if persist:
+            try:
+                settings = QSettings()
+                settings.setValue('options/skin', normalized)
+            except Exception:
+                pass
 
     def _retranslate_ui(self) -> None:
         """Update UI texts when language changes."""
         try:
             # Update window title
             self.setWindowTitle(zone._("window_title"))
+            if getattr(self, 'central_tabs', None) is not None:
+                try:
+                    self.central_tabs.setTabText(self.project_tab_index, _tr('project_tab_title', 'Project'))
+                    self.central_tabs.setTabText(self.results_tab_index, _tr('results_tab_title', 'Results'))
+                    self.central_tabs.setTabText(self.stack_tab_index, _tr('stack_tab_title', 'Stack Plan'))
+                    self.central_tabs.setTabText(self.preview_tab_index, _tr('preview_tab_title', 'Preview'))
+                    self.central_tabs.setTabText(self.settings_tab_index, _tr('settings_tab_title', 'Settings / Préférences'))
+                except Exception:
+                    pass
             # Update group box titles
             if hasattr(self, 'snr_group_box') and self.snr_group_box is not None:
                 self.snr_group_box.setTitle(zone._("snr_frame_title"))
             if hasattr(self, 'trail_group_box') and self.trail_group_box is not None:
                 self.trail_group_box.setTitle(zone._("trail_frame_title"))
+            if hasattr(self, 'settings_language_group') and self.settings_language_group is not None:
+                self.settings_language_group.setTitle(_tr('language_group_title', 'Language / Langue'))
+            if hasattr(self, 'settings_skin_group') and self.settings_skin_group is not None:
+                self.settings_skin_group.setTitle(_tr('skin_group_title', 'Skin / Apparence'))
             # Update buttons
             if hasattr(self, 'cancel_btn') and self.cancel_btn is not None:
                 self.cancel_btn.setText(zone._("cancel_button"))
@@ -3001,6 +3304,43 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.send_save_ref_btn.setText(zone._("use_best_reference_button"))
             if hasattr(self, 'quit_btn') and self.quit_btn is not None:
                 self.quit_btn.setText(zone._("quit_button"))
+            if hasattr(self, 'lang_combo') and self.lang_combo is not None:
+                lang_label = translations.get(get_current_language(), {}).get('lang_label', 'Language / Langue')
+                if hasattr(self, 'settings_language_group'):
+                    try:
+                        self.settings_language_group.setTitle(_tr('language_group_title', 'Language / Langue'))
+                    except Exception:
+                        pass
+                try:
+                    # Update label widget text
+                    if self.settings_language_group is not None:
+                        label_widget = self.settings_language_group.findChildren(QLabel)
+                        if label_widget:
+                            label_widget[0].setText(lang_label)
+                except Exception:
+                    pass
+                try:
+                    for idx in range(self.lang_combo.count()):
+                        code = self.lang_combo.itemData(idx)
+                        text = "System" if code == 'system' else str(self.lang_combo.itemText(idx))
+                        if code in translations:
+                            text = code
+                        self.lang_combo.setItemText(idx, text)
+                except Exception:
+                    pass
+            if hasattr(self, 'skin_combo') and self.skin_combo is not None:
+                try:
+                    self.skin_combo.setItemText(0, _tr('skin_system_default', 'System default'))
+                    self.skin_combo.setItemText(1, _tr('skin_dark', 'Dark'))
+                except Exception:
+                    pass
+                try:
+                    if self.settings_skin_group is not None:
+                        label_widget = self.settings_skin_group.findChildren(QLabel)
+                        if label_widget:
+                            label_widget[0].setText(_tr('skin_group_title', 'Skin / Apparence'))
+                except Exception:
+                    pass
         except Exception:
             pass
 

@@ -60,29 +60,29 @@ Each pass should keep the app runnable and tests passing.
 
 ## Pass 4 – Settings tab: Language + Skin
 
-- [ ] Add the “Settings / Préférences” tab.
-- [ ] Inside, create two group boxes: Language & Skin.
+- [x] Add the “Settings / Préférences” tab.
+- [x] Inside, create two group boxes: Language & Skin.
 
 ### Language
 
-- [ ] Import `get_initial_language`, `set_language`, `lock_language` with safe fallbacks.
-- [ ] Remove old language selector from the Project tab.
-- [ ] Create `self.lang_combo` with values (System, fr, en, plus any extra languages from `zone.translations`).
-- [ ] Initialise selected language from:
-  - [ ] CLI option (if present), else
-  - [ ] QSettings `"language"`, else
-  - [ ] `get_initial_language()`.
-- [ ] Connect combo change:
-  - [ ] Call `set_language(lang)`.
-  - [ ] Save to QSettings.
-  - [ ] Call `_retranslate_ui()` to update texts.
+- [x] Import `get_initial_language`, `set_language`, `lock_language` with safe fallbacks.
+- [x] Remove old language selector from the Project tab.
+- [x] Create `self.lang_combo` with values (System, fr, en, plus any extra languages from `zone.translations`).
+- [x] Initialise selected language from:
+  - [x] CLI option (if present), else
+  - [x] QSettings `"language"`, else
+  - [x] `get_initial_language()`.
+- [x] Connect combo change:
+  - [x] Call `set_language(lang)`.
+  - [x] Save to QSettings.
+  - [x] Call `_retranslate_ui()` to update texts.
 
 ### Skin
 
-- [ ] Add `self.skin_combo` with values (“System default”, “Dark”).
-- [ ] Implement `apply_skin()` to set Qt style and palette.
-- [ ] Read initial skin from QSettings `"skin"` and apply it at startup.
-- [ ] Connect combo change → `apply_skin()` + save to QSettings.
+- [x] Add `self.skin_combo` with values (“System default”, “Dark”).
+- [x] Implement `apply_skin()` to set Qt style and palette.
+- [x] Read initial skin from QSettings `"skin"` and apply it at startup.
+- [x] Connect combo change → `apply_skin()` + save to QSettings.
 
 **When done:** The new Settings tab controls language and skin. Changes persist and take effect immediately.
 
