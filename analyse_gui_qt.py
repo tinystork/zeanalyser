@@ -15,13 +15,14 @@ import json
 import logging
 import locale
 import os
+import platform
 import time
 import traceback
 from platform_utils import open_path_with_default_app
 
 # Set Matplotlib backend for Qt before importing matplotlib
 try:
-    from PySide6.QtGui import QPixmap, QColor, QPalette
+    from PySide6.QtGui import QIcon, QPixmap, QColor, QPalette
     import matplotlib
     matplotlib.use('QtAgg')  # Use Qt backend for Matplotlib
     import matplotlib.pyplot as plt
@@ -108,6 +109,7 @@ except Exception:  # pragma: no cover - tests guard for availability
     QGroupBox = object
     QSlider = object
     QPalette = object
+    QIcon = object
 try:
     # small i18n helper used across the project (zone.py provides a local wrapper)
     import zone
@@ -452,6 +454,11 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception as e:
             print(f"Error detecting token: {e}")
 
+        try:
+            self._apply_window_icon(self.parent_project_dir)
+        except Exception:
+            pass
+
         self._build_ui()
 
         self._retranslate_ui()
@@ -699,6 +706,58 @@ class ZeAnalyserMainWindow(QMainWindow):
             return QSettings().value(key, default)
         except Exception:
             return default
+
+    def _apply_window_icon(self, project_root_dir: str | None) -> None:
+        """Apply a window icon with platform-specific candidates (icns/png/ico)."""
+
+        if QIcon is object or not project_root_dir:
+            return
+
+        try:
+            icon_dir = os.path.join(project_root_dir, "icon")
+            system_name = platform.system()
+            candidates: list[str] = []
+
+            if system_name == "Darwin":
+                candidates.extend([
+                    os.path.join(icon_dir, "icon.icns"),
+                    os.path.join(icon_dir, "icon.png"),
+                ])
+            elif system_name == "Windows":
+                candidates.extend([
+                    os.path.join(icon_dir, "icon.ico"),
+                    os.path.join(icon_dir, "icon.png"),
+                ])
+            else:
+                candidates.extend([
+                    os.path.join(icon_dir, "icon.png"),
+                    os.path.join(icon_dir, "icon.ico"),
+                ])
+
+            for icon_path in candidates:
+                if not icon_path or not os.path.isfile(icon_path):
+                    continue
+                try:
+                    self.setWindowIcon(QIcon(icon_path))
+                    print(f"DEBUG (analyse_gui_qt): Window icon set from {icon_path}")
+                    return
+                except Exception as icon_err:
+                    print(f"WARNING (analyse_gui_qt): Failed to apply icon {icon_path}: {icon_err}")
+
+        except Exception as outer_err:
+            print(f"WARNING (analyse_gui_qt): Icon setup skipped: {outer_err}")
+
+    def _show_window_safely(self):
+        """Try to maximize the window when supported, otherwise fall back to show()."""
+
+        try:
+            self.showMaximized()
+        except Exception as e:
+            print(f"WARNING (analyse_gui_qt): showMaximized not available, falling back to show(): {e}")
+            try:
+                self.show()
+            except Exception:
+                pass
 
     def _build_ui(self):
         central = QTabWidget(self)
@@ -5523,7 +5582,7 @@ def main(argv=None, run_for: int | None = None):
             pass
     if args.log_file:
         win.log_path_edit.setText(args.log_file)
-    win.show()
+    win._show_window_safely()
 
     return app.exec()
 

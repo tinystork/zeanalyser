@@ -115,24 +115,34 @@ def safe_set_maximized(root):
     if not root:
         return
 
-    try:
-        root.state('zoomed')
-        return
-    except tk.TclError:
-        pass
-    except Exception:
-        pass
+    system_name = platform.system()
 
-    try:
-        root.wm_attributes('-zoomed', True)
-        return
-    except tk.TclError:
-        pass
-    except Exception:
-        pass
+    # macOS ne supporte pas toujours state('zoomed') / -zoomed. On l'évite pour
+    # limiter les warnings et on se rabat sur une géométrie plein écran.
+    if system_name != "Darwin":
+        try:
+            root.state('zoomed')
+            return
+        except tk.TclError:
+            pass
+        except Exception:
+            pass
+
+        try:
+            root.wm_attributes('-zoomed', True)
+            return
+        except tk.TclError:
+            pass
+        except Exception:
+            pass
 
     try:
         root.state('normal')
+    except Exception:
+        pass
+
+    try:
+        root.update_idletasks()
     except Exception:
         pass
 
@@ -847,28 +857,36 @@ class AstroImageAnalyzerGUI:
         Configure l'icône de la fenêtre avec des fallback spécifiques à l'OS.
 
         - Windows : tente iconbitmap avec .ico si disponible.
-        - Linux/macOS : tente iconbitmap avec .xbm si disponible.
+        - macOS : privilégie l'icône PNG (iconphoto) car iconbitmap n'est pas fiable.
+        - Linux : tente iconbitmap avec .xbm si disponible.
         - Fallback universel : iconphoto avec .png.
         Chaque tentative est protégée contre les erreurs Tkinter pour éviter tout crash.
         """
         system_name = platform.system()
         icon_dir = project_root / "icon"
+        icon_png = icon_dir / "icon.png"
+        icon_ico = icon_dir / "icon.ico"
+        icon_xbm = icon_dir / "icon.xbm"
+
         icon_candidates = []
+        if system_name == "Windows" and icon_ico.exists():
+            icon_candidates.append(icon_ico)
+        elif system_name == "Darwin" and icon_png.exists():
+            # Sur macOS on utilise directement iconphoto
+            icon_candidates.append(icon_png)
+        elif system_name != "Windows" and icon_xbm.exists():
+            icon_candidates.append(icon_xbm)
 
-        if system_name == "Windows":
-            icon_candidates.append(icon_dir / "icon.ico")
-        else:
-            icon_candidates.append(icon_dir / "icon.xbm")
-
-        icon_candidates.append(icon_dir / "icon.png")
+        # Fallback universel PNG pour tous les OS
+        if icon_png.exists() and icon_png not in icon_candidates:
+            icon_candidates.append(icon_png)
 
         for icon_path in icon_candidates:
-            if not icon_path.exists():
-                continue
             try:
-                if icon_path.suffix.lower() == ".ico" and system_name == "Windows":
+                suffix = icon_path.suffix.lower()
+                if suffix == ".ico" and system_name == "Windows":
                     self.root.iconbitmap(default=str(icon_path))
-                elif icon_path.suffix.lower() == ".xbm":
+                elif suffix == ".xbm":
                     self.root.iconbitmap(f"@{icon_path}")
                 else:
                     icon_image = Image.open(icon_path)
@@ -887,17 +905,25 @@ class AstroImageAnalyzerGUI:
         try:
             if system_name == "Windows":
                 window.state("zoomed")
-            else:
+                return
+            elif system_name != "Darwin":
                 window.attributes("-zoomed", True)
-            return
+                return
         except tk.TclError:
             # Certains gestionnaires de fenêtres n'implémentent pas -zoomed/state('zoomed')
-            try:
-                screen_w = window.winfo_screenwidth()
-                screen_h = window.winfo_screenheight()
-                window.geometry(f"{screen_w}x{screen_h}+0+0")
-            except tk.TclError as geom_err:
-                print(f"AVERTISSEMENT (analyse_gui): Maximisation non supportée par l'OS ({system_name}): {geom_err}")
+            pass
+
+        try:
+            window.update_idletasks()
+        except Exception:
+            pass
+
+        try:
+            screen_w = window.winfo_screenwidth()
+            screen_h = window.winfo_screenheight()
+            window.geometry(f"{screen_w}x{screen_h}+0+0")
+        except tk.TclError as geom_err:
+            print(f"AVERTISSEMENT (analyse_gui): Maximisation non supportée par l'OS ({system_name}): {geom_err}")
 
 
 ###################################################################################################################""
