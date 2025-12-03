@@ -19,4 +19,4 @@
 
 ## 5. Documentation / README
 - [x] Note macOS support and known macOS dependency expectations in the README.
-- [ ] Add/expand any macOS known-issues section if new limits are discovered.
+- [x] Add/expand any macOS known-issues section if new limits are discovered.
