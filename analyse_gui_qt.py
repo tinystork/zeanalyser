@@ -129,7 +129,10 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Language helpers
 # ---------------------------------------------------------------------------
-_i18n_spec = importlib.util.find_spec("zeseestarstacker.i18n")
+try:
+    _i18n_spec = importlib.util.find_spec("zeseestarstacker.i18n")
+except ModuleNotFoundError:
+    _i18n_spec = None
 _i18n_module = None
 if _i18n_spec is not None:
     _i18n_module = importlib.util.module_from_spec(_i18n_spec)
@@ -984,7 +987,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         # Action buttons
         actions_layout = QHBoxLayout()
         self.analyse_btn = QPushButton(_("analyse_button"))
-        self.cancel_btn = QPushButton("Annuler")
+        self.cancel_btn = QPushButton(_("cancel_button"))
         self.cancel_btn.setEnabled(False)
         actions_layout.addWidget(self.analyse_btn)
         actions_layout.addWidget(self.cancel_btn)
@@ -1001,7 +1004,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         project_layout.addWidget(self.log)
 
         self.central_tabs = central
-        self.project_tab_index = central.addTab(project_widget, "Project")
+        self.project_tab_index = central.addTab(project_widget, _tr('project_tab_title', 'Project'))
 
         # --- Menu bar / Help → About (Phase 7) -------------------------
         try:
@@ -1084,24 +1087,28 @@ class ZeAnalyserMainWindow(QMainWindow):
         # --- Filters area -------------------------------------------------
         # Simple text filter box for searching text across the table
         self.results_filter = QLineEdit()
-        self.results_filter.setPlaceholderText("Filter results (substring search)")
+        self.results_filter.setPlaceholderText(_("filter_results_placeholder"))
         results_layout.addWidget(self.results_filter)
 
         # Numeric / boolean filters (snr, fwhm, ecc, has_trails)
         filters_row = QHBoxLayout()
         self.snr_min_edit = QLineEdit()
-        self.snr_min_edit.setPlaceholderText("SNR ≥")
+        self.snr_min_edit.setPlaceholderText(_tr('results_filter_snr_min', 'SNR ≥'))
         self.snr_max_edit = QLineEdit()
-        self.snr_max_edit.setPlaceholderText("SNR ≤")
+        self.snr_max_edit.setPlaceholderText(_tr('results_filter_snr_max', 'SNR ≤'))
         self.fwhm_max_edit = QLineEdit()
-        self.fwhm_max_edit.setPlaceholderText("FWHM ≤")
+        self.fwhm_max_edit.setPlaceholderText(_tr('results_filter_fwhm_max', 'FWHM ≤'))
         self.ecc_max_edit = QLineEdit()
-        self.ecc_max_edit.setPlaceholderText("ECC ≤")
+        self.ecc_max_edit.setPlaceholderText(_tr('results_filter_ecc_max', 'ECC ≤'))
 
         # tri-state for trails: Any / Yes / No
         from PySide6.QtWidgets import QComboBox
         self.has_trails_box = QComboBox()
-        self.has_trails_box.addItems(["Any", "Yes", "No"])
+        self.has_trails_box.addItems([
+            _tr('results_filter_trails_any', 'Any'),
+            _tr('results_filter_trails_yes', 'Yes'),
+            _tr('results_filter_trails_no', 'No'),
+        ])
 
         filters_row.addWidget(self.snr_min_edit)
         filters_row.addWidget(self.snr_max_edit)
@@ -1115,7 +1122,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.results_view = QTableView()
         results_layout.addWidget(self.results_view)
 
-        self.results_tab_index = central.addTab(results_widget, "Results")
+        self.results_tab_index = central.addTab(results_widget, _tr('results_tab_title', 'Results'))
 
         # --- Stack Plan tab (Phase 4) ----------------------------------
         stack_widget = QWidget()
@@ -1123,7 +1130,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         # filter/search for stack plan
         self.stack_filter = QLineEdit()
-        self.stack_filter.setPlaceholderText("Filter stack plan (substring)")
+        self.stack_filter.setPlaceholderText(_("filter_stack_plan_placeholder"))
         stack_layout.addWidget(self.stack_filter)
 
         # table view for stack plan
@@ -1143,7 +1150,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.stack_export_csv_btn = getattr(self, 'stack_export_csv_btn', None)
             self.stack_prepare_script_btn = getattr(self, 'stack_prepare_script_btn', None)
 
-        self.stack_tab_index = central.addTab(stack_widget, "Stack Plan")
+        self.stack_tab_index = central.addTab(stack_widget, _tr('stack_tab_title', 'Stack Plan'))
 
         # --- Preview tab (Phase 5) ----------------------------------
         preview_widget = QWidget()
@@ -1153,12 +1160,12 @@ class ZeAnalyserMainWindow(QMainWindow):
         # Keep imports guarded so tests can import headlessly.
         try:
             from PySide6.QtGui import QPixmap
-            self.preview_image_label = QLabel("No preview selected")
+            self.preview_image_label = QLabel(_("no_preview_selected"))
             self.preview_image_label.setMinimumSize(320, 240)
             preview_layout.addWidget(self.preview_image_label)
 
             # Histogram area – text placeholder for now and simple stretch controls
-            self.preview_hist_label = QLabel("Histogram: N/A")
+            self.preview_hist_label = QLabel(_tr('preview_hist_label_na', 'Histogram: N/A'))
             preview_layout.addWidget(self.preview_hist_label)
 
             # Simple stretch controls: min/max spinboxes + apply button
@@ -1173,10 +1180,12 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.preview_hist_max.setRange(-1e12, 1e12)
                 self.preview_hist_max.setDecimals(6)
                 self.preview_hist_max.setValue(1.0)
-                self.preview_hist_apply = QPushButton("Apply stretch")
-                stretch_row.addWidget(QLabel("Stretch min"))
+                self.preview_hist_apply = QPushButton(_tr('preview_apply_stretch', 'Apply stretch'))
+                self.preview_stretch_min_label = QLabel(_tr('preview_stretch_min', 'Stretch min'))
+                self.preview_stretch_max_label = QLabel(_tr('preview_stretch_max', 'max'))
+                stretch_row.addWidget(self.preview_stretch_min_label)
                 stretch_row.addWidget(self.preview_hist_min)
-                stretch_row.addWidget(QLabel("max"))
+                stretch_row.addWidget(self.preview_stretch_max_label)
                 stretch_row.addWidget(self.preview_hist_max)
                 stretch_row.addWidget(self.preview_hist_apply)
                 preview_layout.addLayout(stretch_row)
@@ -1185,6 +1194,8 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.preview_hist_min = getattr(self, 'preview_hist_min', None)
                 self.preview_hist_max = getattr(self, 'preview_hist_max', None)
                 self.preview_hist_apply = getattr(self, 'preview_hist_apply', None)
+                self.preview_stretch_min_label = getattr(self, 'preview_stretch_min_label', None)
+                self.preview_stretch_max_label = getattr(self, 'preview_stretch_max_label', None)
         except Exception:
             # Ensure attributes exist for headless tests
             self.preview_image_label = getattr(self, 'preview_image_label', None)
@@ -1192,8 +1203,10 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.preview_hist_min = getattr(self, 'preview_hist_min', None)
             self.preview_hist_max = getattr(self, 'preview_hist_max', None)
             self.preview_hist_apply = getattr(self, 'preview_hist_apply', None)
+            self.preview_stretch_min_label = getattr(self, 'preview_stretch_min_label', None)
+            self.preview_stretch_max_label = getattr(self, 'preview_stretch_max_label', None)
 
-        self.preview_tab_index = central.addTab(preview_widget, "Preview")
+        self.preview_tab_index = central.addTab(preview_widget, _tr('preview_tab_title', 'Preview'))
 
         # --- Settings tab (Language / Skin) -----------------------------
         settings_widget = QWidget()
@@ -3270,9 +3283,32 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.results_filter.setPlaceholderText(zone._("filter_results_placeholder"))
             if hasattr(self, 'stack_filter') and self.stack_filter is not None:
                 self.stack_filter.setPlaceholderText(zone._("filter_stack_plan_placeholder"))
+            for edit, key, fallback in (
+                (getattr(self, 'snr_min_edit', None), 'results_filter_snr_min', 'SNR ≥'),
+                (getattr(self, 'snr_max_edit', None), 'results_filter_snr_max', 'SNR ≤'),
+                (getattr(self, 'fwhm_max_edit', None), 'results_filter_fwhm_max', 'FWHM ≤'),
+                (getattr(self, 'ecc_max_edit', None), 'results_filter_ecc_max', 'ECC ≤'),
+            ):
+                if edit is not None:
+                    edit.setPlaceholderText(_tr(key, fallback))
+            if hasattr(self, 'has_trails_box') and self.has_trails_box is not None:
+                try:
+                    self.has_trails_box.setItemText(0, _tr('results_filter_trails_any', 'Any'))
+                    self.has_trails_box.setItemText(1, _tr('results_filter_trails_yes', 'Yes'))
+                    self.has_trails_box.setItemText(2, _tr('results_filter_trails_no', 'No'))
+                except Exception:
+                    pass
             # Update preview label
             if hasattr(self, 'preview_image_label') and self.preview_image_label is not None:
                 self.preview_image_label.setText(zone._("no_preview_selected"))
+            if hasattr(self, 'preview_hist_label') and self.preview_hist_label is not None:
+                self.preview_hist_label.setText(_tr('preview_hist_label_na', 'Histogram: N/A'))
+            if hasattr(self, 'preview_hist_apply') and self.preview_hist_apply is not None:
+                self.preview_hist_apply.setText(_tr('preview_apply_stretch', 'Apply stretch'))
+            if hasattr(self, 'preview_stretch_min_label') and self.preview_stretch_min_label is not None:
+                self.preview_stretch_min_label.setText(_tr('preview_stretch_min', 'Stretch min'))
+            if hasattr(self, 'preview_stretch_max_label') and self.preview_stretch_max_label is not None:
+                self.preview_stretch_max_label.setText(_tr('preview_stretch_max', 'max'))
             # Update stack buttons
             if hasattr(self, 'stack_export_csv_btn') and self.stack_export_csv_btn is not None:
                 self.stack_export_csv_btn.setText(zone._("stack_export_csv"))
@@ -3339,6 +3375,17 @@ class ZeAnalyserMainWindow(QMainWindow):
                         label_widget = self.settings_skin_group.findChildren(QLabel)
                         if label_widget:
                             label_widget[0].setText(_tr('skin_group_title', 'Skin / Apparence'))
+                except Exception:
+                    pass
+            if hasattr(self, 'rec_tree') and self.rec_tree is not None:
+                try:
+                    self.rec_tree.setHeaderLabels([
+                        _tr("visu_recom_col_file", _("visu_recom_col_file")),
+                        _tr("visu_recom_col_snr", _("visu_recom_col_snr")),
+                        _tr("visu_recom_col_fwhm", "FWHM"),
+                        _tr("visu_recom_col_ecc", "e"),
+                        _tr("visu_recom_col_starcount", _("visu_recom_col_starcount")),
+                    ])
                 except Exception:
                     pass
         except Exception:
@@ -4030,7 +4077,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
                 ax_fwhm.hist(valid_fwhms, bins=20, color='skyblue', edgecolor='black', alpha=0.7)
                 ax_fwhm.set_title(_("fwhm_distribution_title"))
-                ax_fwhm.set_xlabel("FWHM")
+                ax_fwhm.set_xlabel(_tr('visu_scatter_fwhm_label', 'FWHM'))
                 ax_fwhm.set_ylabel(_("number_of_images"))
                 ax_fwhm.grid(axis='y', linestyle='--', alpha=0.7)
                 ax_fwhm.set_xlim(min_fwhm, max_fwhm)
@@ -4238,9 +4285,9 @@ class ZeAnalyserMainWindow(QMainWindow):
             if valid_pairs:
                 fwhm_vals, ecc_vals = zip(*valid_pairs)
                 ax_scatt.scatter(fwhm_vals, ecc_vals, alpha=0.6)
-                ax_scatt.set_xlabel("FWHM")
-                ax_scatt.set_ylabel("e")
-                ax_scatt.set_title("FWHM vs e")
+                ax_scatt.set_xlabel(_tr('visu_scatter_fwhm_label', 'FWHM'))
+                ax_scatt.set_ylabel(_tr('visu_scatter_ecc_label', 'e'))
+                ax_scatt.set_title(_tr('visu_tab_fwhm_vs_e', 'FWHM vs e'))
                 ax_scatt.grid(True, linestyle='--', alpha=0.7)
             else:
                 ax_scatt.text(0.5, 0.5, _("visu_snr_dist_no_data"), ha='center', va='center', fontsize=12, color='red')
@@ -4253,7 +4300,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             dialog._toolbars.append(toolbar_scatter)
             scatter_layout.addWidget(toolbar_scatter)
 
-            tab_widget.addTab(scatter_tab, "FWHM vs e")
+            tab_widget.addTab(scatter_tab, _tr('visu_tab_fwhm_vs_e', 'FWHM vs e'))
 
             # --- SNR Comparison Tab ---
             comp_tab = QWidget()
@@ -4469,7 +4516,13 @@ class ZeAnalyserMainWindow(QMainWindow):
                 # Tree widget
                 self.rec_tree = QTreeWidget()
                 self.rec_tree.setColumnCount(5)
-                self.rec_tree.setHeaderLabels([_("visu_recom_col_file"), _("visu_recom_col_snr"), "FWHM", "e", _("visu_recom_col_starcount")])
+                self.rec_tree.setHeaderLabels([
+                    _tr("visu_recom_col_file", _("visu_recom_col_file")),
+                    _tr("visu_recom_col_snr", _("visu_recom_col_snr")),
+                    _tr("visu_recom_col_fwhm", "FWHM"),
+                    _tr("visu_recom_col_ecc", "e"),
+                    _tr("visu_recom_col_starcount", _("visu_recom_col_starcount")),
+                ])
                 self.rec_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
                 recom_group_layout.addWidget(self.rec_tree)
 
@@ -4501,17 +4554,18 @@ class ZeAnalyserMainWindow(QMainWindow):
                     recos, snr_p, fwhm_p, ecc_p, sc_p = self._compute_recommended_subset()
 
                     # Update resume (format like Tk version)
-                    txt = _("visu_recom_text_all", count=len(recos))
-                    if txt.startswith("_visu_recom_text_all_"):
-                        txt = f"Images recommandées : {len(recos)}"
+                    txt = _translate("visu_recom_text_all", count=len(recos))
+                    thresholds = []
                     if snr_p is not None and is_finite_number(snr_p):
-                        txt += f"  |  SNR ≥ {snr_p:.2f}"
+                        thresholds.append(_translate('visu_recom_resume_snr', value=snr_p))
                     if fwhm_p is not None and is_finite_number(fwhm_p):
-                        txt += f"  |  FWHM ≤ {fwhm_p:.2f}"
+                        thresholds.append(_translate('visu_recom_resume_fwhm', value=fwhm_p))
                     if ecc_p is not None and is_finite_number(ecc_p):
-                        txt += f"  |  e ≤ {ecc_p:.3f}"
+                        thresholds.append(_translate('visu_recom_resume_ecc', value=ecc_p))
                     if self.use_starcount_filter and sc_p is not None and is_finite_number(sc_p):
-                        txt += f"  |  Starcount ≥ {sc_p:.0f}"
+                        thresholds.append(_translate('visu_recom_resume_starcount', value=sc_p))
+                    if thresholds:
+                        txt = "  |  ".join([txt] + thresholds)
                     self.resume_label.setText(txt)
 
                     # Clear tree
