@@ -3648,8 +3648,8 @@ class ZeAnalyserMainWindow(QMainWindow):
                     # Compute recommended
                     recos, snr_p, fwhm_p, ecc_p, sc_p = self._compute_recommended_subset()
 
-                    # Update resume
-                    txt = _("visu_recom_text_all", count=len(recos))
+                    # Update resume (format like Tk version)
+                    txt = _translate("visu_recom_text_all", count=len(recos))
                     if txt.startswith("_visu_recom_text_all_"):
                         txt = f"Images recommandées : {len(recos)}"
                     if snr_p is not None and is_finite_number(snr_p):
@@ -3805,18 +3805,12 @@ class ZeAnalyserMainWindow(QMainWindow):
     def _apply_recommendations_gui(self, *, auto: bool = False):
         """Apply recommended images selection."""
         try:
-            # Get results
-            rows = None
-            if getattr(self, '_results_model', None) is not None and hasattr(self._results_model, '_rows'):
-                rows = self._results_model._rows
-            elif getattr(self, '_results_rows', None) is not None:
-                rows = self._results_rows
-
+            rows = self._get_analysis_results_rows()
             if not rows:
                 self._log("No results available to apply recommendations")
                 return
 
-            # Find recommended images
+            # Determine recommended set
             recommended = list(getattr(self, 'recommended_images', []) or [])
             if not recommended:
                 recommended = [r for r in rows if r.get('recommended', False)]
@@ -3826,16 +3820,24 @@ class ZeAnalyserMainWindow(QMainWindow):
                 return
 
             recommended_files = {
-                os.path.abspath(r.get('file')) for r in recommended if r.get('file')
+                os.path.abspath(r.get('file'))
+                for r in recommended
+                if r.get('file')
             }
-            if recommended_files:
-                for r in rows:
-                    try:
-                        r['recommended'] = os.path.abspath(r.get('file', '')) in recommended_files
-                    except Exception:
-                        r['recommended'] = False
+            if not recommended_files:
+                self._log("No recommended file paths available")
+                return
 
-            self._log(f"Applying recommendations for {len(recommended)} images")
+            # Flag non-recommended images for reco actions
+            for r in rows:
+                try:
+                    if r.get('status') == 'ok' and r.get('action') == 'kept':
+                        file_path = r.get('file') or r.get('path') or r.get('file_path')
+                        if file_path and os.path.abspath(file_path) not in recommended_files:
+                            r['rejected_reason'] = 'not_in_recommendation'
+                            r['action'] = 'pending_reco_action'
+                except Exception:
+                    continue
 
             # Build options from UI
             try:
@@ -3843,36 +3845,99 @@ class ZeAnalyserMainWindow(QMainWindow):
             except Exception:
                 opts = {}
 
-            # Mark recommended images as pending actions
-            for r in recommended:
-                r['recommended_applied'] = True
-                # Set action based on recommendation type (could be refined)
-                if 'action' not in r:
-                    r['action'] = 'recommended'
+            delete_flag = opts.get('delete_rejected', False)
+            move_flag = opts.get('move_rejected', False)
+            input_dir = opts.get('input_path', '')
 
-            # Apply recommendations using analyse_logic if available
-            def _run_apply_recommendations():
-                try:
-                    import analyse_logic
-                    # This is a simplified version - in full implementation would
-                    # call appropriate analyse_logic functions based on recommendation type
-                    analyse_logic.apply_recommended_actions(
+            callbacks = {
+                'log': lambda msg: self._log(str(msg)),
+                'status': lambda msg: self.statusBar().showMessage(str(msg)) if hasattr(self, 'statusBar') else None,
+                'progress': lambda v: self.progress.setValue(int(v)) if hasattr(self, 'progress') else None,
+            }
+
+            applied = 0
+            try:
+                import analyse_logic
+
+                applied += analyse_logic.apply_pending_reco_actions(
+                    rows,
+                    opts.get('snr_reject_dir'),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
+
+                applied += analyse_logic.apply_pending_snr_actions(
+                    rows,
+                    opts.get('snr_reject_dir'),
+                    delete_rejected_flag=delete_flag,
+                    move_rejected_flag=move_flag,
+                    log_callback=callbacks['log'],
+                    status_callback=callbacks['status'],
+                    progress_callback=callbacks['progress'],
+                    input_dir_abs=input_dir,
+                )
+
+                if hasattr(analyse_logic, 'apply_pending_starcount_actions'):
+                    applied += analyse_logic.apply_pending_starcount_actions(
                         rows,
-                        log_callback=(lambda *a, **k: self._log(a[0]) if a else None),
-                        status_callback=(lambda *a, **k: self.statusBar().showMessage(a[0]) if hasattr(self, 'statusBar') and a else None),
-                        progress_callback=(lambda v: None)
+                        opts.get('starcount_reject_dir', opts.get('snr_reject_dir')),
+                        delete_rejected_flag=delete_flag,
+                        move_rejected_flag=move_flag,
+                        log_callback=callbacks['log'],
+                        status_callback=callbacks['status'],
+                        progress_callback=callbacks['progress'],
+                        input_dir_abs=input_dir,
                     )
-                    self._log(f"Successfully applied recommendations for {len(recommended)} images")
-                except Exception as e:
-                    self._log(f"Error applying recommendations: {e}")
+
+                if hasattr(analyse_logic, 'apply_pending_fwhm_actions'):
+                    applied += analyse_logic.apply_pending_fwhm_actions(
+                        rows,
+                        opts.get('fwhm_reject_dir', opts.get('snr_reject_dir')),
+                        delete_rejected_flag=delete_flag,
+                        move_rejected_flag=move_flag,
+                        log_callback=callbacks['log'],
+                        status_callback=callbacks['status'],
+                        progress_callback=callbacks['progress'],
+                        input_dir_abs=input_dir,
+                    )
+
+                if hasattr(analyse_logic, 'apply_pending_ecc_actions'):
+                    applied += analyse_logic.apply_pending_ecc_actions(
+                        rows,
+                        opts.get('ecc_reject_dir', opts.get('snr_reject_dir')),
+                        delete_rejected_flag=delete_flag,
+                        move_rejected_flag=move_flag,
+                        log_callback=callbacks['log'],
+                        status_callback=callbacks['status'],
+                        progress_callback=callbacks['progress'],
+                        input_dir_abs=input_dir,
+                    )
+
+            except Exception as e:
+                self._log(f"Error applying recommendations: {e}")
+
+            # Refresh model if present
+            try:
+                if getattr(self, '_results_model', None) is not None:
+                    self._results_model.set_rows(rows)
+            except Exception:
+                pass
+
+            if applied and hasattr(self, '_regenerate_stack_plan'):
+                try:
+                    self._regenerate_stack_plan()
+                except Exception:
+                    pass
 
             try:
-                import threading
-                t = threading.Thread(target=_run_apply_recommendations, daemon=True)
-                t.start()
+                if getattr(self, 'apply_reco_btn', None):
+                    self.apply_reco_btn.setEnabled(False)
             except Exception:
-                # Fallback: run inline
-                _run_apply_recommendations()
+                pass
 
         except Exception as e:
             self._log(f"Error in apply recommendations: {e}")
