@@ -313,6 +313,9 @@ class ResultsFilterProxy(QSortFilterProxyModel if 'QSortFilterProxyModel' in glo
         # tri-state: None = any, True = has trails, False = no trails
         self.has_trails = None
         self._filter_text = ''
+        # optional hook to read the current trails choice directly from the UI
+        # (used when certain combos do not emit the expected signals)
+        self._has_trails_selector = None
 
     def _as_float(self, value):
         try:
@@ -407,7 +410,28 @@ class ResultsFilterProxy(QSortFilterProxyModel if 'QSortFilterProxyModel' in glo
                 return False
 
         # has_trails (boolean)
-        if self.has_trails is not None:
+        desired_has_trails = self.has_trails
+
+        # In some headless environments setCurrentText("Yes") may not update
+        # the combo index; as a fallback, read the selector's live text to infer
+        # the intended value when explicit state is missing.
+        try:
+            if desired_has_trails is None and self._has_trails_selector is not None:
+                selector = self._has_trails_selector
+                idx = selector.currentIndex() if hasattr(selector, 'currentIndex') else -1
+                text = ''
+                try:
+                    text = selector.currentText().strip().lower()
+                except Exception:
+                    text = ''
+                if idx == 1 or text in ('yes', 'true', '1', 'oui'):
+                    desired_has_trails = True
+                elif idx == 2 or text in ('no', 'false', '0', 'non'):
+                    desired_has_trails = False
+        except Exception:
+            desired_has_trails = desired_has_trails
+
+        if desired_has_trails is not None:
             v = get_value('has_trails')
             # accept 0/1, True/False, 'True' strings
             try:
@@ -415,7 +439,7 @@ class ResultsFilterProxy(QSortFilterProxyModel if 'QSortFilterProxyModel' in glo
                     vv = v.lower() in ('1', 'true', 'yes')
                 else:
                     vv = bool(v)
-                if vv is not self.has_trails:
+                if vv is not desired_has_trails:
                     return False
             except Exception:
                 return False
@@ -2035,6 +2059,13 @@ class ZeAnalyserMainWindow(QMainWindow):
         proxy.setSourceModel(model)
         proxy.setFilterCaseSensitivity(Qt.CaseInsensitive)
         proxy.setDynamicSortFilter(True)
+
+        # Provide the proxy with the selector so it can fall back to the
+        # live combo text when signals are suppressed (e.g., headless CI).
+        try:
+            proxy._has_trails_selector = getattr(self, 'has_trails_box', None)
+        except Exception:
+            pass
 
         self._results_model = model
         self._results_proxy = proxy
