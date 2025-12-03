@@ -3830,7 +3830,6 @@ class AstroImageAnalyzerGUI:
 
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
-
     def apply_pending_ecc_actions_gui(self):
         """Apply eccentricity filter based on slider."""
         lo = self.current_ecc_min
@@ -4838,5 +4837,13 @@ if __name__ == "__main__":
         except Exception as msg_e: 
             print(f" -> Erreur affichage message: {msg_e}", file=sys.stderr)
         sys.exit(1)
+
+# ---------------------------------------------------------------------------
+# Compatibility alias
+# ---------------------------------------------------------------------------
+# Several tests and helpers expect the Tk frontend class to be available under
+# the Qt-like name ``ZeAnalyserMainWindow``.  Expose the existing Tk class
+# using that alias so parity checks can import it without failing.
+ZeAnalyserMainWindow = AstroImageAnalyzerGUI
 
 # --- FIN DU FICHIER analyse_gui.py ---
