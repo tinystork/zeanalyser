@@ -3584,6 +3584,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             # Store references for cleanup
             dialog._canvases = []
             dialog._figures = []
+            dialog._toolbars = []
 
             # --- SNR Distribution Tab ---
             snr_tab = QWidget()
@@ -3592,37 +3593,82 @@ class ZeAnalyserMainWindow(QMainWindow):
             fig_snr, ax_snr = plt.subplots(figsize=(8, 6))
             dialog._figures.append(fig_snr)
 
-            valid_snrs = [r['snr'] for r in rows if r.get('status') == 'ok' and is_finite_number(r.get('snr'))]
+            valid_snrs = [
+                r["snr"]
+                for r in rows
+                if r.get("status") == "ok" and is_finite_number(r.get("snr"))
+            ]
+            snr_range_label = QLabel()
             if valid_snrs:
-                n, bins, patches = ax_snr.hist(valid_snrs, bins=20, color='skyblue', edgecolor='black', alpha=0.7)
+                min_snr, max_snr = min(valid_snrs), max(valid_snrs)
+                self.current_snr_min = min_snr
+                self.current_snr_max = max_snr
+
+                n, bins, patches = ax_snr.hist(
+                    valid_snrs, bins=20, color="skyblue", edgecolor="black", alpha=0.7
+                )
                 ax_snr.set_title(_("visu_snr_dist_title"))
                 ax_snr.set_xlabel(_("visu_snr_dist_xlabel"))
                 ax_snr.set_ylabel(_("visu_snr_dist_ylabel"))
-                ax_snr.grid(axis='y', linestyle='--', alpha=0.7)
+                ax_snr.grid(axis="y", linestyle="--", alpha=0.7)
+                ax_snr.set_xlim(min_snr, max_snr)
 
                 # Add RangeSlider
                 fig_snr.subplots_adjust(bottom=0.25)
                 ax_slider = fig_snr.add_axes([0.15, 0.1, 0.7, 0.05])
-                snr_slider = RangeSlider(ax_slider, "SNR", min(valid_snrs), max(valid_snrs), valinit=(min(valid_snrs), max(valid_snrs)))
-                self._snr_slider_lines = (ax_snr.axvline(min(valid_snrs), color='red', linestyle='--'),
-                                        ax_snr.axvline(max(valid_snrs), color='red', linestyle='--'))
+                snr_slider = RangeSlider(
+                    ax_slider,
+                    "SNR",
+                    min_snr,
+                    max_snr,
+                    valinit=(min_snr, max_snr),
+                )
+                self._snr_slider_lines = (
+                    ax_snr.axvline(min_snr, color="red", linestyle="--"),
+                    ax_snr.axvline(max_snr, color="red", linestyle="--"),
+                )
 
                 def update_snr_lines(val):
                     lo, hi = val
                     self._snr_slider_lines[0].set_xdata([lo, lo])
                     self._snr_slider_lines[1].set_xdata([hi, hi])
+                    self.current_snr_min = lo
+                    self.current_snr_max = hi
+                    snr_range_label.setText(
+                        _(
+                            "visu_snr_range_label",
+                            default=f"SNR range: ({lo:.2f}, {hi:.2f})",
+                        )
+                    )
                     fig_snr.canvas.draw_idle()
 
                 snr_slider.on_changed(update_snr_lines)
+                snr_range_label.setText(
+                    _(
+                        "visu_snr_range_label",
+                        default=f"SNR range: ({min_snr:.2f}, {max_snr:.2f})",
+                    )
+                )
             else:
-                ax_snr.text(0.5, 0.5, _("visu_snr_dist_no_data"), ha='center', va='center', fontsize=12, color='red')
+                ax_snr.text(
+                    0.5,
+                    0.5,
+                    _("visu_snr_dist_no_data"),
+                    ha="center",
+                    va="center",
+                    fontsize=12,
+                    color="red",
+                )
+                snr_range_label.setText(_("visu_snr_dist_no_data"))
 
             canvas_snr = FigureCanvas(fig_snr)
             dialog._canvases.append(canvas_snr)
             snr_layout.addWidget(canvas_snr)
 
             toolbar_snr = NavigationToolbar(canvas_snr, snr_tab)
+            dialog._toolbars.append(toolbar_snr)
             snr_layout.addWidget(toolbar_snr)
+            snr_layout.addWidget(snr_range_label)
 
             tab_widget.addTab(snr_tab, _("visu_tab_snr_dist"))
 
@@ -3652,6 +3698,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             fwhm_layout.addWidget(canvas_fwhm)
 
             toolbar_fwhm = NavigationToolbar(canvas_fwhm, fwhm_tab)
+            dialog._toolbars.append(toolbar_fwhm)
             fwhm_layout.addWidget(toolbar_fwhm)
 
             tab_widget.addTab(fwhm_tab, _("visu_tab_fwhm_dist"))
@@ -3679,6 +3726,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             scatter_layout.addWidget(canvas_scatter)
 
             toolbar_scatter = NavigationToolbar(canvas_scatter, scatter_tab)
+            dialog._toolbars.append(toolbar_scatter)
             scatter_layout.addWidget(toolbar_scatter)
 
             tab_widget.addTab(scatter_tab, "FWHM vs e")
@@ -3714,6 +3762,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 sat_layout.addWidget(canvas_sat)
 
                 toolbar_sat = NavigationToolbar(canvas_sat, sat_tab)
+                dialog._toolbars.append(toolbar_sat)
                 sat_layout.addWidget(toolbar_sat)
 
                 tab_widget.addTab(sat_tab, _("visu_tab_sat_trails"))
@@ -3956,6 +4005,15 @@ class ZeAnalyserMainWindow(QMainWindow):
 
             # Cleanup function
             def cleanup():
+                for toolbar in getattr(dialog, "_toolbars", []):
+                    try:
+                        toolbar.close()
+                    except Exception:
+                        pass
+                    try:
+                        toolbar.deleteLater()
+                    except Exception:
+                        pass
                 for canvas in dialog._canvases:
                     try:
                         canvas.close()
