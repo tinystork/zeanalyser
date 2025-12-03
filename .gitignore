@@ -209,4 +209,4 @@ __marimo__/
 bortle_thresholds.json
 
 #tests
-/tests
+tests/
