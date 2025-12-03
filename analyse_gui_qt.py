@@ -2313,9 +2313,17 @@ class ZeAnalyserMainWindow(QMainWindow):
             import stack_plan
 
             # Create stack plan with default parameters
+            default_sort_spec = [
+                ('mount', False),
+                ('bortle', False),
+                ('telescope', False),
+                ('session_date', False),
+                ('filter', False),
+                ('exposure', False),
+            ]
             stack_plan_rows = stack_plan.generate_stacking_plan(
                 kept_results,
-                sort_by=['mount', 'bortle', 'telescope', 'date', 'filter', 'exposure']
+                sort_spec=default_sort_spec,
             )
 
             if stack_plan_rows:
@@ -2447,9 +2455,17 @@ class ZeAnalyserMainWindow(QMainWindow):
             import stack_plan
 
             # Generate stacking plan with default parameters
+            default_sort_spec = [
+                ('mount', False),
+                ('bortle', False),
+                ('telescope', False),
+                ('session_date', False),
+                ('filter', False),
+                ('exposure', False),
+            ]
             stack_plan_rows = stack_plan.generate_stacking_plan(
                 kept_results,
-                sort_by=['mount', 'bortle', 'telescope', 'date', 'filter', 'exposure']
+                sort_spec=default_sort_spec,
             )
 
             if not stack_plan_rows:
@@ -2581,7 +2597,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 plan_rows = stack_plan.generate_stacking_plan(
                     kept_results,
                     criteria=criteria,
-                    sort_by=sort_spec
+                    sort_spec=sort_spec,
                 )
 
                 total_count = len(plan_rows)
@@ -2608,7 +2624,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 plan_rows = stack_plan.generate_stacking_plan(
                     kept_results,
                     criteria=criteria,
-                    sort_by=sort_spec
+                    sort_spec=sort_spec,
                 )
 
                 if not plan_rows:
