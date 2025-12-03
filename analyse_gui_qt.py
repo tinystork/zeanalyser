@@ -413,11 +413,11 @@ class ResultsFilterProxy(QSortFilterProxyModel if 'QSortFilterProxyModel' in glo
         desired_has_trails = self.has_trails
 
         # In some headless environments setCurrentText("Yes") may not update
-        # the combo index; as a fallback, read the selector's live text to infer
-        # the intended value when explicit state is missing.
+        # the combo index; always read the selector's live text to infer the
+        # intended value when available.
         try:
-            if desired_has_trails is None and self._has_trails_selector is not None:
-                selector = self._has_trails_selector
+            selector = self._has_trails_selector if hasattr(self, '_has_trails_selector') else None
+            if selector is not None:
                 idx = selector.currentIndex() if hasattr(selector, 'currentIndex') else -1
                 text = ''
                 try:
@@ -428,6 +428,8 @@ class ResultsFilterProxy(QSortFilterProxyModel if 'QSortFilterProxyModel' in glo
                     desired_has_trails = True
                 elif idx == 2 or text in ('no', 'false', '0', 'non'):
                     desired_has_trails = False
+                else:
+                    desired_has_trails = None if desired_has_trails is None else desired_has_trails
         except Exception:
             desired_has_trails = desired_has_trails
 
@@ -1249,6 +1251,16 @@ class ZeAnalyserMainWindow(QMainWindow):
             _tr('results_filter_trails_yes', 'Yes'),
             _tr('results_filter_trails_no', 'No'),
         ])
+        # Allow programmatic setCurrentText("Yes"/"No") to stick even when the
+        # combo fails to change index (headless CI). A read-only editable box
+        # still limits user input to known choices while emitting text signals.
+        try:
+            self.has_trails_box.setEditable(True)
+            le = self.has_trails_box.lineEdit()
+            if le is not None:
+                le.setReadOnly(True)
+        except Exception:
+            pass
 
         filters_row.addWidget(self.snr_min_edit)
         filters_row.addWidget(self.snr_max_edit)
@@ -1421,6 +1433,10 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.ecc_max_edit.textChanged.connect(self._on_numeric_or_boolean_filters_changed)
             self.has_trails_box.currentIndexChanged.connect(self._on_numeric_or_boolean_filters_changed)
             self.has_trails_box.currentTextChanged.connect(self._on_numeric_or_boolean_filters_changed)
+            try:
+                self.has_trails_box.editTextChanged.connect(self._on_numeric_or_boolean_filters_changed)
+            except Exception:
+                pass
         except Exception:
             pass
 
