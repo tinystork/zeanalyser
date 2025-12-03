@@ -10,9 +10,11 @@ existing Tkinter UI and project code remain untouched.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
+import traceback
 
 # Set Matplotlib backend for Qt before importing matplotlib
 try:
@@ -274,6 +276,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.parent_token_file_path = None
         self.parent_token_available = False
         self.analysis_results = []
+        self.analysis_completed_successfully = False
         try:
             analyzer_script_path = os.path.abspath(__file__)
             beforehand_dir = os.path.dirname(analyzer_script_path)
@@ -340,6 +343,11 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.reco_ecc_pct_max = 75.0
         self.use_starcount_filter = False
         self.reco_starcount_pct_min = 25.0
+
+        try:
+            self._update_log_and_vis_buttons_state()
+        except Exception:
+            pass
 
     def _compute_recommended_subset(self):
         """Recompute recommended images using the current percentile sliders."""
@@ -1639,6 +1647,8 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         Uses AnalysisResultsModel and a QSortFilterProxyModel for sorting/filtering.
         """
+        self.analysis_results = list(rows)
+
         try:
             from analysis_model import AnalysisResultsModel
             from PySide6.QtCore import QSortFilterProxyModel
@@ -2313,15 +2323,23 @@ class ZeAnalyserMainWindow(QMainWindow):
             import stack_plan
 
             # Create stack plan with default parameters
+            default_sort_spec = [
+                ('mount', False),
+                ('bortle', False),
+                ('telescope', False),
+                ('session_date', False),
+                ('filter', False),
+                ('exposure', False),
+            ]
             stack_plan_rows = stack_plan.generate_stacking_plan(
                 kept_results,
-                sort_by=['mount', 'bortle', 'telescope', 'date', 'filter', 'exposure']
+                sort_spec=default_sort_spec,
             )
 
             if stack_plan_rows:
                 # Save to CSV
                 csv_path = os.path.join(os.path.dirname(self.log_path_edit.text().strip() or ''), 'stack_plan.csv')
-                stack_plan.write_stacking_plan_csv(stack_plan_rows, csv_path)
+                stack_plan.write_stacking_plan_csv(csv_path, stack_plan_rows)
                 self._log(f"Stack plan created: {csv_path} with {len(stack_plan_rows)} batches")
 
                 # Store in the Stack Plan tab
@@ -2447,9 +2465,17 @@ class ZeAnalyserMainWindow(QMainWindow):
             import stack_plan
 
             # Generate stacking plan with default parameters
+            default_sort_spec = [
+                ('mount', False),
+                ('bortle', False),
+                ('telescope', False),
+                ('session_date', False),
+                ('filter', False),
+                ('exposure', False),
+            ]
             stack_plan_rows = stack_plan.generate_stacking_plan(
                 kept_results,
-                sort_by=['mount', 'bortle', 'telescope', 'date', 'filter', 'exposure']
+                sort_spec=default_sort_spec,
             )
 
             if not stack_plan_rows:
@@ -2463,7 +2489,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             else:
                 csv_path = 'stack_plan.csv'
 
-            stack_plan.write_stacking_plan_csv(stack_plan_rows, csv_path)
+            stack_plan.write_stacking_plan_csv(csv_path, stack_plan_rows)
             self._last_stack_plan_path = csv_path
             self._log(f"Stack plan created: {csv_path} with {len(stack_plan_rows)} batches")
             # Store in the Stack Plan tab
@@ -2581,7 +2607,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 plan_rows = stack_plan.generate_stacking_plan(
                     kept_results,
                     criteria=criteria,
-                    sort_by=sort_spec
+                    sort_spec=sort_spec,
                 )
 
                 total_count = len(plan_rows)
@@ -2608,7 +2634,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 plan_rows = stack_plan.generate_stacking_plan(
                     kept_results,
                     criteria=criteria,
-                    sort_by=sort_spec
+                    sort_spec=sort_spec,
                 )
 
                 if not plan_rows:
@@ -2622,7 +2648,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     csv_path = 'stack_plan.csv'
 
                 try:
-                    stack_plan.write_stacking_plan_csv(plan_rows, csv_path)
+                    stack_plan.write_stacking_plan_csv(csv_path, plan_rows)
                     self._last_stack_plan_path = csv_path
                     self._log(f"Stack plan created: {csv_path} with {len(plan_rows)} batches")
                     self.set_stack_plan_rows(plan_rows)
@@ -3052,9 +3078,143 @@ class ZeAnalyserMainWindow(QMainWindow):
         """Retrieve the list of analysis result dicts from the current model or fallback."""
         if getattr(self, '_results_model', None) is not None and hasattr(self._results_model, '_rows'):
             return list(self._results_model._rows)
+        if getattr(self, 'analysis_results', None):
+            try:
+                return list(self.analysis_results)
+            except Exception:
+                pass
         elif getattr(self, '_results_rows', None) is not None:
             return list(self._results_rows)
         return []
+
+    def _load_visualisation_from_log_path(self, log_path: str) -> bool:
+        """Load visualization JSON block from a log file, mirroring Tk logic."""
+        self.analysis_results = []
+        if not log_path or not os.path.isfile(log_path):
+            return False
+
+        try:
+            with open(log_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            temp_end_indices = [i for i, line in enumerate(lines) if line.strip() == "--- END VISUALIZATION DATA ---"]
+            if not temp_end_indices:
+                return False
+            end_index = temp_end_indices[-1]
+
+            temp_start_indices = [i for i, line in enumerate(lines[:end_index]) if line.strip() == "--- BEGIN VISUALIZATION DATA ---"]
+            if not temp_start_indices:
+                return False
+            start_index = temp_start_indices[-1]
+
+            if start_index != -1 and start_index < end_index:
+                json_lines = lines[start_index + 1 : end_index]
+                json_str = "".join(json_lines)
+                if not json_str.strip():
+                    self.analysis_completed_successfully = False
+                    return False
+
+                loaded_data = json.loads(json_str)
+                if isinstance(loaded_data, list):
+                    self.analysis_results = loaded_data
+                    self.analysis_completed_successfully = True
+                    import analyse_logic
+
+                    try:
+                        (
+                            self.recommended_images,
+                            self.reco_snr_min,
+                            self.reco_fwhm_max,
+                            self.reco_ecc_max,
+                        ) = analyse_logic.build_recommended_images(self.analysis_results)
+                    except Exception:
+                        self.recommended_images = []
+                        self.reco_snr_min = self.reco_fwhm_max = self.reco_ecc_max = None
+
+                    try:
+                        self.set_results(self.analysis_results)
+                    except Exception:
+                        try:
+                            self._results_rows = list(self.analysis_results)
+                        except Exception:
+                            pass
+
+                    try:
+                        self._compute_recommended_subset()
+                    except Exception:
+                        pass
+
+                    try:
+                        self._update_buttons_after_analysis()
+                        self._update_marker_button_state()
+                    except Exception:
+                        pass
+
+                    return True
+                else:
+                    self.analysis_completed_successfully = False
+                    return False
+
+            self.analysis_completed_successfully = False
+            return False
+
+        except json.JSONDecodeError as e_json_dec:
+            try:
+                self._log(f"ERREUR: Échec du décodage JSON depuis {log_path}: {e_json_dec}")
+            except Exception:
+                pass
+            self.analysis_completed_successfully = False
+            return False
+        except Exception as e:
+            try:
+                self._log(f"ERREUR: Échec du chargement des données de visualisation depuis {log_path}: {e}")
+            except Exception:
+                pass
+            try:
+                traceback.print_exc()
+            except Exception:
+                pass
+            self.analysis_completed_successfully = False
+            return False
+
+    def _update_log_and_vis_buttons_state(self):
+        """Enable/disable log and visualisation buttons based on log availability."""
+        log_path = ''
+        try:
+            if getattr(self, 'log_path_edit', None) is not None:
+                log_path = self.log_path_edit.text().strip()
+        except Exception:
+            log_path = ''
+
+        log_exists = bool(log_path and os.path.isfile(log_path))
+
+        # "Ouvrir Log" button
+        try:
+            if getattr(self, 'open_log_btn', None):
+                self.open_log_btn.setEnabled(log_exists)
+        except Exception:
+            pass
+
+        can_visualize = False
+        if log_exists:
+            if self._load_visualisation_from_log_path(log_path):
+                can_visualize = bool(self.analysis_results)
+
+        if not can_visualize:
+            self.analysis_results = []
+            self.analysis_completed_successfully = False
+
+        try:
+            if getattr(self, 'visualise_results_btn', None):
+                self.visualise_results_btn.setEnabled(can_visualize)
+        except Exception:
+            pass
+
+        try:
+            if getattr(self, 'create_stack_plan_btn', None):
+                self.create_stack_plan_btn.setEnabled(can_visualize)
+        except Exception:
+            pass
 
     def _get_best_reference(self):
         """Get the best reference image path from results."""
@@ -3376,6 +3536,14 @@ class ZeAnalyserMainWindow(QMainWindow):
                 rows = list(self._results_model._rows)
             elif getattr(self, '_results_rows', None) is not None:
                 rows = list(self._results_rows)
+            elif getattr(self, 'analysis_results', None):
+                rows = list(self.analysis_results)
+
+            if not rows:
+                log_path = getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip()
+                if log_path and os.path.isfile(log_path):
+                    if self._load_visualisation_from_log_path(log_path):
+                        rows = list(self._get_analysis_results_rows())
 
             if not rows:
                 self._log("No results to visualise")
