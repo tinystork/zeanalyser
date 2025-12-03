@@ -1,9 +1,9 @@
-# Core scientific stack
+# Core scientific stack (binary wheels disponibles sur macOS/Windows/Linux)
 numpy
 matplotlib
 astropy
 
-# Image I/O / GUI
+# Image I/O / GUI (PySide6 fournit des wheels universels macOS ; commentez-le si vous utilisez uniquement Tk)
 Pillow            # pour ImageTk
 PySide6           # Qt bindings for the new GUI (Phase 1)
 
@@ -11,12 +11,12 @@ PySide6           # Qt bindings for the new GUI (Phase 1)
 drizzle           # pour drizzle.resample.Drizzle
 
 # Outils instrumentaux (optionnel : détection de traînées)
-acstools
+acstools          # optional ; peut être installé plus tard si la détection de traînées est nécessaire
 
 # Détection de sources (star-counting, à venir)
 photutils
 
-# Détection de traînées via Hough  
+# Détection de traînées via Hough (tous disposent de wheels macOS ; `rasterio` est utilisé pour Bortle et est optionnel)
 scipy
 scikit-image
 rasterio

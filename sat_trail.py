@@ -372,10 +372,12 @@ class AstroImageAnalyzerGUI:
         def run_installation():
             try:
                 pip_cmd = [sys.executable, "-m", "pip", "install", "acstools"]
+                creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if platform.system() == "Windows" else 0
                 process = subprocess.Popen(
                     pip_cmd,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                    universal_newlines=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0 # Cache la fenêtre console sous Windows
+                    universal_newlines=True,
+                    creationflags=creation_flags,  # Cache la fenêtre console sous Windows sans bloquer macOS/Linux
                 )
                 stdout, stderr = process.communicate()
 
