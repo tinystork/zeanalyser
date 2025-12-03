@@ -10,6 +10,7 @@ existing Tkinter UI and project code remain untouched.
 """
 from __future__ import annotations
 
+import logging
 import os
 import time
 
@@ -86,7 +87,7 @@ except Exception:  # pragma: no cover - tests guard for availability
     QTimer = object
     QObject = object
     Signal = lambda *a, **k: None
-    Slot = lambda *a, **k: None
+    Slot = lambda *a, **k: (lambda f: f)
     QThread = object
     QRunnable = object
     QThreadPool = object
@@ -118,6 +119,8 @@ try:
     from zone import translations
 except ImportError:
     translations = {'en': {}, 'fr': {}}
+
+logger = logging.getLogger(__name__)
 
 def _translate(key, **kwargs):
     """Translate key to French with formatting, matching Tk behavior."""
@@ -390,23 +393,43 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.reco_starcount_min = sc_p if sc_p is not None and is_finite_number(sc_p) else None
         return recos, snr_p, fwhm_p, ecc_p, sc_p
 
-    def _apply_current_recommendations(self):
-        """Apply the currently computed recommended images."""
+    def _apply_current_recommendations(self, *, auto: bool = False):
+        """Recompute and apply the currently recommended images."""
+        recos = []
+        snr_p = fwhm_p = ecc_p = sc_p = None
         try:
-            from PySide6.QtWidgets import QMessageBox
-            if not getattr(self, 'recommended_images', None):
-                QMessageBox.information(
-                    self,
-                    _("msg_info"),
-                    _("visu_recom_no_selection", default='Aucune image recommandée à appliquer.')
-                )
-                return
+            recos, snr_p, fwhm_p, ecc_p, sc_p = self._compute_recommended_subset()
         except Exception:
-            if not getattr(self, 'recommended_images', None):
-                self._log("No recommended images to apply")
-                return
+            logger.debug("Failed to recompute recommendations; using cached values", exc_info=True)
+            recos = list(getattr(self, 'recommended_images', []) or [])
+            snr_p = getattr(self, 'reco_snr_min', None)
+            fwhm_p = getattr(self, 'reco_fwhm_max', None)
+            ecc_p = getattr(self, 'reco_ecc_max', None)
+            sc_p = getattr(self, 'reco_starcount_min', None)
 
-        self._apply_recommendations_gui()
+        self.recommended_images = recos
+
+        logger.debug(
+            "Applying recommendations: %d images (SNR≥%s, FWHM≤%s, e≤%s, Starcount≥%s)",
+            len(recos), snr_p, fwhm_p, ecc_p, sc_p
+        )
+
+        if not recos:
+            try:
+                from PySide6.QtWidgets import QMessageBox
+
+                if not auto:
+                    QMessageBox.information(
+                        self,
+                        _("msg_info"),
+                        _("visu_recom_no_selection", default='Aucune image recommandée à appliquer.')
+                    )
+            except Exception:
+                if not auto:
+                    self._log("No recommended images to apply")
+            return
+
+        self._apply_recommendations_gui(auto=auto)
 
         # Ensure minimal core widgets exist even if some UI construction
         # raised an error earlier (defensive for flaky test environments).
@@ -1072,7 +1095,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             if isinstance(self.visualise_results_btn, QPushButton):
                 self.visualise_results_btn.clicked.connect(self._visualise_results)
             if isinstance(self.apply_recos_btn, QPushButton):
-                self.apply_recos_btn.clicked.connect(self._apply_recommendations_gui)
+                self.apply_recos_btn.clicked.connect(self._apply_current_recommendations)
             if isinstance(self.send_save_ref_btn, QPushButton):
                 self.send_save_ref_btn.clicked.connect(self.send_reference_to_main)
             if isinstance(self.organize_btn, QPushButton):
@@ -2188,7 +2211,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 return
 
             # Apply recommendations automatically
-            self._apply_recommendations_gui()
+            self._apply_current_recommendations(auto=True)
             # Organize files automatically
             self._organize_files_auto()
             # Send reference to main
@@ -2940,7 +2963,9 @@ class ZeAnalyserMainWindow(QMainWindow):
         rows = self._get_analysis_results_rows()
         has_results = bool(rows)
         has_log = bool(getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip())
-        has_recos = bool(getattr(self, '_results_rows', None) and any(r.get('recommended') for r in self._results_rows))
+        has_recos = bool(getattr(self, 'recommended_images', None))
+        if not has_recos and getattr(self, '_results_rows', None):
+            has_recos = any(r.get('recommended') for r in self._results_rows)
 
         # Enable/disable based on presence of results
         try:
@@ -3777,7 +3802,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         return '\n'.join(lines)
 
-    def _apply_recommendations_gui(self):
+    def _apply_recommendations_gui(self, *, auto: bool = False):
         """Apply recommended images selection."""
         try:
             # Get results
@@ -3792,10 +3817,23 @@ class ZeAnalyserMainWindow(QMainWindow):
                 return
 
             # Find recommended images
-            recommended = [r for r in rows if r.get('recommended', False)]
+            recommended = list(getattr(self, 'recommended_images', []) or [])
             if not recommended:
-                self._log("No images are recommended for application")
+                recommended = [r for r in rows if r.get('recommended', False)]
+            if not recommended:
+                if not auto:
+                    self._log("No images are recommended for application")
                 return
+
+            recommended_files = {
+                os.path.abspath(r.get('file')) for r in recommended if r.get('file')
+            }
+            if recommended_files:
+                for r in rows:
+                    try:
+                        r['recommended'] = os.path.abspath(r.get('file', '')) in recommended_files
+                    except Exception:
+                        r['recommended'] = False
 
             self._log(f"Applying recommendations for {len(recommended)} images")
 
