@@ -90,13 +90,13 @@ Each pass should keep the app runnable and tests passing.
 
 ## Pass 5 – Polish & tests
 
-- [ ] Audit `_retranslate_ui` and ensure every user-visible string comes from translations.
-- [ ] Remove any hard-coded French strings replaced by translation keys.
-- [ ] Run existing test suite and fix regressions.
-- [ ] Add minimal new tests (if possible) for:
-  - [ ] Construction of Settings tab (language/skin combos exist).
-  - [ ] `_compute_recommended_subset` behaviour with a small fake dataset.
-  - [ ] `_visualise_results` doesn’t crash when given a small list of rows.
+- [x] Audit `_retranslate_ui` and ensure every user-visible string comes from translations.
+- [x] Remove any hard-coded French strings replaced by translation keys.
+- [x] Run existing test suite and fix regressions.
+- [x] Add minimal new tests (if possible) for:
+  - [x] Construction of Settings tab (language/skin combos exist).
+  - [x] `_compute_recommended_subset` behaviour with a small fake dataset.
+  - [x] `_visualise_results` doesn’t crash when given a small list of rows.
 
 **Final check:**  
 Qt and Tk give the same visualisation & recommendation behaviour on the same log file, and the user can switch language and skin from the Settings tab without restarting the app.

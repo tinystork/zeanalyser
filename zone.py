@@ -46,6 +46,13 @@ translations = {
         'status_dir_create_error': "Erreur création dossier: {e}",
         'status_custom': "{text}",
 
+        # --- Onglets principaux ---
+        'project_tab_title': "Projet",
+        'results_tab_title': "Résultats",
+        'stack_tab_title': "Plan de stack",
+        'preview_tab_title': "Aperçu",
+        'settings_tab_title': "Paramètres / Préférences",
+
         # --- Cadres ---
         'config_frame_title': "Configuration Générale",
         'snr_frame_title': "Analyse SNR & Sélection",
@@ -56,6 +63,10 @@ translations = {
         'help_menu_label': "Aide",
         'about_action_label': "À propos",
         'no_preview_selected': "Aucun aperçu sélectionné.",
+        'preview_hist_label_na': "Histogramme : N/D",
+        'preview_apply_stretch': "Appliquer l'étirement",
+        'preview_stretch_min': "Étirement min",
+        'preview_stretch_max': "max",
 
         # --- Labels & Champs ---
         'input_dir_label': "Dossier d'entrée:",
@@ -84,6 +95,13 @@ translations = {
         'sort_snr_check_label': "Trier les résultats par SNR décroissant",
         'filter_results_placeholder': "Filtrer les résultats...",
         'filter_stack_plan_placeholder': "Filtrer le plan de stack...",
+        'results_filter_snr_min': "SNR ≥",
+        'results_filter_snr_max': "SNR ≤",
+        'results_filter_fwhm_max': "FWHM ≤",
+        'results_filter_ecc_max': "ECC ≤",
+        'results_filter_trails_any': "Tous",
+        'results_filter_trails_yes': "Oui",
+        'results_filter_trails_no': "Non",
 
         # --- Boutons ---
         'browse_button': "Parcourir",
@@ -164,6 +182,9 @@ translations = {
         'visu_tab_ecc_dist': "Distribution Excentricité",
         'fwhm_distribution_title': "Distribution du FWHM",
         'ecc_distribution_title': "Distribution de l'excentricité",
+        'visu_tab_fwhm_vs_e': "FWHM vs e",
+        'visu_scatter_fwhm_label': "FWHM",
+        'visu_scatter_ecc_label': "e",
         'visu_fwhm_no_data': "Aucune donnée FWHM valide",
         'visu_ecc_no_data': "Aucune donnée e valide",
         'filter_fwhm': "Filtre FWHM",
@@ -188,11 +209,17 @@ translations = {
         'visu_recom_text_all': "Suggestion : utiliser {count} images avec SNR ≥ P25, FWHM ≤ P75 et e ≤ P75",
         'visu_recom_col_file': "Fichier (Relatif)",
         'visu_recom_col_snr': "SNR",
+        'visu_recom_col_fwhm': "FWHM",
+        'visu_recom_col_ecc': "Excentricité",
         'visu_recom_col_starcount': "Starcount",
         'visu_recom_no_selection': "Aucune image conservée ne dépasse le seuil de recommandation.",
         'visu_recom_not_enough': "Moins de 5 images conservées valides. Utilisez/Exportez toutes les images conservées.",
         'visu_recom_no_data': "Aucune donnée SNR valide pour recommandation.",
         'Toutes les images conservées valides': "Toutes les images conservées valides",
+        'visu_recom_resume_snr': "SNR ≥ {value:.2f}",
+        'visu_recom_resume_fwhm': "FWHM ≤ {value:.2f}",
+        'visu_recom_resume_ecc': "e ≤ {value:.3f}",
+        'visu_recom_resume_starcount': "Starcount ≥ {value:.0f}",
 
         # --- Infobulles (Tooltips) ---
         'tooltip_sigma': "Sigma du filtre Gaussien avant détection contours (flou). Défaut: 2.0", 'tooltip_low_thresh': "Seuil bas Canny (0-1). Détecte bords potentiels. Bas=Sensible bruit. Défaut acstools: 0.1", 'tooltip_h_thresh': "Seuil haut Canny (0-1). Ancre bords forts. >= Low Thr. Bas=Permissif. Défaut acstools: 0.5", 'tooltip_line_len': "Longueur min. (px) segment final pour être une traînée. Défaut acstools: 150", 'tooltip_small_edge': "Longueur min. (px) contour initial (par Canny). Filtre bruit avant Hough. Défaut acstools: 60", 'tooltip_line_gap': "Écart max (px) pour joindre segments. Défaut acstools: 75", 'tooltip_snr_value': "Entrez % (ex: 80) ou seuil SNR (ex: 5.5). Ignoré si Tout Garder.",
@@ -278,6 +305,13 @@ translations = {
         'status_log_error': "Log writing error", 'status_dir_create_error': "Folder creation error: {e}",
         'status_custom': "{text}",
 
+        # --- Main tabs ---
+        'project_tab_title': "Project",
+        'results_tab_title': "Results",
+        'stack_tab_title': "Stack Plan",
+        'preview_tab_title': "Preview",
+        'settings_tab_title': "Settings / Preferences",
+
         # --- Frames ---
         'config_frame_title': "General Configuration", 'snr_frame_title': "SNR Analysis & Selection", 'trail_frame_title': "Trail Detection", 'action_frame_title': "Action on Rejected Images", 'display_options_frame_title': "Display Options", 'results_frame_title': "Results / Log",
         'help_menu_label': "Help", 'about_action_label': "About",
@@ -294,6 +328,10 @@ translations = {
         'elapsed_time_label': "Elapsed:",
         'remaining_time_label': "Remaining:",
         'no_preview_selected': "No preview selected.",
+        'preview_hist_label_na': "Histogram: N/A",
+        'preview_apply_stretch': "Apply stretch",
+        'preview_stretch_min': "Stretch min",
+        'preview_stretch_max': "max",
         'analyze_snr_check_label': "Enable SNR analysis", 'snr_select_mode_label': "SNR Selection Mode:", 'snr_mode_percent': "Top Percent (%)", 'snr_mode_threshold': "SNR Threshold (>)",
         'snr_mode_none': "Keep All", 'snr_reject_dir_label': "Reject Folder (Low SNR):",
         'detect_trails_check_label': "Enable trail detection",
@@ -303,6 +341,13 @@ translations = {
         'apply_immediately': "Apply immediately",
         'sort_snr_check_label': "Sort results by descending SNR",
         'filter_results_placeholder': "Filter results...", 'filter_stack_plan_placeholder': "Filter stack plan...",
+        'results_filter_snr_min': "SNR ≥",
+        'results_filter_snr_max': "SNR ≤",
+        'results_filter_fwhm_max': "FWHM ≤",
+        'results_filter_ecc_max': "ECC ≤",
+        'results_filter_trails_any': "Any",
+        'results_filter_trails_yes': "Yes",
+        'results_filter_trails_no': "No",
 
         # --- Buttons ---
         'browse_button': "Browse", 'analyse_button':
@@ -353,6 +398,9 @@ translations = {
         'visu_tab_ecc_dist': "Eccentricity Distribution",
         'fwhm_distribution_title': "FWHM Distribution",
         'ecc_distribution_title': "Eccentricity Distribution",
+        'visu_tab_fwhm_vs_e': "FWHM vs e",
+        'visu_scatter_fwhm_label': "FWHM",
+        'visu_scatter_ecc_label': "e",
         'visu_fwhm_no_data': "No valid FWHM data",
         'visu_ecc_no_data': "No valid e data",
         'filter_fwhm': "FWHM Filter",
@@ -383,11 +431,17 @@ translations = {
         'visu_recom_text_all': "Suggestion: use {count} images with SNR \u2265 P25, FWHM \u2264 P75 and e \u2264 P75",
         'visu_recom_col_file': "File (Relative)",
         'visu_recom_col_snr': "SNR",
+        'visu_recom_col_fwhm': "FWHM",
+        'visu_recom_col_ecc': "Eccentricity",
         'visu_recom_col_starcount': "Starcount",
         'visu_recom_no_selection': "No kept images meet the recommendation threshold.",
         'visu_recom_not_enough': "Fewer than 5 valid kept images. Use/Export all valid kept images.",
         'visu_recom_no_data': "No valid SNR data for recommendation.",
         'Toutes les images conservées valides': "All valid kept images",
+        'visu_recom_resume_snr': "SNR ≥ {value:.2f}",
+        'visu_recom_resume_fwhm': "FWHM ≤ {value:.2f}",
+        'visu_recom_resume_ecc': "e ≤ {value:.3f}",
+        'visu_recom_resume_starcount': "Starcount ≥ {value:.0f}",
         'reco_snr_min_pct': "SNR min (percentile)", 'reco_fwhm_max_pct': "FWHM max (percentile)", 'reco_ecc_max_pct': "Eccentricity max (percentile)",
 
         # --- Tooltips ---
