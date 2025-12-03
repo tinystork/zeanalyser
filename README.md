@@ -198,6 +198,12 @@ python analyse_gui_qt.py
 ## macOS notes / Notes macOS
 
 - Installez Python 3 depuis python.org ou Homebrew pour disposer des frameworks Tk et Qt.
+
+### Known issues / Points d'attention
+
+- **Optional Bortle maps / Cartes Bortle optionnelles** : `rasterio` repose sur GDAL. Si l'installation des roues échoue, installez GDAL via Homebrew (`brew install gdal`) ou désactivez cette fonctionnalité ; l'application affiche un message clair plutôt que de planter.
+- **Headless usage / Mode sans affichage** : pour les environnements CI ou sans écran, forcez `QT_QPA_PLATFORM=offscreen` et `MPLBACKEND=Agg` afin d'éviter les erreurs liées à l'absence de serveur d'affichage.
+- **Shell open helpers / Ouverture via le shell** : les actions qui ouvrent un dossier ou un fichier utilisent la commande `open`. Si macOS demande une autorisation d'accès au disque, acceptez-la pour permettre l'ouverture dans le Finder.
 - Les dépendances principales (NumPy, Matplotlib, PySide6, rasterio) sont disponibles sous forme de roues binaires macOS ; installez-les via `pip install -r requirements.txt`.
 - Les fonctions Bortle s'appuient sur `rasterio`. Si elle n'est pas installée, l'application signale clairement que cette fonctionnalité est indisponible plutôt que de planter.
 
