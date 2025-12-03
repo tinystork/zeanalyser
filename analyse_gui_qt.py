@@ -1396,6 +1396,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.fwhm_max_edit.textChanged.connect(self._on_numeric_or_boolean_filters_changed)
             self.ecc_max_edit.textChanged.connect(self._on_numeric_or_boolean_filters_changed)
             self.has_trails_box.currentIndexChanged.connect(self._on_numeric_or_boolean_filters_changed)
+            self.has_trails_box.currentTextChanged.connect(self._on_numeric_or_boolean_filters_changed)
         except Exception:
             pass
 
@@ -2128,6 +2129,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             p.snr_max = self._parse_float_or_none(self.snr_max_edit.text())
             p.fwhm_max = self._parse_float_or_none(self.fwhm_max_edit.text())
             p.ecc_max = self._parse_float_or_none(self.ecc_max_edit.text())
+
             choice_idx = self.has_trails_box.currentIndex() if hasattr(self, 'has_trails_box') else 0
             current_text = ''
             try:
@@ -2135,21 +2137,15 @@ class ZeAnalyserMainWindow(QMainWindow):
             except Exception:
                 current_text = ''
 
-            if choice_idx == 0:
-                p.has_trails = None
-            elif choice_idx == 1:
+            # Prefer explicit text cues so setCurrentText("Yes") in tests still
+            # toggles the filter even when the combo index stays at 0.
+            if choice_idx == 1 or current_text in ('yes', 'true', '1', 'oui'):
                 p.has_trails = True
-            elif choice_idx == 2:
+            elif choice_idx == 2 or current_text in ('no', 'false', '0', 'non'):
                 p.has_trails = False
             else:
-                # fallback for environments where setCurrentText does not update
-                # the index (e.g., translations differ from test text)
-                if current_text in ('yes', 'true', '1', 'oui'):
-                    p.has_trails = True
-                elif current_text in ('no', 'false', '0', 'non'):
-                    p.has_trails = False
-                else:
-                    p.has_trails = None
+                p.has_trails = None
+
             p.invalidateFilter()
         except Exception:
             pass
