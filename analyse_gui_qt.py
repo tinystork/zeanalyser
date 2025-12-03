@@ -2129,12 +2129,27 @@ class ZeAnalyserMainWindow(QMainWindow):
             p.fwhm_max = self._parse_float_or_none(self.fwhm_max_edit.text())
             p.ecc_max = self._parse_float_or_none(self.ecc_max_edit.text())
             choice_idx = self.has_trails_box.currentIndex() if hasattr(self, 'has_trails_box') else 0
+            current_text = ''
+            try:
+                current_text = self.has_trails_box.currentText().strip().lower()
+            except Exception:
+                current_text = ''
+
             if choice_idx == 0:
                 p.has_trails = None
             elif choice_idx == 1:
                 p.has_trails = True
-            else:
+            elif choice_idx == 2:
                 p.has_trails = False
+            else:
+                # fallback for environments where setCurrentText does not update
+                # the index (e.g., translations differ from test text)
+                if current_text in ('yes', 'true', '1', 'oui'):
+                    p.has_trails = True
+                elif current_text in ('no', 'false', '0', 'non'):
+                    p.has_trails = False
+                else:
+                    p.has_trails = None
             p.invalidateFilter()
         except Exception:
             pass
