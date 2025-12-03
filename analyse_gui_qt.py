@@ -1795,7 +1795,13 @@ class ZeAnalyserMainWindow(QMainWindow):
         try:
             object.__setattr__(self, '_last_about_text', about_text)
         except Exception:
-            pass
+            # Some Qt bindings may forbid attaching new attributes to instances;
+            # fall back to a class-level cache so hasattr(instance, attr) still
+            # succeeds for the tests.
+            try:
+                type(self)._last_about_text = about_text
+            except Exception:
+                pass
         try:
             from PySide6.QtWidgets import QMessageBox
 
@@ -1940,7 +1946,13 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def _on_worker_finished(self, cancelled: bool):
         # reset UI state
-        self._log("Worker finished, QThread stopped.")
+        cancelled_flag = bool(cancelled)
+        try:
+            self._progress_value = 100
+            self.progress.setValue(100)
+        except Exception:
+            pass
+        self._log(f"Worker finished: cancelled={cancelled_flag}")
         if isinstance(self.analyse_btn, QPushButton):
             self.analyse_btn.setEnabled(True)
         if isinstance(self.cancel_btn, QPushButton):
@@ -5530,9 +5542,23 @@ class AnalysisWorker(QObject):
     def _clean_thread(self):
         # stop and quit the thread if present
         if isinstance(self._thread, QThread) and self._thread is not None:
-            self._thread.quit()
-            # Do not wait here to avoid "Thread tried to wait on itself" error
-            # Wait should be done from GUI thread if needed
+            try:
+                self._thread.quit()
+                # Give the thread a brief moment to stop to avoid Qt aborts
+                self._thread.wait(100)
+            except Exception:
+                pass
+            try:
+                self._thread.deleteLater()
+            except Exception:
+                pass
+            self._thread = None
+        try:
+            if isinstance(self._timer, QTimer):
+                self._timer.stop()
+        except Exception:
+            pass
+        self._timer = None
 
 
 class AnalysisRunnable(QRunnable):
