@@ -17,6 +17,7 @@ import locale
 import os
 import time
 import traceback
+from platform_utils import open_path_with_default_app
 
 # Set Matplotlib backend for Qt before importing matplotlib
 try:
@@ -2670,15 +2671,13 @@ class ZeAnalyserMainWindow(QMainWindow):
     def _open_log_file(self) -> None:
         """Open the log file with the system default application (best-effort)."""
         try:
-            import os, subprocess
             path = self.log_path_edit.text().strip() if getattr(self, 'log_path_edit', None) is not None else ''
             if not path:
                 self._log("No log file selected to open")
                 return
-            if os.name == 'nt':
-                os.startfile(path)
-            else:
-                subprocess.run(['xdg-open', path], check=False)
+            open_path_with_default_app(path)
+        except FileNotFoundError:
+            self._log("Log file does not exist")
         except Exception as e:
             self._log(f"Open log failed: {e}")
 

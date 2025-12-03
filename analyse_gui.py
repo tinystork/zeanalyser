@@ -92,6 +92,7 @@ from PIL import Image, ImageTk
 import json
 import importlib.util
 import numbers
+from platform_utils import open_path_with_default_app
 from stack_plan import generate_stacking_plan, write_stacking_plan_csv
 
 # Détection de l'environnement : intégré ou autonome
@@ -3107,13 +3108,7 @@ class AstroImageAnalyzerGUI:
             messagebox.showerror(self._("msg_error"), self._("msg_log_not_exist"), parent=self.root)
             return
         try:
-            # Ouvrir selon le système d'exploitation
-            if platform.system() == 'Windows':
-                os.startfile(log_path)
-            elif platform.system() == 'Darwin': # macOS
-                subprocess.call(['open', log_path])
-            else: # Linux, etc.
-                subprocess.call(['xdg-open', log_path])
+            open_path_with_default_app(log_path)
         except Exception as e:
             # Gérer erreurs d'ouverture
             messagebox.showerror(self._("msg_error"), self._("msg_log_open_error", path=log_path, e=e), parent=self.root)

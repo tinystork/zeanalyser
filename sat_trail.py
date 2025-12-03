@@ -40,6 +40,7 @@ import traceback
 import inspect # Pour vérifier les arguments si besoin
 import warnings # Ajoutez cette ligne au début de votre fichier .py
 import time
+from platform_utils import open_path_with_default_app
 
 # Importer acstools si disponible
 try:
@@ -260,12 +261,7 @@ class AstroImageAnalyzerGUI:
             return
 
         try:
-            if platform.system() == 'Windows':
-                os.startfile(log_path)
-            elif platform.system() == 'Darwin':  # macOS
-                subprocess.call(['open', log_path])
-            else:  # Linux et autres
-                subprocess.call(['xdg-open', log_path])
+            open_path_with_default_app(log_path)
         except Exception as e:
             messagebox.showerror("Erreur", f"Impossible d'ouvrir le fichier log '{log_path}':\n{str(e)}")
 

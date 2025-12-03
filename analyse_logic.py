@@ -36,10 +36,16 @@ import threading
 import zipfile
 import xml.etree.ElementTree as ET
 import csv
+import importlib.util
 from astroalign import find_transform
 
-from rasterio.io import MemoryFile
-from rasterio.transform import from_bounds
+_rasterio_spec = importlib.util.find_spec("rasterio")
+if _rasterio_spec:
+    from rasterio.io import MemoryFile
+    from rasterio.transform import from_bounds
+else:
+    MemoryFile = None
+    from_bounds = None
 
 import bortle_utils
 
@@ -53,6 +59,10 @@ NATURAL_SKY = 174.0  # µcd/m² ≈ 22 mag/arcsec²
 
 def _load_bortle_raster(path):
     """Load a Bortle raster dataset, supporting KMZ ground overlays."""
+    if MemoryFile is None or from_bounds is None:
+        raise ImportError(
+            "rasterio is required to load Bortle overlays. Install it to enable this feature."
+        )
     if path.lower().endswith('.kmz'):
         with zipfile.ZipFile(path, 'r') as zf:
             kml_name = next((n for n in zf.namelist() if n.lower().endswith('.kml')), None)
