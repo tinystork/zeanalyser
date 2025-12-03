@@ -326,13 +326,10 @@ class ResultsFilterProxy(QSortFilterProxyModel if 'QSortFilterProxyModel' in glo
             parent_idx = source_parent if source_parent is not None else QModelIndex()
         except Exception:
             parent_idx = source_parent
-        try:
-            base_ok = super().filterAcceptsRow(source_row, parent_idx)
-        except Exception:
-            base_ok = True
-
-        if not base_ok:
-            return False
+        # Rely on our own filtering logic to avoid surprises from the base
+        # implementation (which may depend on filterRegExp defaults). The
+        # text search is applied explicitly below via ``_filter_text``.
+        base_ok = True
 
         model = self.sourceModel()
         if model is None:
