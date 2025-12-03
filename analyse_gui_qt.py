@@ -1389,6 +1389,68 @@ class ZeAnalyserMainWindow(QMainWindow):
         if hasattr(self, "log") and isinstance(self.log, QTextEdit):
             self.log.append(message)
 
+    def _format_callback_message(self, key=None, **kwargs) -> str:
+        """Format messages emitted by analyse_logic callbacks.
+
+        analyse_logic passes a translation key plus optional kwargs (e.g.
+        ``text=...``). This helper mirrors the Tk behavior by translating
+        when possible and falling back to plain strings so lambda callbacks
+        accept arbitrary signatures without raising ``TypeError``.
+        """
+        try:
+            if isinstance(key, str) and key:
+                try:
+                    return _translate(key, **kwargs)
+                except Exception:
+                    return str(key)
+            if 'text' in kwargs:
+                return str(kwargs.get('text', ''))
+            if key is None:
+                return ''
+            return str(key)
+        except Exception:
+            return ''
+
+    def _build_logic_callbacks(self, *, log_to_ui=True, status_to_ui=True, progress_to_ui=True):
+        """Return callbacks compatible with analyse_logic helpers."""
+
+        def _log_cb(key=None, **kwargs):
+            if not log_to_ui:
+                return
+            message = self._format_callback_message(key, **kwargs)
+            if message:
+                try:
+                    self._log(message)
+                except Exception:
+                    pass
+
+        def _status_cb(key=None, **kwargs):
+            if not status_to_ui:
+                return
+            message = self._format_callback_message(key, **kwargs)
+            if not message:
+                return
+            try:
+                if hasattr(self, 'statusBar'):
+                    self.statusBar().showMessage(message)
+            except Exception:
+                pass
+
+        def _progress_cb(value=None, **kwargs):
+            if not progress_to_ui:
+                return
+            try:
+                if hasattr(self, 'progress') and value is not None:
+                    self.progress.setValue(int(value))
+            except Exception:
+                pass
+
+        return {
+            'log': _log_cb,
+            'status': _status_cb,
+            'progress': _progress_cb,
+        }
+
     def _show_about_dialog(self) -> None:
         """Display a small About dialog. In test/headless environments this
         will fallback to writing the text to `self._last_about_text` so tests
@@ -3848,11 +3910,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             move_flag = opts.get('move_rejected', False)
             input_dir = opts.get('input_path', '')
 
-            callbacks = {
-                'log': lambda msg: self._log(str(msg)),
-                'status': lambda msg: self.statusBar().showMessage(str(msg)) if hasattr(self, 'statusBar') else None,
-                'progress': lambda v: self.progress.setValue(int(v)) if hasattr(self, 'progress') else None,
-            }
+            callbacks = self._build_logic_callbacks()
 
             applied = 0
             try:
@@ -3970,11 +4028,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         delete_flag = opts.get('delete_rejected', False)
         move_flag = opts.get('move_rejected', False)
 
-        callbacks = {
-            'log': lambda msg: self._log(str(msg)),
-            'status': lambda msg: None,  # No status update for auto
-            'progress': lambda v: None,  # No progress update for auto
-        }
+        callbacks = self._build_logic_callbacks(status_to_ui=False, progress_to_ui=False)
 
         input_dir = opts.get('input_path', '')
 
@@ -4110,11 +4164,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         delete_flag = opts.get('delete_rejected', False)
         move_flag = opts.get('move_rejected', False)
 
-        callbacks = {
-            'log': lambda msg: self._log(str(msg)),
-            'status': lambda msg: self.statusBar().showMessage(str(msg)) if hasattr(self, 'statusBar') else None,
-            'progress': lambda v: self.progress.setValue(int(v)) if hasattr(self, 'progress') else None,
-        }
+        callbacks = self._build_logic_callbacks()
 
         input_dir = opts.get('input_path', '')
 
