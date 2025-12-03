@@ -3679,19 +3679,58 @@ class ZeAnalyserMainWindow(QMainWindow):
             fig_fwhm, ax_fwhm = plt.subplots(figsize=(8, 6))
             dialog._figures.append(fig_fwhm)
 
+            fwhm_range_label = QLabel()
             valid_fwhms = [r['fwhm'] for r in rows if is_finite_number(r.get('fwhm'))]
             if valid_fwhms:
+                min_fwhm, max_fwhm = min(valid_fwhms), max(valid_fwhms)
+                self.current_fwhm_min = min_fwhm
+                self.current_fwhm_max = max_fwhm
+
                 ax_fwhm.hist(valid_fwhms, bins=20, color='skyblue', edgecolor='black', alpha=0.7)
                 ax_fwhm.set_title(_("fwhm_distribution_title"))
                 ax_fwhm.set_xlabel("FWHM")
                 ax_fwhm.set_ylabel(_("number_of_images"))
                 ax_fwhm.grid(axis='y', linestyle='--', alpha=0.7)
+                ax_fwhm.set_xlim(min_fwhm, max_fwhm)
 
                 fig_fwhm.subplots_adjust(bottom=0.25)
                 ax_slider_fwhm = fig_fwhm.add_axes([0.15, 0.1, 0.7, 0.05])
-                fwhm_slider = RangeSlider(ax_slider_fwhm, _("filter_fwhm"), min(valid_fwhms), max(valid_fwhms), valinit=(min(valid_fwhms), max(valid_fwhms)))
+                fwhm_slider = RangeSlider(
+                    ax_slider_fwhm,
+                    _("filter_fwhm"),
+                    min_fwhm,
+                    max_fwhm,
+                    valinit=(min_fwhm, max_fwhm),
+                )
+                fwhm_lines = (
+                    ax_fwhm.axvline(min_fwhm, color='red', linestyle='--'),
+                    ax_fwhm.axvline(max_fwhm, color='red', linestyle='--'),
+                )
+
+                def update_fwhm_lines(val):
+                    lo, hi = val
+                    fwhm_lines[0].set_xdata([lo, lo])
+                    fwhm_lines[1].set_xdata([hi, hi])
+                    self.current_fwhm_min = lo
+                    self.current_fwhm_max = hi
+                    fwhm_range_label.setText(
+                        _(
+                            "visu_fwhm_range_label",
+                            default=f"FWHM range: ({lo:.2f}, {hi:.2f})",
+                        )
+                    )
+                    fig_fwhm.canvas.draw_idle()
+
+                fwhm_slider.on_changed(update_fwhm_lines)
+                fwhm_range_label.setText(
+                    _(
+                        "visu_fwhm_range_label",
+                        default=f"FWHM range: ({min_fwhm:.2f}, {max_fwhm:.2f})",
+                    )
+                )
             else:
                 ax_fwhm.text(0.5, 0.5, _("visu_fwhm_no_data"), ha='center', va='center', fontsize=12, color='red')
+                fwhm_range_label.setText(_("visu_fwhm_no_data"))
 
             canvas_fwhm = FigureCanvas(fig_fwhm)
             dialog._canvases.append(canvas_fwhm)
@@ -3700,8 +3739,151 @@ class ZeAnalyserMainWindow(QMainWindow):
             toolbar_fwhm = NavigationToolbar(canvas_fwhm, fwhm_tab)
             dialog._toolbars.append(toolbar_fwhm)
             fwhm_layout.addWidget(toolbar_fwhm)
+            fwhm_layout.addWidget(fwhm_range_label)
 
             tab_widget.addTab(fwhm_tab, _("visu_tab_fwhm_dist"))
+
+            # --- Eccentricity Distribution Tab ---
+            ecc_tab = QWidget()
+            ecc_layout = QVBoxLayout(ecc_tab)
+
+            fig_ecc, ax_ecc = plt.subplots(figsize=(8, 6))
+            dialog._figures.append(fig_ecc)
+
+            ecc_range_label = QLabel()
+            valid_eccs = [r['ecc'] for r in rows if is_finite_number(r.get('ecc'))]
+            if valid_eccs:
+                min_ecc, max_ecc = min(valid_eccs), max(valid_eccs)
+                self.current_ecc_min = min_ecc
+                self.current_ecc_max = max_ecc
+
+                ax_ecc.hist(valid_eccs, bins=20, range=(0, 1), color='skyblue', edgecolor='black', alpha=0.7)
+                ax_ecc.set_title(_("ecc_distribution_title"))
+                ax_ecc.set_xlabel('e')
+                ax_ecc.set_ylabel(_("number_of_images"))
+                ax_ecc.grid(axis='y', linestyle='--', alpha=0.7)
+                ax_ecc.set_xlim(0, 1)
+
+                fig_ecc.subplots_adjust(bottom=0.25)
+                ax_slider_ecc = fig_ecc.add_axes([0.15, 0.1, 0.7, 0.05])
+                ecc_slider = RangeSlider(
+                    ax_slider_ecc,
+                    _("filter_ecc"),
+                    0.0,
+                    1.0,
+                    valinit=(min_ecc, max_ecc),
+                )
+                ecc_lines = (
+                    ax_ecc.axvline(min_ecc, color='red', linestyle='--'),
+                    ax_ecc.axvline(max_ecc, color='red', linestyle='--'),
+                )
+
+                def update_ecc_lines(val):
+                    lo, hi = val
+                    ecc_lines[0].set_xdata([lo, lo])
+                    ecc_lines[1].set_xdata([hi, hi])
+                    self.current_ecc_min = lo
+                    self.current_ecc_max = hi
+                    ecc_range_label.setText(
+                        _(
+                            "visu_ecc_range_label",
+                            default=f"e range: ({lo:.3f}, {hi:.3f})",
+                        )
+                    )
+                    fig_ecc.canvas.draw_idle()
+
+                ecc_slider.on_changed(update_ecc_lines)
+                ecc_range_label.setText(
+                    _(
+                        "visu_ecc_range_label",
+                        default=f"e range: ({min_ecc:.3f}, {max_ecc:.3f})",
+                    )
+                )
+            else:
+                ax_ecc.text(0.5, 0.5, _("visu_ecc_no_data"), ha='center', va='center', fontsize=12, color='red')
+                ecc_range_label.setText(_("visu_ecc_no_data"))
+
+            canvas_ecc = FigureCanvas(fig_ecc)
+            dialog._canvases.append(canvas_ecc)
+            ecc_layout.addWidget(canvas_ecc)
+
+            toolbar_ecc = NavigationToolbar(canvas_ecc, ecc_tab)
+            dialog._toolbars.append(toolbar_ecc)
+            ecc_layout.addWidget(toolbar_ecc)
+            ecc_layout.addWidget(ecc_range_label)
+
+            tab_widget.addTab(ecc_tab, _("visu_tab_ecc_dist"))
+
+            # --- Starcount Distribution Tab ---
+            sc_tab = QWidget()
+            sc_layout = QVBoxLayout(sc_tab)
+
+            fig_sc, ax_sc = plt.subplots(figsize=(8, 6))
+            dialog._figures.append(fig_sc)
+
+            sc_range_label = QLabel()
+            sc_values = [r['starcount'] for r in rows if is_finite_number(r.get('starcount'))]
+            if sc_values:
+                min_sc, max_sc = min(sc_values), max(sc_values)
+                self.current_sc_min = min_sc
+                self.current_sc_max = max_sc
+
+                ax_sc.hist(sc_values, bins=20, color='skyblue', edgecolor='black', alpha=0.7)
+                ax_sc.set_title(_("starcount_distribution_title"))
+                ax_sc.set_xlabel(_("starcount_label"))
+                ax_sc.set_ylabel(_("number_of_images"))
+                ax_sc.grid(axis='y', linestyle='--', alpha=0.7)
+                ax_sc.set_xlim(min_sc, max_sc)
+
+                fig_sc.subplots_adjust(bottom=0.25)
+                ax_slider_sc = fig_sc.add_axes([0.15, 0.1, 0.7, 0.05])
+                sc_slider = RangeSlider(
+                    ax_slider_sc,
+                    _("starcount_label"),
+                    min_sc,
+                    max_sc,
+                    valinit=(min_sc, max_sc),
+                )
+                sc_lines = (
+                    ax_sc.axvline(min_sc, color='red', linestyle='--'),
+                    ax_sc.axvline(max_sc, color='red', linestyle='--'),
+                )
+
+                def update_sc_lines(val):
+                    lo, hi = val
+                    sc_lines[0].set_xdata([lo, lo])
+                    sc_lines[1].set_xdata([hi, hi])
+                    self.current_sc_min = lo
+                    self.current_sc_max = hi
+                    sc_range_label.setText(
+                        _(
+                            "visu_starcount_range_label",
+                            default=f"Starcount range: ({lo:.0f}, {hi:.0f})",
+                        )
+                    )
+                    fig_sc.canvas.draw_idle()
+
+                sc_slider.on_changed(update_sc_lines)
+                sc_range_label.setText(
+                    _(
+                        "visu_starcount_range_label",
+                        default=f"Starcount range: ({min_sc:.0f}, {max_sc:.0f})",
+                    )
+                )
+            else:
+                ax_sc.text(0.5, 0.5, _("visu_snr_dist_no_data"), ha='center', va='center', fontsize=12, color='red')
+                sc_range_label.setText(_("visu_snr_dist_no_data"))
+
+            canvas_sc = FigureCanvas(fig_sc)
+            dialog._canvases.append(canvas_sc)
+            sc_layout.addWidget(canvas_sc)
+
+            toolbar_sc = NavigationToolbar(canvas_sc, sc_tab)
+            dialog._toolbars.append(toolbar_sc)
+            sc_layout.addWidget(toolbar_sc)
+            sc_layout.addWidget(sc_range_label)
+
+            tab_widget.addTab(sc_tab, _("starcount_distribution_tab"))
 
             # --- Scatter Plot FWHM vs Eccentricity ---
             scatter_tab = QWidget()
@@ -3730,6 +3912,55 @@ class ZeAnalyserMainWindow(QMainWindow):
             scatter_layout.addWidget(toolbar_scatter)
 
             tab_widget.addTab(scatter_tab, "FWHM vs e")
+
+            # --- SNR Comparison Tab ---
+            comp_tab = QWidget()
+            comp_layout = QVBoxLayout(comp_tab)
+
+            valid_res = [
+                r
+                for r in rows
+                if r.get("status") == "ok"
+                and is_finite_number(r.get("snr"))
+                and r.get("file")
+            ]
+            if len(valid_res) >= 2:
+                sorted_res = sorted(valid_res, key=lambda x: x["snr"], reverse=True)
+                num_total = len(sorted_res)
+                num_show = min(10, num_total // 2 if num_total >= 2 else 1)
+                best = sorted_res[:num_show]
+                worst = sorted_res[-num_show:]
+                fig_height = max(4, num_show * 0.5)
+
+                fig_comp, (ax_best, ax_worst) = plt.subplots(1, 2, figsize=(10, fig_height))
+                dialog._figures.append(fig_comp)
+
+                best_labels = [os.path.basename(r["file"]) for r in best]
+                ax_best.barh(best_labels, [r["snr"] for r in best], color="mediumseagreen", edgecolor="black")
+                ax_best.set_title(_("visu_snr_comp_best_title", n=num_show))
+                ax_best.invert_yaxis()
+                ax_best.set_xlabel(_("visu_snr_comp_xlabel"))
+                ax_best.tick_params(axis="y", labelsize=8)
+
+                worst_labels = [os.path.basename(r["file"]) for r in worst]
+                ax_worst.barh(worst_labels, [r["snr"] for r in worst], color="salmon", edgecolor="black")
+                ax_worst.set_title(_("visu_snr_comp_worst_title", n=num_show))
+                ax_worst.invert_yaxis()
+                ax_worst.set_xlabel(_("visu_snr_comp_xlabel"))
+                ax_worst.tick_params(axis="y", labelsize=8)
+
+                fig_comp.tight_layout(pad=1.5)
+                canvas_comp = FigureCanvas(fig_comp)
+                dialog._canvases.append(canvas_comp)
+                comp_layout.addWidget(canvas_comp)
+
+                toolbar_comp = NavigationToolbar(canvas_comp, comp_tab)
+                dialog._toolbars.append(toolbar_comp)
+                comp_layout.addWidget(toolbar_comp)
+            else:
+                comp_layout.addWidget(QLabel(_("visu_snr_comp_no_data")))
+
+            tab_widget.addTab(comp_tab, _("visu_tab_snr_comp"))
 
             # --- Satellite Trails Pie Chart ---
             detect_trails_was_active = any('has_trails' in r for r in rows)

@@ -22,17 +22,17 @@ Each pass should keep the app runnable and tests passing.
 
 ## Pass 2 – Other visualisation tabs
 
-- [ ] FWHM distribution:
-  - [ ] Implement RangeSlider + dashed lines, same behaviour as Tk.
-  - [ ] Store current min/max values on the Qt instance.
-- [ ] Eccentricity distribution:
-  - [ ] Match Tk histogram and labels.
-- [ ] Starcount distribution:
-  - [ ] Ensure histogram and slider behaviour match Tk (and extended Qt logic).
-- [ ] FWHM vs e:
-  - [ ] Implement scatter plot with same axes and titles as Tk.
-- [ ] SNR comparison:
-  - [ ] Implement “best vs worst N” bar charts as in Tk.
+- [x] FWHM distribution:
+  - [x] Implement RangeSlider + dashed lines, same behaviour as Tk.
+  - [x] Store current min/max values on the Qt instance.
+- [x] Eccentricity distribution:
+  - [x] Match Tk histogram and labels.
+- [x] Starcount distribution:
+  - [x] Ensure histogram and slider behaviour match Tk (and extended Qt logic).
+- [x] FWHM vs e:
+  - [x] Implement scatter plot with same axes and titles as Tk.
+- [x] SNR comparison:
+  - [x] Implement “best vs worst N” bar charts as in Tk.
 
 **When done:** All visualisation tabs present in Tk are present and functional in Qt.
 
