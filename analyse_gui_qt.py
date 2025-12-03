@@ -21,11 +21,18 @@ import traceback
 from platform_utils import open_path_with_default_app
 
 # Set Matplotlib backend for Qt before importing matplotlib
+_env_backend = os.environ.get("MPLBACKEND")
 try:
     from PySide6.QtGui import QIcon, QPixmap, QColor, QPalette
     from PySide6.QtCore import QModelIndex
     import matplotlib
-    matplotlib.use('QtAgg')  # Use Qt backend for Matplotlib
+    if _env_backend:
+        matplotlib.use(_env_backend)
+    else:
+        try:
+            matplotlib.use('QtAgg')  # Use Qt backend for Matplotlib when available
+        except Exception:
+            matplotlib.use('Agg')  # Safe fallback for headless/macOS CI runs
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
     from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
