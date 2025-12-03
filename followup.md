@@ -40,19 +40,19 @@ Each pass should keep the app runnable and tests passing.
 
 ## Pass 3 – Recommendations logic & application
 
-- [ ] Port `_compute_recommended_subset` logic from Tk to Qt:
-  - [ ] Same filtering criteria for the candidate images.
-  - [ ] Same percentile calculations.
-  - [ ] Same OK/KO conditions.
-- [ ] Wire the Qt sliders (SNR/FWHM/ecc/starcount) to recompute recommendations.
-- [ ] Update the summary text label with thresholds, following the Tk format.
-- [ ] Fill the QTreeWidget with recommended images and enable/disable the “Apply” button accordingly.
-- [ ] Implement `_apply_current_recommendations` using Tk behaviour as reference:
-  - [ ] Update `action` and `rejected_reason`.
-  - [ ] Refresh the main table.
-  - [ ] Log a clear message.
-- [ ] Fix the “No images are recommended for application” message:
-  - [ ] Only display it when there are truly zero recommended images.
+- [x] Port `_compute_recommended_subset` logic from Tk to Qt:
+  - [x] Same filtering criteria for the candidate images.
+  - [x] Same percentile calculations.
+  - [x] Same OK/KO conditions.
+- [x] Wire the Qt sliders (SNR/FWHM/ecc/starcount) to recompute recommendations.
+- [x] Update the summary text label with thresholds, following the Tk format.
+- [x] Fill the QTreeWidget with recommended images and enable/disable the “Apply” button accordingly.
+- [x] Implement `_apply_current_recommendations` using Tk behaviour as reference:
+  - [x] Update `action` and `rejected_reason`.
+  - [x] Refresh the main table.
+  - [x] Log a clear message.
+- [x] Fix the “No images are recommended for application” message:
+  - [x] Only display it when there are truly zero recommended images.
 
 **When done:** Recommendations in Qt produce the same subset and workflow as in Tk.
 

@@ -353,10 +353,11 @@ class ZeAnalyserMainWindow(QMainWindow):
         """Recompute recommended images using the current percentile sliders."""
         import numpy as np
 
-        rows = getattr(self, 'analysis_results', None) or self._get_analysis_results_rows()
+        rows = self._get_analysis_results_rows() or []
 
         valid_kept = [
-            r for r in rows
+            r
+            for r in rows
             if r.get('status') == 'ok'
             and r.get('action') == 'kept'
             and r.get('rejected_reason') is None
@@ -385,6 +386,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         def ok(r):
             import numpy as np
+
             ok_snr = (r.get('snr', -np.inf) >= snr_p)
             ok_fwhm = (r.get('fwhm', np.inf) <= fwhm_p) if is_finite_number(r.get('fwhm', np.nan)) else True
             ok_ecc = (r.get('ecc', np.inf) <= ecc_p) if is_finite_number(r.get('ecc', np.nan)) else True
@@ -437,7 +439,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     self._log("No recommended images to apply")
             return
 
-        self._apply_recommendations_gui(auto=auto)
+        self._apply_recommendations_gui(recommended=recos, auto=auto)
 
         # Ensure minimal core widgets exist even if some UI construction
         # raised an error earlier (defensive for flaky test environments).
@@ -4159,17 +4161,17 @@ class ZeAnalyserMainWindow(QMainWindow):
                     recos, snr_p, fwhm_p, ecc_p, sc_p = self._compute_recommended_subset()
 
                     # Update resume (format like Tk version)
-                    txt = _translate("visu_recom_text_all", count=len(recos))
+                    txt = _("visu_recom_text_all", count=len(recos))
                     if txt.startswith("_visu_recom_text_all_"):
                         txt = f"Images recommandées : {len(recos)}"
                     if snr_p is not None and is_finite_number(snr_p):
-                        txt += f" | SNR ≥ {snr_p:.2f}"
+                        txt += f"  |  SNR ≥ {snr_p:.2f}"
                     if fwhm_p is not None and is_finite_number(fwhm_p):
-                        txt += f" | FWHM ≤ {fwhm_p:.2f}"
+                        txt += f"  |  FWHM ≤ {fwhm_p:.2f}"
                     if ecc_p is not None and is_finite_number(ecc_p):
-                        txt += f" | e ≤ {ecc_p:.3f}"
+                        txt += f"  |  e ≤ {ecc_p:.3f}"
                     if self.use_starcount_filter and sc_p is not None and is_finite_number(sc_p):
-                        txt += f" | Starcount ≥ {sc_p:.0f}"
+                        txt += f"  |  Starcount ≥ {sc_p:.0f}"
                     self.resume_label.setText(txt)
 
                     # Clear tree
@@ -4189,8 +4191,17 @@ class ZeAnalyserMainWindow(QMainWindow):
                         sc = r.get('starcount')
                         item.setText(4, f"{sc:.0f}" if is_finite_number(sc) else "N/A")
 
-                    # Enable/disable apply button
+                    # Enable/disable apply buttons
                     self.apply_reco_btn.setEnabled(bool(recos))
+                    try:
+                        if getattr(self, 'apply_recos_btn', None):
+                            self.apply_recos_btn.setEnabled(bool(recos))
+                    except Exception:
+                        pass
+                    try:
+                        self._update_buttons_after_analysis()
+                    except Exception:
+                        pass
 
                 def update_starcount_slider_state():
                     enabled = self.use_starcount_cb.isChecked()
@@ -4320,7 +4331,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         return '\n'.join(lines)
 
-    def _apply_recommendations_gui(self, *, auto: bool = False):
+    def _apply_recommendations_gui(self, *, recommended=None, auto: bool = False):
         """Apply recommended images selection."""
         try:
             rows = self._get_analysis_results_rows()
@@ -4329,12 +4340,10 @@ class ZeAnalyserMainWindow(QMainWindow):
                 return
 
             # Determine recommended set
-            recommended = list(getattr(self, 'recommended_images', []) or [])
+            recommended = list(recommended) if recommended is not None else list(getattr(self, 'recommended_images', []) or [])
             if not recommended:
                 recommended = [r for r in rows if r.get('recommended', False)]
             if not recommended:
-                if not auto:
-                    self._log("No images are recommended for application")
                 return
 
             recommended_files = {
@@ -4441,6 +4450,11 @@ class ZeAnalyserMainWindow(QMainWindow):
             except Exception:
                 pass
 
+            try:
+                self._refresh_results_display()
+            except Exception:
+                pass
+
             if applied and hasattr(self, '_regenerate_stack_plan'):
                 try:
                     self._regenerate_stack_plan()
@@ -4450,6 +4464,17 @@ class ZeAnalyserMainWindow(QMainWindow):
             try:
                 if getattr(self, 'apply_reco_btn', None):
                     self.apply_reco_btn.setEnabled(False)
+            except Exception:
+                pass
+
+            try:
+                if getattr(self, 'apply_recos_btn', None):
+                    self.apply_recos_btn.setEnabled(False)
+            except Exception:
+                pass
+
+            try:
+                self._update_buttons_after_analysis()
             except Exception:
                 pass
 
