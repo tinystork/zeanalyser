@@ -20,6 +20,20 @@ except Exception:  # pragma: no cover - tests skip when Qt is absent
     Qt = None
     QAbstractTableModel = object
     QModelIndex = object
+    QColor = None
+
+
+class _DummyQt:
+    """Minimal Qt stand-in so module import works without PySide6."""
+
+    DisplayRole = 0
+    UserRole = 1
+    BackgroundRole = 2
+    Horizontal = 0
+    Vertical = 1
+
+
+_QT = Qt if Qt is not None else _DummyQt()
 
 import analysis_schema
 
@@ -50,7 +64,7 @@ class AnalysisResultsModel(QAbstractTableModel):
     def columnCount(self, parent: QModelIndex = None) -> int:
         return len(self._keys)
 
-    def data(self, index: QModelIndex, role=Qt.DisplayRole):
+    def data(self, index: QModelIndex, role=_QT.DisplayRole):
         if index is None or not index.isValid():
             return None
 
@@ -59,18 +73,18 @@ class AnalysisResultsModel(QAbstractTableModel):
         value = row.get(key, '') if isinstance(row, dict) else ''
 
         # UserRole should return the raw underlying value (for numeric sorting)
-        if role == Qt.UserRole:
+        if role == _QT.UserRole:
             return value
 
         # Default presentation role returns a string
-        if role == Qt.DisplayRole:
+        if role == _QT.DisplayRole:
             if value is None:
                 return ''
             return str(value)
 
         # Visual decoration / background mapping by indicator (folder/night/bortle)
         try:
-            bg_role = Qt.BackgroundRole
+            bg_role = _QT.BackgroundRole
         except Exception:
             bg_role = None
 
@@ -84,16 +98,16 @@ class AnalysisResultsModel(QAbstractTableModel):
 
         return None
 
-    def headerData(self, section: int, orientation, role=Qt.DisplayRole):
-        if role != Qt.DisplayRole:
+    def headerData(self, section: int, orientation, role=_QT.DisplayRole):
+        if role != _QT.DisplayRole:
             return None
-        if orientation == Qt.Horizontal:
+        if orientation == _QT.Horizontal:
             # return key names as headers for now; UI layer can translate
             keys = self._keys
             if 0 <= section < len(keys):
                 return keys[section]
             return None
-        if orientation == Qt.Vertical:
+        if orientation == _QT.Vertical:
             return str(section + 1)
 
     def get_row(self, idx: int) -> dict:
@@ -200,20 +214,20 @@ class StackPlanModel(QAbstractTableModel):
     def columnCount(self, parent: QModelIndex = None) -> int:
         return len(self._keys)
 
-    def data(self, index: QModelIndex, role=Qt.DisplayRole):
+    def data(self, index: QModelIndex, role=_QT.DisplayRole):
         if index is None or not index.isValid():
             return None
         row = self._rows[index.row()]
         key = self._keys[index.column()]
         value = row.get(key, '') if isinstance(row, dict) else ''
 
-        if role == Qt.UserRole:
+        if role == _QT.UserRole:
             return value
-        if role == Qt.DisplayRole:
+        if role == _QT.DisplayRole:
             return '' if value is None else str(value)
         # Support returning background color for an indicator (Qt mode)
         try:
-            bg_role = Qt.BackgroundRole
+            bg_role = _QT.BackgroundRole
         except Exception:
             bg_role = None
 
@@ -225,14 +239,14 @@ class StackPlanModel(QAbstractTableModel):
 
         return None
 
-    def headerData(self, section: int, orientation, role=Qt.DisplayRole):
-        if role != Qt.DisplayRole:
+    def headerData(self, section: int, orientation, role=_QT.DisplayRole):
+        if role != _QT.DisplayRole:
             return None
-        if orientation == Qt.Horizontal:
+        if orientation == _QT.Horizontal:
             if 0 <= section < len(self._keys):
                 return self._keys[section]
             return None
-        if orientation == Qt.Vertical:
+        if orientation == _QT.Vertical:
             return str(section + 1)
 
     def set_rows(self, rows: list[dict]) -> None:

@@ -73,7 +73,16 @@ import tkinter as tk
 from tkinter import ttk, filedialog, scrolledtext, messagebox
 from pathlib import Path
 import matplotlib
-matplotlib.use('TkAgg') # Assurer la compatibilité Tkinter pour Matplotlib
+_env_backend = os.environ.get("MPLBACKEND")
+if _env_backend:
+    # Honour an explicit backend (e.g. CI headless environment)
+    matplotlib.use(_env_backend)
+else:
+    try:
+        matplotlib.use('TkAgg') # Assurer la compatibilité Tkinter pour Matplotlib
+    except Exception:
+        # Headless fallback for environments without Tk support
+        matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.widgets import RangeSlider

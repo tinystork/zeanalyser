@@ -15,7 +15,7 @@
 
 ## 4. Automated tests on macOS (CI)
 - [x] Add a macOS GitHub Actions workflow that installs deps and runs pytest headlessly.
-- [ ] Ensure GUI entrypoints support headless import/execution for CI stability.
+- [x] Ensure GUI entrypoints support headless import/execution for CI stability.
 
 ## 5. Documentation / README
 - [x] Note macOS support and known macOS dependency expectations in the README.
