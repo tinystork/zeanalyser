@@ -3736,7 +3736,6 @@ class ZeAnalyserMainWindow(QMainWindow):
                         plt.close(fig)
                     except Exception:
                         pass
-                dialog.accept()
 
             dialog.finished.connect(cleanup)
             dialog.exec()
