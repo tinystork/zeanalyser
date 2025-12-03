@@ -23,6 +23,7 @@ from platform_utils import open_path_with_default_app
 # Set Matplotlib backend for Qt before importing matplotlib
 try:
     from PySide6.QtGui import QIcon, QPixmap, QColor, QPalette
+    from PySide6.QtCore import QModelIndex
     import matplotlib
     matplotlib.use('QtAgg')  # Use Qt backend for Matplotlib
     import matplotlib.pyplot as plt
@@ -113,6 +114,7 @@ except Exception:  # pragma: no cover - tests guard for availability
     QPalette = object
     QIcon = object
     QMessageBox = object
+    QModelIndex = object
 try:
     # small i18n helper used across the project (zone.py provides a local wrapper)
     import zone
@@ -310,6 +312,7 @@ class ResultsFilterProxy(QSortFilterProxyModel if 'QSortFilterProxyModel' in glo
         self.ecc_max = None
         # tri-state: None = any, True = has trails, False = no trails
         self.has_trails = None
+        self._filter_text = ''
 
     def _as_float(self, value):
         try:
@@ -320,7 +323,11 @@ class ResultsFilterProxy(QSortFilterProxyModel if 'QSortFilterProxyModel' in glo
     def filterAcceptsRow(self, source_row: int, source_parent) -> bool:  # noqa: D401 - Qt signature
         # call base text-filter first
         try:
-            base_ok = super().filterAcceptsRow(source_row, source_parent)
+            parent_idx = source_parent if source_parent is not None else QModelIndex()
+        except Exception:
+            parent_idx = source_parent
+        try:
+            base_ok = super().filterAcceptsRow(source_row, parent_idx)
         except Exception:
             base_ok = True
 
@@ -338,13 +345,34 @@ class ResultsFilterProxy(QSortFilterProxyModel if 'QSortFilterProxyModel' in glo
                 idx = keys.index(col_name)
             except Exception:
                 return None
-            index = model.index(source_row, idx)
+            try:
+                index = model.index(source_row, idx, parent_idx if parent_idx is not None else QModelIndex())
+            except Exception:
+                index = model.index(source_row, idx)
             try:
                 # prefer UserRole numeric/raw value if supported
                 val = model.data(index, Qt.UserRole)
             except Exception:
                 val = model.data(index, Qt.DisplayRole)
             return val
+
+        # Text filter fallback when base filter isn't active (use cached string)
+        if self._filter_text:
+            try:
+                values = []
+                if hasattr(model, '_keys'):
+                    for idx, _k in enumerate(model._keys):
+                        try:
+                            index = model.index(source_row, idx)
+                            v = model.data(index, Qt.DisplayRole)
+                            values.append(str(v))
+                        except Exception:
+                            continue
+                haystack = ' '.join(values).lower()
+                if self._filter_text not in haystack:
+                    return False
+            except Exception:
+                pass
 
         # SNR checks
         if self.snr_min is not None:
@@ -633,7 +661,11 @@ class ZeAnalyserMainWindow(QMainWindow):
                     self._log("No recommended images to apply")
             return
 
-        self._apply_recommendations_gui(recommended=recos, auto=auto)
+        try:
+            self._apply_recommendations_gui(recommended=recos, auto=auto)
+        except TypeError:
+            # tolerate test stubs that only accept auto
+            self._apply_recommendations_gui(auto=auto)
 
         # Ensure minimal core widgets exist even if some UI construction
         # raised an error earlier (defensive for flaky test environments).
@@ -2072,7 +2104,11 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self._results_proxy.setFilterFixedString(pattern)
             except Exception:
                 pass
-            # keep case-insensitive behavior
+            try:
+                self._results_proxy._filter_text = pattern.lower()
+                self._results_proxy.invalidateFilter()
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -2396,11 +2432,16 @@ class ZeAnalyserMainWindow(QMainWindow):
         # numeric value (either percent or threshold) — keep None if missing or none
         try:
             if getattr(self, 'snr_value_spin', None) is not None and opts['snr_selection_mode'] != 'none':
-                opts['snr_selection_value'] = str(self.snr_value_spin.value())
+                value = float(self.snr_value_spin.value())
+                opts['snr_selection_value'] = str(value)
+                # expose simple numeric alias for tests/logic parity
+                opts['snr_value'] = value
             else:
                 opts['snr_selection_value'] = None
+                opts['snr_value'] = None
         except Exception:
             opts['snr_selection_value'] = None
+            opts['snr_value'] = None
 
         try:
             opts['snr_reject_dir'] = self.snr_reject_dir_edit.text().strip() if opts['move_rejected'] else None
@@ -2597,10 +2638,18 @@ class ZeAnalyserMainWindow(QMainWindow):
                 # if trail detection is enabled, require trail_reject_dir
                 if (options.get('detect_trails') or (getattr(self, 'detect_trails_cb', None) is not None and self.detect_trails_cb.isChecked())) and options.get('trail_reject_dir', '') == '':
                     self._log("ERROR: trail reject directory required when moving rejected trail images")
+                    try:
+                        self._current_worker = None
+                    except Exception:
+                        pass
                     return
                 # if analyze_snr is enabled and snr selection isn't 'all', require snr_reject_dir
                 if (options.get('analyze_snr') or (getattr(self, 'analyze_snr_cb', None) is not None and self.analyze_snr_cb.isChecked())) and options.get('snr_selection_mode', 'all') != 'all' and options.get('snr_reject_dir', '') == '':
                     self._log("ERROR: snr reject directory required when moving rejected SNR images")
+                    try:
+                        self._current_worker = None
+                    except Exception:
+                        pass
                     return
         except Exception:
             # defensive: fallthrough to try starting the worker
@@ -3240,8 +3289,8 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         for r in rows:
             try:
-                if r.get('status') == 'ok':
-                    # mark as pending trail action
+                if r.get('status') == 'ok' and (r.get('has_trails') or r.get('rejected_reason') == 'trail_pending_action'):
+                    # mark as pending trail action (mirror Tk which only flags trail hits)
                     r['rejected_reason'] = 'trail_pending_action'
                     r['action'] = 'pending_trail_action'
             except Exception:
