@@ -2329,7 +2329,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             if stack_plan_rows:
                 # Save to CSV
                 csv_path = os.path.join(os.path.dirname(self.log_path_edit.text().strip() or ''), 'stack_plan.csv')
-                stack_plan.write_stacking_plan_csv(stack_plan_rows, csv_path)
+                stack_plan.write_stacking_plan_csv(csv_path, stack_plan_rows)
                 self._log(f"Stack plan created: {csv_path} with {len(stack_plan_rows)} batches")
 
                 # Store in the Stack Plan tab
@@ -2479,7 +2479,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             else:
                 csv_path = 'stack_plan.csv'
 
-            stack_plan.write_stacking_plan_csv(stack_plan_rows, csv_path)
+            stack_plan.write_stacking_plan_csv(csv_path, stack_plan_rows)
             self._last_stack_plan_path = csv_path
             self._log(f"Stack plan created: {csv_path} with {len(stack_plan_rows)} batches")
             # Store in the Stack Plan tab
@@ -2638,7 +2638,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     csv_path = 'stack_plan.csv'
 
                 try:
-                    stack_plan.write_stacking_plan_csv(plan_rows, csv_path)
+                    stack_plan.write_stacking_plan_csv(csv_path, plan_rows)
                     self._last_stack_plan_path = csv_path
                     self._log(f"Stack plan created: {csv_path} with {len(plan_rows)} batches")
                     self.set_stack_plan_rows(plan_rows)
