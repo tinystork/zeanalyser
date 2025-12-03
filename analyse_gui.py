@@ -65,6 +65,7 @@
 """
 
 # === Imports Standard ===
+import logging
 import os
 import sys  # Nécessaire pour sys.path
 import threading
@@ -100,10 +101,47 @@ try:
 except ImportError:
     _EMBEDDED_IN_STACKER = False
 
+logger = logging.getLogger(__name__)
+
 # Helper to safely check numeric finite values
 def is_finite_number(value):
     """Return True if value is a real number and finite."""
     return isinstance(value, numbers.Number) and np.isfinite(value)
+
+
+def safe_set_maximized(root):
+    """Met la fenêtre en mode maximisé de façon cross-platform, sans lever d'exception."""
+    if not root:
+        return
+
+    try:
+        root.state('zoomed')
+        return
+    except tk.TclError:
+        pass
+    except Exception:
+        pass
+
+    try:
+        root.wm_attributes('-zoomed', True)
+        return
+    except tk.TclError:
+        pass
+    except Exception:
+        pass
+
+    try:
+        root.state('normal')
+    except Exception:
+        pass
+
+    try:
+        screen_w = root.winfo_screenwidth()
+        screen_h = root.winfo_screenheight()
+        if screen_w and screen_h:
+            root.geometry(f"{screen_w}x{screen_h}+0+0")
+    except Exception:
+        pass
 
 # --- AJUSTEMENT DE SYS.PATH POUR PERMETTRE LES IMPORTS DEPUIS LA RACINE DU PROJET ---
 # Ceci est crucial lorsque ce script (analyse_gui.py) est exécuté directement
@@ -1307,8 +1345,7 @@ class AstroImageAnalyzerGUI:
             # Créer la fenêtre Toplevel pour la visualisation
             vis_window = tk.Toplevel(self.root)
             vis_window.title(self._("visu_window_title"))
-            # Maximisation multi-plateforme (state('zoomed') n'est pas supporté partout)
-            self._set_window_maximized(vis_window)
+            safe_set_maximized(vis_window)
             vis_window.transient(self.root) # Lier à la fenêtre principale
             vis_window.grab_set() # Rendre modale
 
@@ -2769,7 +2806,7 @@ class AstroImageAnalyzerGUI:
         self.main_apply_reco_button = ttk.Button(
             button_frame,
             text=self._('apply_reco_button'),
-            command=self._apply_recommendations_gui,
+            command=self._apply_current_recommendations,
             width=30,
             state=tk.DISABLED
         )
@@ -3792,16 +3829,36 @@ class AstroImageAnalyzerGUI:
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
 
-    def _apply_current_recommendations(self):
-        """Apply the currently computed recommended images."""
-        if not getattr(self, 'recommended_images', None):
-            messagebox.showinfo(
-                self._('msg_info'),
-                self._('visu_recom_no_selection', default='Aucune image recommandée à appliquer.')
-            )
+    def _apply_current_recommendations(self, *, auto: bool = False):
+        """Recompute and apply the current recommended images."""
+        recos = []
+        snr_p = fwhm_p = ecc_p = sc_p = None
+        try:
+            recos, snr_p, fwhm_p, ecc_p, sc_p = self._compute_recommended_subset()
+        except Exception:
+            logger.debug("Failed to recompute recommendations; using cached values", exc_info=True)
+            recos = list(getattr(self, 'recommended_images', []) or [])
+            snr_p = getattr(self, 'reco_snr_min', None)
+            fwhm_p = getattr(self, 'reco_fwhm_max', None)
+            ecc_p = getattr(self, 'reco_ecc_max', None)
+            sc_p = getattr(self, 'reco_starcount_min', None)
+
+        self.recommended_images = recos
+
+        logger.debug(
+            "Applying recommendations: %d images (SNR≥%s, FWHM≤%s, e≤%s, Starcount≥%s)",
+            len(recos), snr_p, fwhm_p, ecc_p, sc_p
+        )
+
+        if not recos:
+            if not auto:
+                messagebox.showinfo(
+                    self._('msg_info'),
+                    self._('visu_recom_no_selection', default='Aucune image recommandée à appliquer.')
+                )
             return
 
-        self._apply_recommendations_gui()
+        self._apply_recommendations_gui(auto=auto)
 
     def _apply_recommendations_gui(self, *, auto: bool = False):
         """Keep only recommended images and apply reject actions."""
@@ -4012,6 +4069,20 @@ class AstroImageAnalyzerGUI:
                 f"Impossible d'écrire le fichier :\n{plan_path}\n{exc}"
             )
             return
+        # Log summary into the GUI results/journal (timestamped)
+        try:
+            selected = len(plan)
+            total_ok = len([r for r in self.analysis_results if r.get('status') == 'ok']) if getattr(self, 'analysis_results', None) else None
+            if total_ok:
+                pct = 100.0 * selected / max(total_ok, 1)
+                self.update_results_text('stack_plan_summary', selected=selected, total=total_ok, pct=pct, filename=os.path.basename(plan_path))
+            else:
+                self.update_results_text('stack_plan_summary_no_total', selected=selected, filename=os.path.basename(plan_path))
+            self.update_results_text('stack_plan_reminder')
+        except Exception:
+            # Be robust: logging should never crash the GUI
+            pass
+
         messagebox.showinfo(
             "Plan de stacking mis à jour",
             f"Le plan a été régénéré :\n{plan_path}\n({len(plan)} fichiers)"
@@ -4051,13 +4122,26 @@ class AstroImageAnalyzerGUI:
         except Exception:
             return None
 
+        # Log summary into the GUI journal (be robust and non-blocking)
+        try:
+            selected = len(rows)
+            total_ok = len([r for r in self.analysis_results if r.get('status') == 'ok']) if getattr(self, 'analysis_results', None) else None
+            if total_ok:
+                pct = 100.0 * selected / max(total_ok, 1)
+                self.update_results_text('stack_plan_summary', selected=selected, total=total_ok, pct=pct, filename=os.path.basename(plan_path))
+            else:
+                self.update_results_text('stack_plan_summary_no_total', selected=selected, filename=os.path.basename(plan_path))
+            self.update_results_text('stack_plan_reminder')
+        except Exception:
+            pass
+
         self.latest_stack_plan_path = plan_path
         return plan_path
 
     def _auto_stack_workflow(self):
         """Execute analysis post-processing and stacking automatically."""
         try:
-            self._apply_recommendations_gui(auto=True)
+            self._apply_current_recommendations(auto=True)
             self._organize_files_backend(auto=True)
             try:
                 self.send_reference_to_main()
@@ -4330,6 +4414,18 @@ class AstroImageAnalyzerGUI:
                     parent=window,
                 )
                 return
+            # Write summary into GUI journal as well
+            try:
+                selected = len(rows)
+                total_ok = len([r for r in self.analysis_results if r.get('status') == 'ok']) if getattr(self, 'analysis_results', None) else None
+                if total_ok:
+                    pct = 100.0 * selected / max(total_ok, 1)
+                    self.update_results_text('stack_plan_summary', selected=selected, total=total_ok, pct=pct, filename=os.path.basename(csv_path))
+                else:
+                    self.update_results_text('stack_plan_summary_no_total', selected=selected, filename=os.path.basename(csv_path))
+                self.update_results_text('stack_plan_reminder')
+            except Exception:
+                pass
             messagebox.showinfo(self._('msg_info'), csv_path, parent=window)
             window.destroy()
 

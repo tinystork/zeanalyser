@@ -5,6 +5,7 @@ astropy
 
 # Image I/O / GUI
 Pillow            # pour ImageTk
+PySide6           # Qt bindings for the new GUI (Phase 1)
 
 # Traitement astrométrique / drizzle
 drizzle           # pour drizzle.resample.Drizzle
