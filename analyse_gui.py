@@ -65,6 +65,7 @@
 """
 
 # === Imports Standard ===
+import logging
 import os
 import sys  # Nécessaire pour sys.path
 import threading
@@ -98,6 +99,8 @@ try:
     _EMBEDDED_IN_STACKER = True
 except ImportError:
     _EMBEDDED_IN_STACKER = False
+
+logger = logging.getLogger(__name__)
 
 # Helper to safely check numeric finite values
 def is_finite_number(value):
@@ -2755,7 +2758,7 @@ class AstroImageAnalyzerGUI:
         self.main_apply_reco_button = ttk.Button(
             button_frame,
             text=self._('apply_reco_button'),
-            command=self._apply_recommendations_gui,
+            command=self._apply_current_recommendations,
             width=30,
             state=tk.DISABLED
         )
@@ -3778,16 +3781,36 @@ class AstroImageAnalyzerGUI:
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
 
-    def _apply_current_recommendations(self):
-        """Apply the currently computed recommended images."""
-        if not getattr(self, 'recommended_images', None):
-            messagebox.showinfo(
-                self._('msg_info'),
-                self._('visu_recom_no_selection', default='Aucune image recommandée à appliquer.')
-            )
+    def _apply_current_recommendations(self, *, auto: bool = False):
+        """Recompute and apply the current recommended images."""
+        recos = []
+        snr_p = fwhm_p = ecc_p = sc_p = None
+        try:
+            recos, snr_p, fwhm_p, ecc_p, sc_p = self._compute_recommended_subset()
+        except Exception:
+            logger.debug("Failed to recompute recommendations; using cached values", exc_info=True)
+            recos = list(getattr(self, 'recommended_images', []) or [])
+            snr_p = getattr(self, 'reco_snr_min', None)
+            fwhm_p = getattr(self, 'reco_fwhm_max', None)
+            ecc_p = getattr(self, 'reco_ecc_max', None)
+            sc_p = getattr(self, 'reco_starcount_min', None)
+
+        self.recommended_images = recos
+
+        logger.debug(
+            "Applying recommendations: %d images (SNR≥%s, FWHM≤%s, e≤%s, Starcount≥%s)",
+            len(recos), snr_p, fwhm_p, ecc_p, sc_p
+        )
+
+        if not recos:
+            if not auto:
+                messagebox.showinfo(
+                    self._('msg_info'),
+                    self._('visu_recom_no_selection', default='Aucune image recommandée à appliquer.')
+                )
             return
 
-        self._apply_recommendations_gui()
+        self._apply_recommendations_gui(auto=auto)
 
     def _apply_recommendations_gui(self, *, auto: bool = False):
         """Keep only recommended images and apply reject actions."""
@@ -4070,7 +4093,7 @@ class AstroImageAnalyzerGUI:
     def _auto_stack_workflow(self):
         """Execute analysis post-processing and stacking automatically."""
         try:
-            self._apply_recommendations_gui(auto=True)
+            self._apply_current_recommendations(auto=True)
             self._organize_files_backend(auto=True)
             try:
                 self.send_reference_to_main()
