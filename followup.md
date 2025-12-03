@@ -10,11 +10,11 @@ Each pass should keep the app runnable and tests passing.
 
 ## Pass 1 – SNR histogram parity
 
-- [ ] Align SNR histogram data selection in Qt with Tk.
-- [ ] Add vertical dashed red lines for SNR min/max (from slider).
-- [ ] Hook slider change → update SNR range + vertical lines + label.
-- [ ] Add Matplotlib NavigationToolbar under the SNR figure.
-- [ ] Ensure cleanup() closes figures, canvases, and toolbars.
+- [x] Align SNR histogram data selection in Qt with Tk.
+- [x] Add vertical dashed red lines for SNR min/max (from slider).
+- [x] Hook slider change → update SNR range + vertical lines + label.
+- [x] Add Matplotlib NavigationToolbar under the SNR figure.
+- [x] Ensure cleanup() closes figures, canvases, and toolbars.
 
 **When done:** Qt SNR tab “looks like” the Tk one and is fully interactive.
 
