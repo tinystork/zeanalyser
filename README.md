@@ -1,6 +1,12 @@
 # zeanalyser
 Gui based Zesee Star Zenalalyser is a standalone analysis module for a lot of light, sorting and filtering ‘Lights’ files to discard low-quality frames and yield optimal star-field composites.available in Zeseestarstacker
 
+## Platform support / Compatibilité
+
+- **Windows, Linux et macOS** sont visés. macOS est validé automatiquement via GitHub Actions (runner `macos-latest`).
+- Interfaces Tk et Qt fonctionnent en mode fenêtré classique ; pour un usage headless (CI), utilisez `QT_QPA_PLATFORM=offscreen` et `MPLBACKEND=Agg`.
+- Les fonctions Bortle qui lisent des GeoTIFF/KMZ nécessitent l'optionnel `rasterio`. Si cette dépendance est absente, l'application affiche un message clair au lieu de planter.
+
 ## Installation / Installation
 
 ### PySide6 installation / Installation de PySide6
@@ -188,6 +194,12 @@ python analyse_gui_qt.py
     sudo apt install qtwayland5
     export QT_QPA_PLATFORM=xcb
     ```
+
+## macOS notes / Notes macOS
+
+- Installez Python 3 depuis python.org ou Homebrew pour disposer des frameworks Tk et Qt.
+- Les dépendances principales (NumPy, Matplotlib, PySide6, rasterio) sont disponibles sous forme de roues binaires macOS ; installez-les via `pip install -r requirements.txt`.
+- Les fonctions Bortle s'appuient sur `rasterio`. Si elle n'est pas installée, l'application signale clairement que cette fonctionnalité est indisponible plutôt que de planter.
 
 ## Pre-computed sky statistics reuse
 

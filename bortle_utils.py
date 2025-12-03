@@ -19,11 +19,18 @@
 # you keep this notice and mention that I am the author
 # of all or part of the code if you reuse it.
 # -----------------------------------------------------------------------------
-import os
+import importlib.util
 import json
-import rasterio
-from rasterio.warp import transform
+import os
 import numpy as np
+
+_rasterio_spec = importlib.util.find_spec("rasterio")
+if _rasterio_spec:
+    import rasterio
+    from rasterio.warp import transform
+else:
+    rasterio = None
+    transform = None
 
 THRESHOLD_FILE = os.path.join(os.path.dirname(__file__), 'bortle_thresholds.json')
 DEFAULT_THRESHOLDS = {
@@ -58,6 +65,10 @@ THRESHOLDS = _load_thresholds()
 
 def load_bortle_raster(path: str):
     """Open and return a rasterio dataset for the Bortle atlas."""
+    if rasterio is None:
+        raise ImportError(
+            "rasterio is required to read Bortle atlas files. Install it to enable this feature."
+        )
     if not path.lower().endswith(('.tif', '.tiff')):
         raise ValueError("Seuls les fichiers GeoTIFF (.tif/.tiff) sont pris en charge")
     return rasterio.open(path, 'r')
@@ -65,6 +76,11 @@ def load_bortle_raster(path: str):
 
 def sample_bortle_dataset(ds, lon: float, lat: float) -> float:
     """Return the sky brightness in \xb5cd/m\xb2 at the given lon/lat."""
+    if transform is None:
+        raise ImportError(
+            "rasterio is required to sample Bortle rasters. Install it to enable this feature."
+        )
+
     if ds.crs and ds.crs.to_string() not in ("EPSG:4326", "WGS84"):
         lon, lat = transform("EPSG:4326", ds.crs, [lon], [lat])
         lon = lon[0]; lat = lat[0]
