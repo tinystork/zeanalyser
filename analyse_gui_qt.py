@@ -44,6 +44,8 @@
 """
 
 
+from __future__ import annotations
+
 """analyse_gui_qt.py
 
 Minimal PySide6-based GUI entrypoint for ZeAnalyser V3 (phase 1).
@@ -54,7 +56,6 @@ This module provides a lightweight `ZeAnalyserMainWindow` and a small
 The implementation is intentionally minimal and non-invasive so the
 existing Tkinter UI and project code remain untouched.
 """
-from __future__ import annotations
 
 import importlib.util
 import json
@@ -5650,9 +5651,20 @@ class AnalysisWorker(QObject):
         try:
             # Use custom log_callback if provided, otherwise default to emit
             log_cb = kwargs.pop('log_callback', lambda key, **kw: self.logLine.emit(str(key) if isinstance(key, str) else str(kw)))
+
+            def progress_cb(v):
+                try:
+                    if v is None or v == 'indeterminate':
+                        # Special indeterminate mode: skip numeric progress updates
+                        return
+                    self.progressChanged.emit(float(v))
+                except Exception:
+                    # Never let bad progress values kill the worker thread
+                    pass
+
             callbacks = {
                 'status': lambda key, **kw: self.statusChanged.emit(str(key)),
-                'progress': lambda v: self.progressChanged.emit(float(v)),
+                'progress': progress_cb,
                 'log': log_cb,
                 'is_cancelled': lambda: bool(self._cancelled),
             }
@@ -5740,12 +5752,22 @@ class AnalysisRunnable(QRunnable):
         self._args = args
         self._kwargs = kwargs
 
+    def _emit_progress(self, v):
+        """Convert v to float when possible; ignore indeterminate values."""
+        try:
+            if v is None or v == 'indeterminate':
+                return
+            self.signals.progressChanged.emit(float(v))
+        except Exception:
+            # Avoid crashing the runnable on progress conversion issues
+            pass
+
     def run(self):
         # Run the callable and forward logs/progress via signals
         try:
             callbacks = {
                 'status': lambda key, **kw: self.signals.statusChanged.emit(str(key)),
-                'progress': lambda v: self.signals.progressChanged.emit(float(v)),
+                'progress': self._emit_progress,
                 'log': lambda key, **kw: self.signals.logLine.emit(str(key) if isinstance(key, str) else str(kw)),
             }
 

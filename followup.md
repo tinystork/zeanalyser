@@ -4,12 +4,12 @@ Use this checklist after applying the changes described in `agent.md`.
 
 ## 1. Code review
 
-- [ ] Confirm that in `AnalysisWorker._run_analysis_callable` (in `analyse_gui_qt.py`), the `callbacks['progress']` entry now uses a `progress_cb` helper that:
-  - [ ] Returns early when `v is None` or `v == 'indeterminate'`.
-  - [ ] Emits `progressChanged(float(v))` for numeric values.
-  - [ ] Catches and ignores any unexpected exceptions from float conversion.
-- [ ] Confirm that in `AnalysisRunnable.run`, the `callbacks['progress']` entry now uses a method like `self._emit_progress` with the same behaviour.
-- [ ] Verify that both `progressChanged` signals are still declared as `Signal(float)` and that every actual emit still uses a float.
+- [x] Confirm that in `AnalysisWorker._run_analysis_callable` (in `analyse_gui_qt.py`), the `callbacks['progress']` entry now uses a `progress_cb` helper that:
+  - [x] Returns early when `v is None` or `v == 'indeterminate'`.
+  - [x] Emits `progressChanged(float(v))` for numeric values.
+  - [x] Catches and ignores any unexpected exceptions from float conversion.
+- [x] Confirm that in `AnalysisRunnable.run`, the `callbacks['progress']` entry now uses a method like `self._emit_progress` with the same behaviour.
+- [x] Verify that both `progressChanged` signals are still declared as `Signal(float)` and that every actual emit still uses a float.
 
 ## 2. Manual test – synthetic callable
 
@@ -42,9 +42,9 @@ Use this checklist after applying the changes described in `agent.md`.
 
 ## 5. Cleanup & commit
 
-- [ ] Remove any temporary debug prints or test hooks that are not meant for production.
-- [ ] Run a quick `python -m py_compile` on the modified file(s) to ensure no syntax error slipped in.
-- [ ] Commit with a message like:
+- [x] Remove any temporary debug prints or test hooks that are not meant for production.
+- [x] Run a quick `python -m py_compile` on the modified file(s) to ensure no syntax error slipped in.
+- [x] Commit with a message like:
 
   > `Fix Qt progress callback for 'indeterminate' values (no more float conversion crash)`
 

@@ -1,11 +1,10 @@
-"""Platform-specific helpers for cross-OS behaviors."""
-"""
+"""Platform-specific helpers for cross-OS behaviors.
 
 ╔═════════════════════════════════════════════════════════════════════════════════╗
 ║ ZeAnalyser / ZeSeestarStacker Project                                           ║
 ║                                                                                 ║
 ║ Auteur  : Tinystork, seigneur des couteaux à beurre (aka Tristan Nauleau)       ║
-║ Partenaire : J.A.R.V.I.S. (/ˈdʒɑːrvɪs/) — Just a Rather Very Intelligent System ║ 
+║ Partenaire : J.A.R.V.I.S. (/ˈdʒɑːrvɪs/) — Just a Rather Very Intelligent System ║
 ║              (aka ChatGPT, Grand Maître du ciselage de code)                    ║
 ║                                                                                 ║
 ║ Licence : GNU General Public License v3.0 (GPL-3.0)                             ║
@@ -27,7 +26,7 @@
 ║ ZeAnalyser / ZeSeestarStacker Project                                           ║
 ║                                                                                 ║
 ║ Author  : Tinystork, Lord of the Butter Knives (aka Tristan Nauleau)            ║
-║ Partner : J.A.R.V.I.S. (/ˈdʒɑːrvɪs/) — Just a Rather Very Intelligent System    ║ 
+║ Partner : J.A.R.V.I.S. (/ˈdʒɑːrvɪs/) — Just a Rather Very Intelligent System    ║
 ║           (aka ChatGPT, Grand Master of Code Chiseling)                         ║
 ║                                                                                 ║
 ║ License : GNU General Public License v3.0 (GPL-3.0)                             ║
@@ -41,10 +40,11 @@
 ║                                                                                 ║
 ║ Disclaimer:                                                                     ║
 ║   No AIs or butter knives were harmed in the making of this code.               ║
-╚═════════════════════════════════════════════════════════════════════════════════╝
+╚════════════════════════════════════════════════════════════════════════════════╝
 """
 
 from __future__ import annotations
+
 
 import os
 import platform
