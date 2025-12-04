@@ -208,17 +208,50 @@ _external_set_language = getattr(_i18n_module, "set_language", None) if _i18n_mo
 _external_lock_language = getattr(_i18n_module, "lock_language", None) if _i18n_module else None
 
 
+def _extract_lang_code(raw_value: str | None) -> str | None:
+    if not raw_value:
+        return None
+    try:
+        token = raw_value.split(".")[0]
+        lang_code = token.split("_")[0].lower()
+        return lang_code
+    except Exception:
+        return None
+
+
+def _detect_system_language() -> str | None:
+    """Attempt to detect OS language without deprecated locale APIs."""
+
+    locale_categories = []
+    lc_messages = getattr(locale, "LC_MESSAGES", None)
+    if lc_messages is not None:
+        locale_categories.append(lc_messages)
+    locale_categories.append(locale.LC_CTYPE)
+
+    for category in locale_categories:
+        try:
+            lang_tuple = locale.getlocale(category)
+        except Exception:
+            lang_tuple = None
+        if lang_tuple and lang_tuple[0]:
+            lang_code = _extract_lang_code(lang_tuple[0])
+            if lang_code:
+                return lang_code
+
+    for env_name in ("LC_ALL", "LC_MESSAGES", "LANG", "LANGUAGE"):
+        lang_code = _extract_lang_code(os.environ.get(env_name))
+        if lang_code:
+            return lang_code
+
+    return None
+
+
 def _fallback_initial_language() -> str:
     """Determine a default language using the system locale and translations."""
 
-    try:
-        loc = locale.getdefaultlocale()
-        if loc and loc[0]:
-            lang_code = loc[0].split("_")[0].lower()
-            if lang_code in translations:
-                return lang_code
-    except Exception:
-        pass
+    lang_code = _detect_system_language()
+    if lang_code and lang_code in translations:
+        return lang_code
 
     if "en" in translations:
         return "en"
@@ -914,6 +947,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             QComboBox = object
 
         cfg_box = QGroupBox(_("config_frame_title")) if QGroupBox is not object else None
+        self.config_group_box = cfg_box
         if cfg_box is not None:
             cfg_layout = QVBoxLayout(cfg_box)
         else:
@@ -921,17 +955,18 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         # Input / output selection (moved inside config group)
         pick_label = QLabel(_("input_dir_label"))
+        self.input_dir_label_widget = pick_label
         cfg_layout.addWidget(pick_label)
 
         paths_layout = QHBoxLayout()
         self.input_btn = QPushButton(_("browse_button"))
         self.input_path_edit = QLineEdit()
-        self.input_path_edit.setPlaceholderText("No input folder chosen")
+        self.input_path_edit.setPlaceholderText(_tr("project_input_placeholder", "No input folder chosen"))
 
         # This button selects the analysis log file (keep parity with Tk UI)
         self.log_btn = QPushButton(_("open_log_button"))
         self.log_path_edit = QLineEdit()
-        self.log_path_edit.setPlaceholderText("No log file chosen")
+        self.log_path_edit.setPlaceholderText(_tr("project_log_placeholder", "No log file chosen"))
         paths_layout.addWidget(self.input_btn)
         paths_layout.addWidget(self.input_path_edit)
         paths_layout.addWidget(self.log_btn)
@@ -950,7 +985,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         try:
             b_layout = QHBoxLayout()
             self.bortle_path_edit = QLineEdit()
-            self.bortle_path_edit.setPlaceholderText(_("bortle_file_label"))
+            self.bortle_path_edit.setPlaceholderText(_tr("bortle_path_placeholder", _("bortle_file_label")))
             self.bortle_browse_btn = QPushButton(_("browse_bortle_button"))
             b_layout.addWidget(self.bortle_path_edit)
             b_layout.addWidget(self.bortle_browse_btn)
@@ -1094,11 +1129,14 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.trail_high_thr_spin = QDoubleSpinBox()
             self.trail_high_thr_spin.setRange(0.0, 10000.0)
             self.trail_high_thr_spin.setValue(50.0)
-            params_row.addWidget(QLabel(_("sigma_label")))
+            self.trail_sigma_label = QLabel(_("sigma_label"))
+            params_row.addWidget(self.trail_sigma_label)
             params_row.addWidget(self.trail_sigma_spin)
-            params_row.addWidget(QLabel(_("low_thresh_label")))
+            self.trail_low_label = QLabel(_("low_thresh_label"))
+            params_row.addWidget(self.trail_low_label)
             params_row.addWidget(self.trail_low_thr_spin)
-            params_row.addWidget(QLabel(_("h_thresh_label")))
+            self.trail_high_label = QLabel(_("h_thresh_label"))
+            params_row.addWidget(self.trail_high_label)
             params_row.addWidget(self.trail_high_thr_spin)
             trail_layout.addLayout(params_row)
 
@@ -1113,11 +1151,14 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.trail_line_gap_spin = QSpinBox()
             self.trail_line_gap_spin.setRange(0, 1000)
             self.trail_line_gap_spin.setValue(10)
-            params_row2.addWidget(QLabel(_("line_len_label")))
+            self.trail_line_len_label = QLabel(_("line_len_label"))
+            params_row2.addWidget(self.trail_line_len_label)
             params_row2.addWidget(self.trail_line_len_spin)
-            params_row2.addWidget(QLabel(_("small_edge_label")))
+            self.trail_small_edge_label = QLabel(_("small_edge_label"))
+            params_row2.addWidget(self.trail_small_edge_label)
             params_row2.addWidget(self.trail_small_edge_spin)
-            params_row2.addWidget(QLabel(_("line_gap_label")))
+            self.trail_line_gap_label = QLabel(_("line_gap_label"))
+            params_row2.addWidget(self.trail_line_gap_label)
             params_row2.addWidget(self.trail_line_gap_spin)
             trail_layout.addLayout(params_row2)
 
@@ -1143,6 +1184,12 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.trail_line_gap_spin = getattr(self, 'trail_line_gap_spin', None)
             self.trail_reject_dir_edit = getattr(self, 'trail_reject_dir_edit', None)
             self.trail_reject_browse = getattr(self, 'trail_reject_browse', None)
+            self.trail_sigma_label = getattr(self, 'trail_sigma_label', None)
+            self.trail_low_label = getattr(self, 'trail_low_label', None)
+            self.trail_high_label = getattr(self, 'trail_high_label', None)
+            self.trail_line_len_label = getattr(self, 'trail_line_len_label', None)
+            self.trail_small_edge_label = getattr(self, 'trail_small_edge_label', None)
+            self.trail_line_gap_label = getattr(self, 'trail_line_gap_label', None)
 
         # Add the trail groupbox to the Project layout
         if self.trail_group_box is not None:
@@ -1155,6 +1202,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             action_box = QGroupBox(_("action_frame_title")) if QGroupBox is not object else None
         except Exception:
             action_box = None
+        self.action_group_box = action_box
 
         if action_box is not None:
             action_layout = QVBoxLayout(action_box)
@@ -1256,8 +1304,10 @@ class ZeAnalyserMainWindow(QMainWindow):
             bot_layout.addWidget(self.quit_btn)
 
             # elapsed / remaining labels
-            self.elapsed_label = QLabel(f"{_('elapsed_time_label')} 00:00")
+            self._elapsed_label_value = "00:00"
+            self.elapsed_label = QLabel(f"{_('elapsed_time_label')} {self._elapsed_label_value}")
             self.remaining_label = QLabel(f"{_('remaining_time_label')} N/A")
+            self._remaining_label_value = "N/A"
             bot_layout.addWidget(self.elapsed_label)
             bot_layout.addWidget(self.remaining_label)
 
@@ -1275,6 +1325,8 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.quit_btn = getattr(self, 'quit_btn', None)
             self.elapsed_label = getattr(self, 'elapsed_label', None)
             self.remaining_label = getattr(self, 'remaining_label', None)
+            self._elapsed_label_value = getattr(self, '_elapsed_label_value', "00:00")
+            self._remaining_label_value = getattr(self, '_remaining_label_value', "N/A")
 
         # --- Results tab ---
         results_widget = QWidget()
@@ -2051,6 +2103,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 elapsed = time.monotonic() - self._analysis_start_time
                 elapsed_str = time.strftime('%M:%S', time.gmtime(elapsed))
                 if hasattr(self, 'elapsed_label') and self.elapsed_label is not None:
+                    self._elapsed_label_value = elapsed_str
                     self.elapsed_label.setText(f"{_('elapsed_time_label')} {elapsed_str}")
                 # Estimate remaining time if value > 0
                 if value > 0:
@@ -2058,6 +2111,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     remaining = max(0.0, est_total - elapsed)
                     remaining_str = time.strftime('%M:%S', time.gmtime(remaining))
                     if hasattr(self, 'remaining_label') and self.remaining_label is not None:
+                        self._remaining_label_value = remaining_str
                         self.remaining_label.setText(f"{_('remaining_time_label')} {remaining_str}")
         except Exception:
             pass
@@ -2083,9 +2137,11 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.cancel_btn.setEnabled(False)
         # reset timer labels
         if hasattr(self, 'elapsed_label') and self.elapsed_label is not None:
-            self.elapsed_label.setText(f"{_('elapsed_time_label')} 00:00")
+            self._elapsed_label_value = "00:00"
+            self.elapsed_label.setText(f"{_('elapsed_time_label')} {self._elapsed_label_value}")
         if hasattr(self, 'remaining_label') and self.remaining_label is not None:
-            self.remaining_label.setText(f"{_('remaining_time_label')} 00:00")
+            self._remaining_label_value = "00:00"
+            self.remaining_label.setText(f"{_('remaining_time_label')} {self._remaining_label_value}")
 
         # If analysis completed successfully and stacking was requested, trigger stacking
         if not cancelled and getattr(self, '_stack_after_analysis', False):
@@ -3521,7 +3577,7 @@ class ZeAnalyserMainWindow(QMainWindow):
     def _retranslate_ui(self) -> None:
         """Update UI texts when language changes."""
         try:
-            # Update window title
+            # Window + tabs
             self.setWindowTitle(zone._("window_title"))
             if getattr(self, 'central_tabs', None) is not None:
                 try:
@@ -3532,22 +3588,99 @@ class ZeAnalyserMainWindow(QMainWindow):
                     self.central_tabs.setTabText(self.settings_tab_index, _tr('settings_tab_title', 'Settings / Préférences'))
                 except Exception:
                     pass
-            # Update group box titles
-            if hasattr(self, 'snr_group_box') and self.snr_group_box is not None:
+
+            # Project tab: configuration / file pickers
+            if getattr(self, 'config_group_box', None) is not None:
+                self.config_group_box.setTitle(zone._("config_frame_title"))
+            if getattr(self, 'input_dir_label_widget', None) is not None:
+                self.input_dir_label_widget.setText(zone._("input_dir_label"))
+            if getattr(self, 'input_btn', None) is not None:
+                self.input_btn.setText(zone._("browse_button"))
+            if getattr(self, 'input_path_edit', None) is not None:
+                self.input_path_edit.setPlaceholderText(_tr('project_input_placeholder', 'No input folder chosen'))
+            if getattr(self, 'log_btn', None) is not None:
+                self.log_btn.setText(zone._("open_log_button"))
+            if getattr(self, 'log_path_edit', None) is not None:
+                self.log_path_edit.setPlaceholderText(_tr('project_log_placeholder', 'No log file chosen'))
+            if getattr(self, 'include_subfolders_cb', None) is not None:
+                self.include_subfolders_cb.setText(zone._("include_subfolders_label"))
+            if getattr(self, 'bortle_path_edit', None) is not None:
+                self.bortle_path_edit.setPlaceholderText(_tr('bortle_path_placeholder', zone._('bortle_file_label')))
+            if getattr(self, 'bortle_browse_btn', None) is not None:
+                self.bortle_browse_btn.setText(zone._("browse_bortle_button"))
+            if getattr(self, 'use_bortle_cb', None) is not None:
+                self.use_bortle_cb.setText(zone._("use_bortle_check_label"))
+            if getattr(self, 'organize_btn', None) is not None:
+                self.organize_btn.setText(zone._("organize_files_button"))
+
+            # Project tab: SNR + trail groups
+            if getattr(self, 'snr_group_box', None) is not None:
                 self.snr_group_box.setTitle(zone._("snr_frame_title"))
-            if hasattr(self, 'trail_group_box') and self.trail_group_box is not None:
+            if getattr(self, 'analyze_snr_cb', None) is not None:
+                self.analyze_snr_cb.setText(zone._("analyze_snr_check_label"))
+            if getattr(self, 'snr_mode_percent_rb', None) is not None:
+                self.snr_mode_percent_rb.setText(zone._("snr_mode_percent"))
+            if getattr(self, 'snr_mode_threshold_rb', None) is not None:
+                self.snr_mode_threshold_rb.setText(zone._("snr_mode_threshold"))
+            if getattr(self, 'snr_mode_none_rb', None) is not None:
+                self.snr_mode_none_rb.setText(zone._("snr_mode_none"))
+            if getattr(self, 'snr_reject_dir_edit', None) is not None:
+                self.snr_reject_dir_edit.setPlaceholderText(zone._("snr_reject_dir_label"))
+            if getattr(self, 'snr_reject_browse', None) is not None:
+                self.snr_reject_browse.setText(zone._("browse_button"))
+            if getattr(self, 'snr_apply_btn', None) is not None:
+                self.snr_apply_btn.setText(zone._("apply_snr_rejection_button"))
+            if getattr(self, 'snr_apply_immediately_cb', None) is not None:
+                self.snr_apply_immediately_cb.setText(zone._("apply_immediately"))
+
+            if getattr(self, 'trail_group_box', None) is not None:
                 self.trail_group_box.setTitle(zone._("trail_frame_title"))
-            if hasattr(self, 'settings_language_group') and self.settings_language_group is not None:
-                self.settings_language_group.setTitle(_tr('language_group_title', 'Language / Langue'))
-            if hasattr(self, 'settings_skin_group') and self.settings_skin_group is not None:
-                self.settings_skin_group.setTitle(_tr('skin_group_title', 'Skin / Apparence'))
-            # Update buttons
-            if hasattr(self, 'cancel_btn') and self.cancel_btn is not None:
+            if getattr(self, 'detect_trails_cb', None) is not None:
+                self.detect_trails_cb.setText(zone._("detect_trails_check_label"))
+            for attr_name, key in (
+                ('trail_sigma_label', 'sigma_label'),
+                ('trail_low_label', 'low_thresh_label'),
+                ('trail_high_label', 'h_thresh_label'),
+                ('trail_line_len_label', 'line_len_label'),
+                ('trail_small_edge_label', 'small_edge_label'),
+                ('trail_line_gap_label', 'line_gap_label'),
+            ):
+                widget = getattr(self, attr_name, None)
+                if widget is not None:
+                    widget.setText(zone._(key))
+            if getattr(self, 'trail_reject_dir_edit', None) is not None:
+                self.trail_reject_dir_edit.setPlaceholderText(zone._("trail_reject_dir_label"))
+            if getattr(self, 'trail_reject_browse', None) is not None:
+                self.trail_reject_browse.setText(zone._("browse_button"))
+            if getattr(self, 'trail_apply_btn', None) is not None:
+                self.trail_apply_btn.setText(zone._("apply_snr_rejection_button"))
+
+            if getattr(self, 'action_group_box', None) is not None:
+                self.action_group_box.setTitle(zone._("action_frame_title"))
+            if getattr(self, 'reject_move_rb', None) is not None:
+                self.reject_move_rb.setText(zone._("action_mode_move"))
+            if getattr(self, 'reject_delete_rb', None) is not None:
+                self.reject_delete_rb.setText(zone._("action_mode_delete"))
+            if getattr(self, 'reject_none_rb', None) is not None:
+                self.reject_none_rb.setText(zone._("action_mode_none"))
+
+            if getattr(self, 'analyse_btn', None) is not None:
+                self.analyse_btn.setText(zone._("analyse_button"))
+            if getattr(self, 'cancel_btn', None) is not None:
                 self.cancel_btn.setText(zone._("cancel_button"))
-            # Update placeholders
-            if hasattr(self, 'results_filter') and self.results_filter is not None:
+            if getattr(self, 'sort_by_snr_cb', None) is not None:
+                self.sort_by_snr_cb.setText(zone._("sort_snr_check_label"))
+            if getattr(self, 'elapsed_label', None) is not None:
+                value = getattr(self, '_elapsed_label_value', "00:00")
+                self.elapsed_label.setText(f"{zone._('elapsed_time_label')} {value}")
+            if getattr(self, 'remaining_label', None) is not None:
+                value = getattr(self, '_remaining_label_value', "00:00")
+                self.remaining_label.setText(f"{zone._('remaining_time_label')} {value}")
+
+            # Results/stack placeholders
+            if getattr(self, 'results_filter', None) is not None:
                 self.results_filter.setPlaceholderText(zone._("filter_results_placeholder"))
-            if hasattr(self, 'stack_filter') and self.stack_filter is not None:
+            if getattr(self, 'stack_filter', None) is not None:
                 self.stack_filter.setPlaceholderText(zone._("filter_stack_plan_placeholder"))
             for edit, key, fallback in (
                 (getattr(self, 'snr_min_edit', None), 'results_filter_snr_min', 'SNR ≥'),
@@ -3557,70 +3690,70 @@ class ZeAnalyserMainWindow(QMainWindow):
             ):
                 if edit is not None:
                     edit.setPlaceholderText(_tr(key, fallback))
-            if hasattr(self, 'has_trails_box') and self.has_trails_box is not None:
+            if getattr(self, 'has_trails_box', None) is not None:
                 try:
                     self.has_trails_box.setItemText(0, _tr('results_filter_trails_any', 'Any'))
                     self.has_trails_box.setItemText(1, _tr('results_filter_trails_yes', 'Yes'))
                     self.has_trails_box.setItemText(2, _tr('results_filter_trails_no', 'No'))
                 except Exception:
                     pass
-            # Update preview label
-            if hasattr(self, 'preview_image_label') and self.preview_image_label is not None:
+
+            # Preview tab labels
+            if getattr(self, 'preview_image_label', None) is not None:
                 self.preview_image_label.setText(zone._("no_preview_selected"))
-            if hasattr(self, 'preview_hist_label') and self.preview_hist_label is not None:
+            if getattr(self, 'preview_hist_label', None) is not None:
                 self.preview_hist_label.setText(_tr('preview_hist_label_na', 'Histogram: N/A'))
-            if hasattr(self, 'preview_hist_apply') and self.preview_hist_apply is not None:
+            if getattr(self, 'preview_hist_apply', None) is not None:
                 self.preview_hist_apply.setText(_tr('preview_apply_stretch', 'Apply stretch'))
-            if hasattr(self, 'preview_stretch_min_label') and self.preview_stretch_min_label is not None:
+            if getattr(self, 'preview_stretch_min_label', None) is not None:
                 self.preview_stretch_min_label.setText(_tr('preview_stretch_min', 'Stretch min'))
-            if hasattr(self, 'preview_stretch_max_label') and self.preview_stretch_max_label is not None:
+            if getattr(self, 'preview_stretch_max_label', None) is not None:
                 self.preview_stretch_max_label.setText(_tr('preview_stretch_max', 'max'))
-            # Update stack buttons
-            if hasattr(self, 'stack_export_csv_btn') and self.stack_export_csv_btn is not None:
+
+            # Stack plan buttons
+            if getattr(self, 'stack_export_csv_btn', None) is not None:
                 self.stack_export_csv_btn.setText(zone._("stack_export_csv"))
-            if hasattr(self, 'stack_prepare_script_btn') and self.stack_prepare_script_btn is not None:
+            if getattr(self, 'stack_prepare_script_btn', None) is not None:
                 self.stack_prepare_script_btn.setText(zone._("stack_prepare_script"))
-            # Update checkbox
-            if hasattr(self, 'snr_apply_immediately_cb') and self.snr_apply_immediately_cb is not None:
-                self.snr_apply_immediately_cb.setText(zone._("apply_immediately"))
-            # Update status bar
+
+            # Status bar
             if hasattr(self, 'statusBar'):
                 self.statusBar().showMessage(zone._("status_ready"))
 
-            # Update bottom buttons (Qt)
-            if hasattr(self, 'analyse_images_btn') and self.analyse_images_btn is not None:
+            # Footer/bottom buttons
+            if getattr(self, 'analyse_images_btn', None) is not None:
                 self.analyse_images_btn.setText(zone._("analyse_button"))
-            if hasattr(self, 'analyse_and_stack_btn') and self.analyse_and_stack_btn is not None:
+            if getattr(self, 'analyse_and_stack_btn', None) is not None:
                 self.analyse_and_stack_btn.setText(zone._("analyse_stack_button"))
-            if hasattr(self, 'open_log_btn') and self.open_log_btn is not None:
+            if getattr(self, 'open_log_btn', None) is not None:
                 self.open_log_btn.setText(zone._("open_log_button"))
-            if hasattr(self, 'create_stack_plan_btn') and self.create_stack_plan_btn is not None:
+            if getattr(self, 'create_stack_plan_btn', None) is not None:
                 self.create_stack_plan_btn.setText(zone._("create_stack_plan_button"))
-            if hasattr(self, 'manage_markers_btn') and self.manage_markers_btn is not None:
+            if getattr(self, 'manage_markers_btn', None) is not None:
                 self.manage_markers_btn.setText(zone._("manage_markers_button"))
-            if hasattr(self, 'visualise_results_btn') and self.visualise_results_btn is not None:
+            if getattr(self, 'visualise_results_btn', None) is not None:
                 self.visualise_results_btn.setText(zone._("visualize_button"))
-            if hasattr(self, 'apply_recos_btn') and self.apply_recos_btn is not None:
+            if getattr(self, 'apply_recos_btn', None) is not None:
                 self.apply_recos_btn.setText(zone._("apply_reco_button"))
-            if hasattr(self, 'send_save_ref_btn') and self.send_save_ref_btn is not None:
+            if getattr(self, 'send_save_ref_btn', None) is not None:
                 self.send_save_ref_btn.setText(zone._("use_best_reference_button"))
-            if hasattr(self, 'quit_btn') and self.quit_btn is not None:
+            if getattr(self, 'quit_btn', None) is not None:
                 self.quit_btn.setText(zone._("quit_button"))
-            if hasattr(self, 'lang_combo') and self.lang_combo is not None:
+
+            # Settings tab combos
+            if getattr(self, 'lang_combo', None) is not None:
                 lang_label = translations.get(get_current_language(), {}).get('lang_label', 'Language / Langue')
-                if hasattr(self, 'settings_language_group'):
+                if getattr(self, 'settings_language_group', None) is not None:
                     try:
                         self.settings_language_group.setTitle(_tr('language_group_title', 'Language / Langue'))
                     except Exception:
                         pass
-                try:
-                    # Update label widget text
-                    if self.settings_language_group is not None:
+                    try:
                         label_widget = self.settings_language_group.findChildren(QLabel)
                         if label_widget:
                             label_widget[0].setText(lang_label)
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
                 try:
                     for idx in range(self.lang_combo.count()):
                         code = self.lang_combo.itemData(idx)
@@ -3630,20 +3763,22 @@ class ZeAnalyserMainWindow(QMainWindow):
                         self.lang_combo.setItemText(idx, text)
                 except Exception:
                     pass
-            if hasattr(self, 'skin_combo') and self.skin_combo is not None:
+
+            if getattr(self, 'skin_combo', None) is not None:
                 try:
                     self.skin_combo.setItemText(0, _tr('skin_system_default', 'System default'))
                     self.skin_combo.setItemText(1, _tr('skin_dark', 'Dark'))
                 except Exception:
                     pass
-                try:
-                    if self.settings_skin_group is not None:
+                if getattr(self, 'settings_skin_group', None) is not None:
+                    try:
                         label_widget = self.settings_skin_group.findChildren(QLabel)
                         if label_widget:
                             label_widget[0].setText(_tr('skin_group_title', 'Skin / Apparence'))
-                except Exception:
-                    pass
-            if hasattr(self, 'rec_tree') and self.rec_tree is not None:
+                    except Exception:
+                        pass
+
+            if getattr(self, 'rec_tree', None) is not None:
                 try:
                     self.rec_tree.setHeaderLabels([
                         _tr("visu_recom_col_file", _("visu_recom_col_file")),
