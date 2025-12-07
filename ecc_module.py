@@ -72,14 +72,13 @@ pour avoir isolé un cas rarissime et permis d'améliorer l’équilibre ECC / s
 import numpy as np
 from astropy.stats import sigma_clipped_stats
 from photutils.detection import DAOStarFinder
-from scipy.ndimage import gaussian_filter
 
 # Default constants for star detection
 DEFAULT_THRESHOLD_SIGMA = 5.0
 DEFAULT_SHARPLO = 0.2
 DEFAULT_SHARPHI = 1.0
-DEFAULT_ROUNDLO = -0.5
-DEFAULT_ROUNDHI = 0.5
+DEFAULT_ROUNDLO = -0.6
+DEFAULT_ROUNDHI = 0.6
 
 
 def _detect_stars(
@@ -135,6 +134,7 @@ def calculate_fwhm_ecc(
     *,
     sky_bg=None,
     sky_noise=None,
+    box_radius=4,
 ):
     """Calculate median FWHM and eccentricity of stars in ``data``.
 
@@ -153,6 +153,8 @@ def calculate_fwhm_ecc(
         Pre-computed sky noise (standard deviation). When finite and positive,
         this value scales the detection threshold without re-running
         ``sigma_clipped_stats``.
+    box_radius : int, optional
+        Radius of the box around each star for FWHM calculation. Default is 4.
 
     Returns
     -------
@@ -164,7 +166,7 @@ def calculate_fwhm_ecc(
         Number of detected stars.
     """
     try:
-        _, _, tbl = _detect_stars(
+        bg, _, tbl = _detect_stars(
             data=np.asarray(data),
             fwhm=fwhm_guess,
             threshold_sigma=threshold_sigma,
@@ -176,79 +178,52 @@ def calculate_fwhm_ecc(
 
         fwhm_list = []
         ecc_list = []
-        size = int(max(3, round(fwhm_guess * 3)))
 
         for star in tbl:
-            x = int(round(star['xcentroid']))
-            y = int(round(star['ycentroid']))
-            x1 = max(x - size, 0)
-            x2 = min(x + size + 1, data.shape[1])
-            y1 = max(y - size, 0)
-            y2 = min(y + size + 1, data.shape[0])
-            cutout = data[y1:y2, x1:x2]
+            x_c = star['xcentroid']
+            y_c = star['ycentroid']
+            x_min = max(int(round(x_c - box_radius)), 0)
+            x_max = min(int(round(x_c + box_radius + 1)), data.shape[1])
+            y_min = max(int(round(y_c - box_radius)), 0)
+            y_max = min(int(round(y_c + box_radius + 1)), data.shape[0])
+            cutout = data[y_min:y_max, x_min:x_max]
             if cutout.size == 0:
                 continue
 
-            cutout = cutout - np.median(cutout)
-            cutout = gaussian_filter(cutout, sigma=0.5)
-            peak = cutout.max()
-            if peak <= 0:
-                continue
-            half_max = peak / 2.0
-            y_profile = cutout.max(axis=1)
-            x_profile = cutout.max(axis=0)
-
-            def width_at_half(profile):
-                idx = np.where(profile >= half_max)[0]
-                if idx.size == 0:
-                    return np.nan
-                return idx[-1] - idx[0]
-
-            fwhm_x = width_at_half(x_profile)
-            fwhm_y = width_at_half(y_profile)
-            if not (np.isfinite(fwhm_x) and np.isfinite(fwhm_y)):
+            cutout = cutout - bg
+            cutout = np.clip(cutout, 0, None)
+            total_flux = np.sum(cutout)
+            if total_flux <= 0:
                 continue
 
-            fwhm_avg = 0.5 * (fwhm_x + fwhm_y)
-            fwhm_list.append(fwhm_avg)
+            y_coords, x_coords = np.indices(cutout.shape)
+            x_mean = np.sum(x_coords * cutout) / total_flux + x_min
+            y_mean = np.sum(y_coords * cutout) / total_flux + y_min
 
-            a = max(fwhm_x, fwhm_y) / 2.0
-            b = min(fwhm_x, fwhm_y) / 2.0
-            ecc = np.sqrt(1.0 - (b / a) ** 2) if a > 0 else np.nan
+            x_var = np.sum((x_coords - (x_mean - x_min))**2 * cutout) / total_flux
+            y_var = np.sum((y_coords - (y_mean - y_min))**2 * cutout) / total_flux
+            xy_cov = np.sum((x_coords - (x_mean - x_min)) * (y_coords - (y_mean - y_min)) * cutout) / total_flux
+
+            cov_matrix = np.array([[x_var, xy_cov], [xy_cov, y_var]])
+            eigvals = np.linalg.eigvals(cov_matrix)
+            sigma_major2 = np.max(eigvals)
+            sigma_minor2 = np.min(eigvals)
+
+            fwhm_major = 2.3548 * np.sqrt(sigma_major2)
+            fwhm_minor = 2.3548 * np.sqrt(sigma_minor2)
+            fwhm_mean = 0.5 * (fwhm_major + fwhm_minor)
+
+            ecc = np.sqrt(1.0 - sigma_minor2 / sigma_major2)
+
+            fwhm_list.append(fwhm_mean)
             ecc_list.append(ecc)
 
         if not fwhm_list:
             return np.nan, np.nan, 0
 
-        fwhm_arr = np.array(fwhm_list, dtype=float)
-        ecc_arr = np.array(ecc_list, dtype=float)
-
-        # Remove NaNs
-        valid = np.isfinite(fwhm_arr) & np.isfinite(ecc_arr)
-        fwhm_arr = fwhm_arr[valid]
-        ecc_arr = ecc_arr[valid]
-
-        if fwhm_arr.size == 0:
-            return np.nan, np.nan, 0
-
-        # Percentile clipping
-        low_p, high_p = np.nanpercentile(fwhm_arr, [5.0, 95.0])
-        mask = (fwhm_arr >= low_p) & (fwhm_arr <= high_p)
-
-        # Range around fwhm_guess
-        min_f = 0.5 * fwhm_guess
-        max_f = 2.5 * fwhm_guess
-        mask &= (fwhm_arr >= min_f) & (fwhm_arr <= max_f)
-
-        fwhm_arr = fwhm_arr[mask]
-        ecc_arr = ecc_arr[mask]
-
-        if fwhm_arr.size == 0:
-            return np.nan, np.nan, 0
-
-        fwhm_med = float(np.nanmedian(fwhm_arr))
-        ecc_med = float(np.nanmedian(ecc_arr)) if ecc_arr.size > 0 else np.nan
-        n_detected = int(fwhm_arr.size)
-        return fwhm_med, ecc_med, n_detected
+        fwhm_med = float(np.nanmedian(fwhm_list))
+        ecc_med = float(np.nanmedian(ecc_list))
+        n = len(fwhm_list)
+        return fwhm_med, ecc_med, n
     except Exception:
         return np.nan, np.nan, 0

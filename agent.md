@@ -1,231 +1,210 @@
-# Mission – Fix Qt results visualisation labels + app icon
+# Mission – Keep FWHM/ECC implementation in ecc_module.py aligned with the PDF FWHM_Explanation.pdf
 
-## Contexte
+## Context
 
-Projet : **ZeAnalyser / analyse_gui_qt.py** (GUI PySide6).
+We have documented the new FWHM algorithm in `FWHM_Explanation.pdf` (4 stages):
+1. Background estimation (sigma_clipped_stats)
+2. Star detection (DAOStarFinder)
+3. Star quality filtering (sharpness / roundness)
+4. FWHM from second moments of the PSF footprint (per star), then median
 
-Deux problèmes purement cosmétiques ont été repérés dans la version actuelle :
+The current `ecc_module.calculate_fwhm_ecc` already follows this method and
+gives values close to PixInsight’s SubframeSelector on the test frame
+`Light_M 31_20.0s_IRCUT_20251117-214019.fit`:
 
-1. Dans la fenêtre de visualisation des résultats (onglets SNR, FWHM, Eccentricity, Starcount, etc.),  
-   le titre de la fenêtre et les labels de plage affichent les **clés i18n brutes** :
+- Starcount ≈ 130–150 (more than PI, by design)
+- FWHM ≈ 4.9 px (PI ≈ 5.8 px)
+- Ecc ≈ 0.5–0.6
 
-   - `_results_visualisation_title_`
-   - `_visu_snr_range_label_`
-   - `_visu_fwhm_range_label_`
-   - `_visu_ecc_range_label_`
-   - `_visu_starcount_range_label_`
+Starcount is intentionally more permissive; **the “magic” is in the FWHM
+computation**, not in matching PI’s star count.
 
-   La cause : on utilise directement `_()` avec des clés qui n’existent pas et un paramètre `default=...`
-   que l’implémentation de `_` **ignore**.  
-   Le helper correct pour ce cas est **`_tr(key, fallback)`** défini dans `analyse_gui_qt.py`.
+## Files to work on
 
-2. L’icône de l’application n’est pas appliquée dans le GUI Qt, alors que les fichiers suivants sont présents
-   dans `zeanalyser/icon/` :
+- `ecc_module.py`
+- `starcount_module.py` (only for shared detection helper)
 
-   - `zeanalyz_icon.png`
-   - `zeanalyz_64x64.png`
-   - `zeanalyz.ico`
+## Goal
 
-   Il manque un petit helper qui charge ces fichiers et un appel à `app.setWindowIcon(...)` /
-   `main_window.setWindowIcon(...)`.
+- Ensure `ecc_module.calculate_fwhm_ecc` strictly implements the
+  PDF algorithm (4 stages) and stays stable.
+- Ensure `starcount_module.calculate_starcount` uses **the same detection
+  and shape filtering**, but only returns the number of detections.
 
-Objectif : **corriger ces deux points dans `analyse_gui_qt.py` uniquement**, sans toucher au reste du code
-(ni au GUI Tk).
+## Requirements
 
----
+### 1. Shared detection helper
 
-## Fichiers à modifier
-
-- `analyse_gui_qt.py` **uniquement**
-
----
-
-## Étape 1 – Utiliser `_tr` pour la fenêtre de visualisation des résultats
-
-1. Repérer les appels actuels à `results_visualisation_title` :
-
-   - vers la fin du fichier, dans le code qui construit la fenêtre de visualisation (QDialog + QTabWidget).
-
-   Exemple actuel (simplifié) :
-
-   ```python
-   dialog = QDialog(self)
-   dialog.setWindowTitle(_("results_visualisation_title"))
-````
-
-2. Remplacer **tous** les `setWindowTitle(_("results_visualisation_title"))` par :
-
-   ```python
-   dialog = QDialog(self)
-   dialog.setWindowTitle(_tr("results_visualisation_title", "Results visualisation"))
-   ```
-
-   * Ne pas changer le comportement de la fenêtre, seulement la façon de récupérer le texte.
-   * Si la clé existe dans `translations`, `_tr` renverra la traduction.
-     Sinon, on aura **au minimum** `"Results visualisation"` comme fallback.
-
----
-
-## Étape 2 – Utiliser `_tr` pour les labels de plage SNR / FWHM / Ecc / Starcount
-
-Dans la même fonction de visualisation des résultats (onglets SNR, FWHM, Eccentricity, Starcount) :
-
-1. Repérer les labels du type `visu_*_range_label` qui ressemblent à ceci :
-
-   ```python
-   snr_range_label.setText(
-       _(
-           "visu_snr_range_label",
-           default=f"SNR range: ({min_snr:.2f}, {max_snr:.2f})",
-       )
-   )
-   ```
-
-   et les callbacks `update_*_lines` qui font :
-
-   ```python
-   snr_range_label.setText(
-       _(
-           "visu_snr_range_label",
-           default=f"SNR range: ({lo:.2f}, {hi:.2f})",
-       )
-   )
-   ```
-
-   Même pattern pour :
-
-   * `"visu_fwhm_range_label"`
-   * `"visu_ecc_range_label"`
-   * `"visu_starcount_range_label"`
-
-2. Remplacer **tous** ces appels par l’usage de `_tr` avec la chaîne complète en fallback, par exemple :
-
-   ```python
-   # SNR – initialisation
-   snr_range_label.setText(_tr(
-       "visu_snr_range_label",
-       f"SNR range: ({min_snr:.2f}, {max_snr:.2f})",
-   ))
-
-   # SNR – callback on slider
-   snr_range_label.setText(_tr(
-       "visu_snr_range_label",
-       f"SNR range: ({lo:.2f}, {hi:.2f})",
-   ))
-   ```
-
-   Idem pour :
-
-   ```python
-   fwhm_range_label.setText(_tr(
-       "visu_fwhm_range_label",
-       f"FWHM range: ({...:.2f}, {...:.2f})",
-   ))
-
-   ecc_range_label.setText(_tr(
-       "visu_ecc_range_label",
-       f"Eccentricity range: ({...:.3f}, {...:.3f})",
-   ))
-
-   starcount_range_label.setText(_tr(
-       "visu_starcount_range_label",
-       f"Starcount range: ({...}, {...})",
-   ))
-   ```
-
-   > **Important :**
-   >
-   > * Ne pas modifier la logique de mise à jour des lignes verticales ou des sliders.
-   > * Ne pas changer les noms des clés (`visu_snr_range_label`, etc.).
-   > * L’objectif est uniquement de remplacer l’appel à `_()` par `_tr()` avec une chaîne de fallback.
-
----
-
-## Étape 3 – Ajouter un helper pour l’icône de l’application
-
-1. En haut de `analyse_gui_qt.py`, après les imports Qt et les autres constantes globales,
-   ajouter un helper qui construit le chemin vers le dossier `icon` relatif à ce fichier :
-
-   ```python
-   ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon")
-
-
-   def get_app_icon() -> QIcon:
-       """Return the best available application icon from the icon/ folder."""
-       for name in ("zeanalyz_icon.png", "zeanalyz_64x64.png", "zeanalyz.ico"):
-           path = os.path.join(ICON_DIR, name)
-           if os.path.exists(path):
-               return QIcon(path)
-       return QIcon()
-   ```
-
-   Contraintes :
-
-   * Utiliser `os.path` (pas besoin d’importer `pathlib`).
-   * Garder `QIcon` (déjà importé plus haut).
-   * Ne pas modifier d’autres constantes globales existantes.
-
----
-
-## Étape 4 – Appliquer l’icône dans `main()`
-
-Vers la fin du fichier, dans la fonction `main(argv: Optional[List[str]] = None)`, juste après la création de `app` :
+In `ecc_module.py`, make sure there is a helper:
 
 ```python
-app = QApplication.instance() or QApplication(remaining_argv)
-app.setOrganizationName("ZeSeestarStacker")
-app.setApplicationName("ZeAnalyser")
+DEFAULT_THRESHOLD_SIGMA = 5.0
+DEFAULT_SHARPLO = 0.2
+DEFAULT_SHARPHI = 1.0
+DEFAULT_ROUNDLO = -0.6
+DEFAULT_ROUNDHI = 0.6
+
+def _detect_stars(
+    data,
+    fwhm,
+    threshold_sigma=DEFAULT_THRESHOLD_SIGMA,
+    sky_bg=None,
+    sky_noise=None,
+    *,
+    sharplo=DEFAULT_SHARPLO,
+    sharphi=DEFAULT_SHARPHI,
+    roundlo=DEFAULT_ROUNDLO,
+    roundhi=DEFAULT_ROUNDHI,
+):
+    """
+    Stage 1 + 2 + 3 of the PDF:
+      - background/noise via sigma_clipped_stats if needed
+      - run DAOStarFinder(data - bg, threshold_sigma * noise)
+      - apply shape filters:
+          sharplo < sharpness < sharphi
+          |roundness1| < |roundhi|
+          |roundness2| < |roundhi|
+    Return (bg, noise, sources_table_or_None).
+    """
+````
+
+Implementation details:
+
+* Use `sigma_clipped_stats(data, sigma=3.0, maxiters=5)` when `sky_bg` /
+  `sky_noise` are None or invalid.
+* If `noise <= 0` or everything is non-finite, return `(np.nan, np.nan, None)`.
+* DAOStarFinder config:
+
+  * `fwhm=fwhm`
+  * `threshold=threshold_sigma * noise`
+* Shape filters exactly as in the PDF.
+
+### 2. Starcount module
+
+In `starcount_module.py`:
+
+* Import `_detect_stars` and `DEFAULT_THRESHOLD_SIGMA` from `ecc_module`.
+* Implement:
+
+```python
+def calculate_starcount(
+    data,
+    fwhm=3.5,
+    threshold_sigma=DEFAULT_THRESHOLD_SIGMA,
+    *,
+    sky_bg=None,
+    sky_noise=None,
+):
+    """
+    Return the number of detected stars using the same detection/shape
+    filters as ecc_module.calculate_fwhm_ecc.
+    This is intentionally more permissive than PixInsight.
+    """
+    try:
+        _, _, tbl = _detect_stars(
+            np.asarray(data),
+            fwhm=fwhm,
+            threshold_sigma=threshold_sigma,
+            sky_bg=sky_bg,
+            sky_noise=sky_noise,
+        )
+        return 0 if tbl is None else int(len(tbl))
+    except Exception:
+        return 0
 ```
 
-1. Ajouter le chargement de l’icône :
+* Do **not** add extra clipping or hard-coded limits in starcount.
+  Starcount “being high” is acceptable.
+
+### 3. FWHM/ECC (Stage 4 from PDF)
+
+`calculate_fwhm_ecc` must implement exactly the 4th stage:
+
+* Use `_detect_stars` for stages 1–3.
+* If no stars → `(nan, nan, 0)`.
+
+For each star:
+
+1. Extract a small box (`box_radius` parameter) around (xcentroid, ycentroid).
+
+2. Work on `cutout = data[y_min:y_max, x_min:x_max] - bg`.
+
+3. Clip negatives: `cutout = np.clip(cutout, 0, None)`.
+
+4. If total flux ≤ 0 → skip.
+
+5. Compute flux-weighted centroid (x_mean, y_mean).
+
+6. Compute second moments and covariance matrix.
+
+7. Eigenvalues → `sigma_major²`, `sigma_minor²`.
+
+8. Convert to FWHM:
 
    ```python
-   app_icon = get_app_icon()
-   if not app_icon.isNull():
-       app.setWindowIcon(app_icon)
+   fwhm_major = 2.3548 * sigma_major
+   fwhm_minor = 2.3548 * sigma_minor
+   fwhm_mean = 0.5 * (fwhm_major + fwhm_minor)
    ```
 
-2. Après la création de la fenêtre principale :
+9. Eccentricity:
 
    ```python
-   win = ZeAnalyserMainWindow(
-       command_file_path=None,
-       initial_lang=args.lang,
-       lock_language=args.lock_lang,
-   )
+   ecc = np.sqrt(1.0 - sigma_minor2 / sigma_major2)
    ```
 
-   ajouter :
+Append valid `(fwhm_mean, ecc)` values to lists.
 
-   ```python
-   if not app_icon.isNull():
-       win.setWindowIcon(app_icon)
-   ```
+Final FWHM/ECC:
 
-3. Ne pas modifier le reste de la logique de `main` (gestion des args, `_show_window_safely`, etc.).
+* If no valid values → `(nan, nan, 0)`.
+* Otherwise:
+
+  * `fwhm_med = median(fwhm_list)`
+  * `ecc_med = median(ecc_list)`
+  * `n = len(fwhm_list)`
+* Return `(fwhm_med, ecc_med, n)`.
+
+No extra percentile clipping is mandatory; the **median itself provides robustness**
+as described in the PDF.
+
+### 4. Public API
+
+Keep the signatures:
+
+```python
+def calculate_starcount(data, fwhm=3.5, threshold_sigma=5.0, *, sky_bg=None, sky_noise=None) -> int
+def calculate_fwhm_ecc(data, fwhm_guess=3.5, threshold_sigma=5.0, *, sky_bg=None, sky_noise=None, box_radius=4)
+```
+
+Do **not** change argument order or return types; do not touch callers.
 
 ---
 
-## Vérifications / Tests manuels
+## Tests (informal)
 
-1. Lancer :
+Use a REPL test:
 
-   ```bash
-   python analyse_gui_qt.py
-   ```
+```python
+from astropy.io import fits
+import starcount_module, ecc_module
 
-2. Ouvrir un fichier d’analyse permettant d’afficher la fenêtre de visualisation des résultats, puis vérifier :
+path = "/mnt/stacking/test/Light_M 31_20.0s_IRCUT_20251117-214019.fit"
+data = fits.open(path)[0].data
 
-   * Titre de la fenêtre : **plus de `_results_visualisation_title_`**, mais un libellé lisible
-     (en anglais ou traduit si la clé existe).
-   * En bas de chaque onglet SNR / FWHM / Eccentricity / Starcount :
-     les labels affichent le texte lisible **avec les valeurs numériques**, sans `_visu_*_range_label_`.
+sc = starcount_module.calculate_starcount(data)
+fwhm_px, ecc, n = ecc_module.calculate_fwhm_ecc(data)
 
-3. Vérifier que l’icône :
+print("Starcount:", sc)
+print("FWHM:", fwhm_px)
+print("Ecc:", ecc)
+print("Stars used:", n)
+```
 
-   * Apparaît dans la barre de titre de la fenêtre principale.
-   * Apparaît dans la barre des tâches (selon l’OS).
+Expected ballpark:
 
-4. Lancer au moins avec `--lang fr` et `--lang en` pour s’assurer que `_tr` fonctionne proprement
-   avec les traductions existantes, même si les clés ne sont pas encore ajoutées au dictionnaire.
+* Starcount: ~100–200 (more than PI, but not absurdly huge)
+* FWHM: ~4.8–5.2 px
+* Ecc: ~0.5–0.7
+* Stars used: ≈ starcount
 
