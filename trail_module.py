@@ -110,11 +110,11 @@ if SATDET_AVAILABLE:
     else:
         print("AVERTISSEMENT (trail_module): scikit-image non trouvé.")
 
-# --- REVERTED FUNCTION ---
+# --- RESTORED FUNCTION (rétro-compatible str/list/tuple) ---
 def run_trail_detection(search_pattern, sat_params_input, status_callback=None, log_callback=None):
     """
-    Exécute acstools.satdet.detsat pour détecter les traînées en utilisant un search_pattern.
-    (Version revertie pour n'accepter que les patterns)
+    Exécute acstools.satdet.detsat pour détecter les traînées en utilisant un search_pattern ou une liste de fichiers.
+    (Version rétro-compatible : accepte str, list, tuple)
     """
     _status_callback = status_callback if callable(status_callback) else lambda k, **kw: print(f"TRAIL_STATUS: {k} {kw}")
     _log_callback = log_callback if callable(log_callback) else lambda k, **kw: print(f"TRAIL_LOG: {k} {kw}")
@@ -125,10 +125,15 @@ def run_trail_detection(search_pattern, sat_params_input, status_callback=None, 
         _log_callback("logic_error_prefix", text=err_msg)
         return {}, {('FATAL_ERROR', 0): err_msg}
 
-    if not isinstance(search_pattern, str): # Doit être un string maintenant
-         err_msg = f"Type d'entrée invalide pour run_trail_detection (version pattern): {type(search_pattern)}. Attendu str."
-         _log_callback("logic_error_prefix", text=err_msg)
-         return {}, {('CONFIG_ERROR', 0): err_msg}
+    # --- Nouvelle logique d’entrée rétro-compatible ---
+    if isinstance(search_pattern, (list, tuple)):
+        file_input = search_pattern
+    elif isinstance(search_pattern, str):
+        file_input = search_pattern
+    else:
+        err_msg = f"Type d'entrée invalide pour run_trail_detection: {type(search_pattern)}. Attendu str ou list/tuple."
+        _log_callback("logic_error_prefix", text=err_msg)
+        return {}, {('CONFIG_ERROR', 0): err_msg}
 
     if not SCIPY_AVAILABLE or not SKIMAGE_AVAILABLE:
          missing_deps = [dep for dep, avail in [("scipy", SCIPY_AVAILABLE), ("scikit-image", SKIMAGE_AVAILABLE)] if not avail]
@@ -166,7 +171,7 @@ def run_trail_detection(search_pattern, sat_params_input, status_callback=None, 
         with warnings.catch_warnings():
             warnings.filterwarnings(action='ignore', message=r'.*is not a valid science extension.*', category=UserWarning)
 
-            # --- REVERTED: Appel à satdet avec searchpattern ---
+            # --- Appel à satdet avec file_input (rétro-compatible str/list/tuple) ---
             # Déterminer le nom du premier argument attendu par detsat
             sig = inspect.signature(satdet.detsat)
             first_param_name = list(sig.parameters)[0]
@@ -177,11 +182,21 @@ def run_trail_detection(search_pattern, sat_params_input, status_callback=None, 
                 'line_len': params['line_len'], 'small_edge': params['small_edge'],
                 'line_gap': params['line_gap'], 'plot': plot_det, 'verbose': verbose_det
             }
-            # Ajouter le search_pattern avec le bon nom de paramètre
-            satdet_kwargs[first_param_name] = search_pattern
 
-            results, errors = satdet.detsat(**satdet_kwargs)
-            # --- FIN REVERT ---
+            if isinstance(file_input, str):
+                # Mode pattern unique
+                satdet_kwargs[first_param_name] = file_input
+                results, errors = satdet.detsat(**satdet_kwargs)
+            else:
+                # Mode liste : appeler satdet pour chaque fichier et fusionner les résultats
+                results = {}
+                errors = {}
+                for single_file in file_input:
+                    satdet_kwargs[first_param_name] = single_file
+                    res, err = satdet.detsat(**satdet_kwargs)
+                    results.update(res)
+                    errors.update(err)
+            # --- FIN RESTORED ---
 
         _status_callback("status_satdet_done")
 
