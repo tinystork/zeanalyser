@@ -41,6 +41,8 @@
 ║   Aucune IA ni aucun couteau à beurre n’a été blessé durant le                  ║
 ║   développement de ce code.                                                     ║
 ╚═════════════════════════════════════════════════════════════════════════════════╝
+Par la présente, nous adoubons Fabian, Chevalier des pinces à épiler,
+pour avoir isolé un cas rarissime et permis d'améliorer l’équilibre ECC / starcount.
 
 
 ╔═════════════════════════════════════════════════════════════════════════════════╗
@@ -62,12 +64,68 @@
 ║ Disclaimer:                                                                     ║
 ║   No AIs or butter knives were harmed in the making of this code.               ║
 ╚═════════════════════════════════════════════════════════════════════════════════╝
+# Hereby we knight Fabian, Noble Knight of the Tweezers,
+# for isolating a rare edge case and helping improve ECC / starcount balance.
+ 
 """
 
 import numpy as np
 from astropy.stats import sigma_clipped_stats
 from photutils.detection import DAOStarFinder
 from scipy.ndimage import gaussian_filter
+
+# Default constants for star detection
+DEFAULT_THRESHOLD_SIGMA = 5.0
+DEFAULT_SHARPLO = 0.2
+DEFAULT_SHARPHI = 1.0
+DEFAULT_ROUNDLO = -0.5
+DEFAULT_ROUNDHI = 0.5
+
+
+def _detect_stars(
+    data: np.ndarray,
+    fwhm: float,
+    threshold_sigma: float,
+    sky_bg: float | None = None,
+    sky_noise: float | None = None,
+    *,
+    sharplo: float = DEFAULT_SHARPLO,
+    sharphi: float = DEFAULT_SHARPHI,
+    roundlo: float = DEFAULT_ROUNDLO,
+    roundhi: float = DEFAULT_ROUNDHI,
+):
+    """
+    Estimate background and noise (unless both provided), then run DAOStarFinder
+    with unified parameters. Return (bg, noise, table) where `table` is an
+    astropy Table of detections or None.
+    """
+    bg = sky_bg if sky_bg is not None and np.isfinite(sky_bg) else None
+    noise = (
+        sky_noise
+        if sky_noise is not None and np.isfinite(sky_noise) and sky_noise > 0
+        else None
+    )
+
+    if bg is None or noise is None:
+        _, median, std = sigma_clipped_stats(data, sigma=3.0)
+        if bg is None or not np.isfinite(bg):
+            bg = median
+        if noise is None or not np.isfinite(noise) or noise <= 0:
+            noise = std if std > 0 else np.nan
+
+    if not np.isfinite(bg) or not np.isfinite(noise) or noise <= 0:
+        return bg, noise, None
+
+    finder = DAOStarFinder(
+        fwhm=fwhm,
+        threshold=threshold_sigma * noise,
+        sharplo=sharplo,
+        sharphi=sharphi,
+        roundlo=roundlo,
+        roundhi=roundhi,
+    )
+    sources = finder(data - bg)
+    return bg, noise, sources if sources is not None and len(sources) > 0 else None
 
 
 def calculate_fwhm_ecc(
@@ -106,26 +164,14 @@ def calculate_fwhm_ecc(
         Number of detected stars.
     """
     try:
-        bg = sky_bg if sky_bg is not None and np.isfinite(sky_bg) else None
-        noise = (
-            sky_noise
-            if sky_noise is not None and np.isfinite(sky_noise) and sky_noise > 0
-            else None
+        _, _, tbl = _detect_stars(
+            data=np.asarray(data),
+            fwhm=fwhm_guess,
+            threshold_sigma=threshold_sigma,
+            sky_bg=sky_bg,
+            sky_noise=sky_noise,
         )
-
-        if bg is None or noise is None:
-            _, median, std = sigma_clipped_stats(data, sigma=3.0)
-            if bg is None or not np.isfinite(bg):
-                bg = median
-            if noise is None or not np.isfinite(noise) or noise <= 0:
-                noise = std if std > 0 else np.nan
-
-        if not np.isfinite(bg) or not np.isfinite(noise) or noise <= 0:
-            return np.nan, np.nan, 0
-
-        finder = DAOStarFinder(fwhm=fwhm_guess, threshold=threshold_sigma * noise)
-        tbl = finder(data - bg)
-        if tbl is None or len(tbl) == 0:
+        if tbl is None:
             return np.nan, np.nan, 0
 
         fwhm_list = []
@@ -174,8 +220,35 @@ def calculate_fwhm_ecc(
         if not fwhm_list:
             return np.nan, np.nan, 0
 
-        fwhm_med = np.nanmedian(fwhm_list)
-        ecc_med = np.nanmedian(ecc_list) if ecc_list else np.nan
-        return float(fwhm_med), float(ecc_med), len(fwhm_list)
+        fwhm_arr = np.array(fwhm_list, dtype=float)
+        ecc_arr = np.array(ecc_list, dtype=float)
+
+        # Remove NaNs
+        valid = np.isfinite(fwhm_arr) & np.isfinite(ecc_arr)
+        fwhm_arr = fwhm_arr[valid]
+        ecc_arr = ecc_arr[valid]
+
+        if fwhm_arr.size == 0:
+            return np.nan, np.nan, 0
+
+        # Percentile clipping
+        low_p, high_p = np.nanpercentile(fwhm_arr, [5.0, 95.0])
+        mask = (fwhm_arr >= low_p) & (fwhm_arr <= high_p)
+
+        # Range around fwhm_guess
+        min_f = 0.5 * fwhm_guess
+        max_f = 2.5 * fwhm_guess
+        mask &= (fwhm_arr >= min_f) & (fwhm_arr <= max_f)
+
+        fwhm_arr = fwhm_arr[mask]
+        ecc_arr = ecc_arr[mask]
+
+        if fwhm_arr.size == 0:
+            return np.nan, np.nan, 0
+
+        fwhm_med = float(np.nanmedian(fwhm_arr))
+        ecc_med = float(np.nanmedian(ecc_arr)) if ecc_arr.size > 0 else np.nan
+        n_detected = int(fwhm_arr.size)
+        return fwhm_med, ecc_med, n_detected
     except Exception:
         return np.nan, np.nan, 0

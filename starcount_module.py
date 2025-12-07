@@ -41,6 +41,8 @@
 ║   Aucune IA ni aucun couteau à beurre n’a été blessé durant le                  ║
 ║   développement de ce code.                                                     ║
 ╚═════════════════════════════════════════════════════════════════════════════════╝
+# Par la présente, nous adoubons Fabian, Chevalier des pinces à épiler,
+# pour avoir isolé un cas rarissime et permis d'améliorer l’équilibre ECC / starcount.
 
 
 ╔═════════════════════════════════════════════════════════════════════════════════╗
@@ -62,52 +64,36 @@
 ║ Disclaimer:                                                                     ║
 ║   No AIs or butter knives were harmed in the making of this code.               ║
 ╚═════════════════════════════════════════════════════════════════════════════════╝
+# Hereby we knight Fabian, Noble Knight of the Tweezers,
+# for isolating a rare edge case and helping improve ECC / starcount balance.
+
 """
 
 import numpy as np
-from astropy.stats import sigma_clipped_stats
-from photutils.detection import DAOStarFinder
+from ecc_module import _detect_stars, DEFAULT_THRESHOLD_SIGMA
 
 
-def calculate_starcount(data, fwhm=3.5, threshold_sigma=5.0, *, sky_bg=None, sky_noise=None):
-    """Return number of stars detected in ``data`` using DAOStarFinder.
-
-    Parameters
-    ----------
-    data : array-like
-        Image data array.
-    fwhm : float, optional
-        Full width at half maximum expected for stars (pixels).
-    threshold_sigma : float, optional
-        Detection threshold in multiples of the background noise.
-    sky_bg : float, optional
-        Pre-computed sky background level. When provided (finite), this value
-        is used instead of estimating it again with ``sigma_clipped_stats``.
-    sky_noise : float, optional
-        Pre-computed sky noise (standard deviation). When provided (finite and
-        positive), this value is used to scale the detection threshold.
+def calculate_starcount(
+    data,
+    fwhm: float = 3.5,
+    threshold_sigma: float = DEFAULT_THRESHOLD_SIGMA,
+    *,
+    sky_bg=None,
+    sky_noise=None,
+) -> int:
+    """
+    Return number of stars detected in ``data`` using DAOStarFinder.
+    Uses the same detection logic as ``calculate_fwhm_ecc`` to ensure
+    consistent star selection.
     """
     try:
-        bg = sky_bg if sky_bg is not None and np.isfinite(sky_bg) else None
-        noise = (
-            sky_noise
-            if sky_noise is not None and np.isfinite(sky_noise) and sky_noise > 0
-            else None
+        _, _, sources = _detect_stars(
+            data=np.asarray(data),
+            fwhm=fwhm,
+            threshold_sigma=threshold_sigma,
+            sky_bg=sky_bg,
+            sky_noise=sky_noise,
         )
-
-        if bg is None or noise is None:
-            _, median, std = sigma_clipped_stats(data, sigma=3.0)
-            if bg is None or not np.isfinite(bg):
-                bg = median
-            if noise is None or not np.isfinite(noise) or noise <= 0:
-                noise = std if std > 0 else np.nan
-
-        if not np.isfinite(bg) or not np.isfinite(noise) or noise <= 0:
-            return 0
-
-        finder = DAOStarFinder(fwhm=fwhm, threshold=threshold_sigma * noise)
-        sources = finder(data - bg)
-        return 0 if sources is None else len(sources)
+        return 0 if sources is None else int(len(sources))
     except Exception:
         return 0
-

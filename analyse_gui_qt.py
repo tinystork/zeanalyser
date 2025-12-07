@@ -189,6 +189,20 @@ except ImportError:
     translations = {'en': {}, 'fr': {}}
 
 # ---------------------------------------------------------------------------
+# Icon helper
+# ---------------------------------------------------------------------------
+ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon")
+
+
+def get_app_icon() -> QIcon:
+    """Return the best available application icon from the icon/ folder."""
+    for name in ("zeanalyz_icon.png", "zeanalyz_64x64.png", "zeanalyz.ico"):
+        path = os.path.join(ICON_DIR, name)
+        if os.path.exists(path):
+            return QIcon(path)
+    return QIcon()
+
+# ---------------------------------------------------------------------------
 # Language helpers
 # ---------------------------------------------------------------------------
 try:
@@ -4355,7 +4369,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 # Fallback to text if matplotlib not available
                 stats_text = self._generate_results_stats(rows)
                 dialog = QDialog(self)
-                dialog.setWindowTitle(_("results_visualisation_title"))
+                dialog.setWindowTitle(_tr("results_visualisation_title", "Results visualisation"))
                 dialog.resize(600, 400)
 
                 layout = QVBoxLayout(dialog)
@@ -4376,7 +4390,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
             # Create dialog with tabs
             dialog = QDialog(self)
-            dialog.setWindowTitle(_("results_visualisation_title"))
+            dialog.setWindowTitle(_tr("results_visualisation_title", "Results visualisation"))
             dialog.resize(1200, 800)
 
             layout = QVBoxLayout(dialog)
@@ -4437,18 +4451,18 @@ class ZeAnalyserMainWindow(QMainWindow):
                     self.current_snr_min = lo
                     self.current_snr_max = hi
                     snr_range_label.setText(
-                        _(
+                        _tr(
                             "visu_snr_range_label",
-                            default=f"SNR range: ({lo:.2f}, {hi:.2f})",
+                            f"SNR range: ({lo:.2f}, {hi:.2f})",
                         )
                     )
                     fig_snr.canvas.draw_idle()
 
                 snr_slider.on_changed(update_snr_lines)
                 snr_range_label.setText(
-                    _(
+                    _tr(
                         "visu_snr_range_label",
-                        default=f"SNR range: ({min_snr:.2f}, {max_snr:.2f})",
+                        f"SNR range: ({min_snr:.2f}, {max_snr:.2f})",
                     )
                 )
             else:
@@ -4516,9 +4530,9 @@ class ZeAnalyserMainWindow(QMainWindow):
                     self.current_fwhm_min = lo
                     self.current_fwhm_max = hi
                     fwhm_range_label.setText(
-                        _(
+                        _tr(
                             "visu_fwhm_range_label",
-                            default=f"FWHM range: ({lo:.2f}, {hi:.2f})",
+                            f"FWHM range: ({lo:.2f}, {hi:.2f})",
                         )
                     )
                     fig_fwhm.canvas.draw_idle()
@@ -4587,18 +4601,18 @@ class ZeAnalyserMainWindow(QMainWindow):
                     self.current_ecc_min = lo
                     self.current_ecc_max = hi
                     ecc_range_label.setText(
-                        _(
+                        _tr(
                             "visu_ecc_range_label",
-                            default=f"e range: ({lo:.3f}, {hi:.3f})",
+                            f"Eccentricity range: ({lo:.3f}, {hi:.3f})",
                         )
                     )
                     fig_ecc.canvas.draw_idle()
 
                 ecc_slider.on_changed(update_ecc_lines)
                 ecc_range_label.setText(
-                    _(
+                    _tr(
                         "visu_ecc_range_label",
-                        default=f"e range: ({min_ecc:.3f}, {max_ecc:.3f})",
+                        f"Eccentricity range: ({min_ecc:.3f}, {max_ecc:.3f})",
                     )
                 )
             else:
@@ -4658,18 +4672,18 @@ class ZeAnalyserMainWindow(QMainWindow):
                     self.current_sc_min = lo
                     self.current_sc_max = hi
                     sc_range_label.setText(
-                        _(
+                        _tr(
                             "visu_starcount_range_label",
-                            default=f"Starcount range: ({lo:.0f}, {hi:.0f})",
+                            f"Starcount range: ({lo:.0f}, {hi:.0f})",
                         )
                     )
                     fig_sc.canvas.draw_idle()
 
                 sc_slider.on_changed(update_sc_lines)
                 sc_range_label.setText(
-                    _(
+                    _tr(
                         "visu_starcount_range_label",
-                        default=f"Starcount range: ({min_sc:.0f}, {max_sc:.0f})",
+                        f"Starcount range: ({min_sc:.0f}, {max_sc:.0f})",
                     )
                 )
             else:
@@ -5957,12 +5971,19 @@ def main(argv=None, run_for: int | None = None):
     # Set organization and application name for QSettings persistence
     app.setOrganizationName("ZeSeestarStacker")
     app.setApplicationName("ZeAnalyser")
+
+    app_icon = get_app_icon()
+    if not app_icon.isNull():
+        app.setWindowIcon(app_icon)
+
     # For tests / CI it is useful to optionally auto-quit the event loop
     # after a small delay (milliseconds). Pass run_for to do this.
     if run_for is not None and isinstance(run_for, int):
         # schedule a quit so tests can call main() without blocking forever
         QTimer.singleShot(run_for, app.quit)
     win = ZeAnalyserMainWindow(command_file_path=None, initial_lang=args.lang, lock_language=args.lock_lang)
+    if not app_icon.isNull():
+        win.setWindowIcon(app_icon)
     # Pre-fill from CLI args
     if args.input_dir:
         win.input_path_edit.setText(args.input_dir)
