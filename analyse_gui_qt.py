@@ -576,7 +576,12 @@ class ZeAnalyserMainWindow(QMainWindow):
         self._stored_language_pref = self._read_setting_value("options/language")
         self._stored_skin_pref = self._read_setting_value("options/skin")
 
-        preferred_lang = self.initial_lang or self._stored_language_pref or "system"
+        if self._stored_language_pref:
+            preferred_lang = self._stored_language_pref
+        elif self.initial_lang:
+            preferred_lang = self.initial_lang
+        else:
+            preferred_lang = "system"
         lang_to_apply = preferred_lang
         if preferred_lang == "system":
             lang_to_apply = get_initial_language()
@@ -585,7 +590,10 @@ class ZeAnalyserMainWindow(QMainWindow):
             lock_language(lang_to_apply)
 
         self._preferred_language = preferred_lang
-        self._preferred_skin = self._stored_skin_pref or "system"
+        if self._stored_skin_pref:
+            self._preferred_skin = self._stored_skin_pref
+        else:
+            self._preferred_skin = "system"
 
         try:
             self.apply_skin(self._preferred_skin, persist=False)
@@ -5946,6 +5954,9 @@ def main(argv=None, run_for: int | None = None):
     args, remaining_argv = parser.parse_known_args(argv or [])
 
     app = QApplication.instance() or QApplication(remaining_argv)
+    # Set organization and application name for QSettings persistence
+    app.setOrganizationName("ZeSeestarStacker")
+    app.setApplicationName("ZeAnalyser")
     # For tests / CI it is useful to optionally auto-quit the event loop
     # after a small delay (milliseconds). Pass run_for to do this.
     if run_for is not None and isinstance(run_for, int):
