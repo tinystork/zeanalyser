@@ -66,6 +66,7 @@ import platform
 import time
 import traceback
 from platform_utils import open_path_with_default_app
+import organizer_module
 
 # Set Matplotlib backend for Qt before importing matplotlib
 _env_backend = os.environ.get("MPLBACKEND")
@@ -641,6 +642,13 @@ class ZeAnalyserMainWindow(QMainWindow):
             pass
 
         self._build_ui()
+
+        # Organizer state containers
+        self._organizer_plan_entries = []
+        self._organizer_plan_summary = {}
+        self._organizer_worker = None
+        self._organizer_worker_mode = None
+        self._organizer_dest_user_set = False
 
         # Provide backward-compatible aliases expected by tests
         try:
@@ -1272,6 +1280,88 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.central_tabs = central
         self.project_tab_index = central.addTab(project_widget, _tr('project_tab_title', 'Project'))
 
+        # --- Organizer tab (Seestar header-based sorter) ---
+        organizer_widget = QWidget()
+        organizer_layout = QVBoxLayout(organizer_widget)
+
+        org_source_row = QHBoxLayout()
+        self.organizer_source_label = QLabel(_("organizer_source_label"))
+        self.organizer_source_edit = QLineEdit()
+        self.organizer_source_edit.setReadOnly(True)
+        org_source_row.addWidget(self.organizer_source_label)
+        org_source_row.addWidget(self.organizer_source_edit)
+        organizer_layout.addLayout(org_source_row)
+
+        org_dest_row = QHBoxLayout()
+        self.organizer_dest_label = QLabel(_("organizer_dest_label"))
+        self.organizer_dest_edit = QLineEdit()
+        self.organizer_dest_browse_btn = QPushButton(_("browse_button"))
+        org_dest_row.addWidget(self.organizer_dest_label)
+        org_dest_row.addWidget(self.organizer_dest_edit)
+        org_dest_row.addWidget(self.organizer_dest_browse_btn)
+        organizer_layout.addLayout(org_dest_row)
+
+        org_opts_row = QHBoxLayout()
+        self.organizer_include_subfolders_cb = QCheckBox(_("organizer_include_subfolders"))
+        self.organizer_include_subfolders_cb.setChecked(False)
+        self.organizer_skip_organized_cb = QCheckBox(_("organizer_skip_organized"))
+        self.organizer_skip_organized_cb.setChecked(True)
+        self.organizer_dry_run_cb = QCheckBox(_("organizer_dry_run"))
+        self.organizer_dry_run_cb.setChecked(True)
+        org_opts_row.addWidget(self.organizer_include_subfolders_cb)
+        org_opts_row.addWidget(self.organizer_skip_organized_cb)
+        org_opts_row.addWidget(self.organizer_dry_run_cb)
+        organizer_layout.addLayout(org_opts_row)
+
+        org_mode_row = QHBoxLayout()
+        try:
+            self.organizer_mode_group = QButtonGroup()
+        except Exception:
+            self.organizer_mode_group = None
+        self.organizer_move_rb = QRadioButton(_("organizer_mode_move"))
+        self.organizer_copy_rb = QRadioButton(_("organizer_mode_copy"))
+        self.organizer_move_rb.setChecked(True)
+        if self.organizer_mode_group is not None:
+            try:
+                self.organizer_mode_group.addButton(self.organizer_move_rb)
+                self.organizer_mode_group.addButton(self.organizer_copy_rb)
+            except Exception:
+                pass
+        org_mode_row.addWidget(self.organizer_move_rb)
+        org_mode_row.addWidget(self.organizer_copy_rb)
+        organizer_layout.addLayout(org_mode_row)
+
+        org_btn_row = QHBoxLayout()
+        self.organizer_scan_btn = QPushButton(_("organizer_scan_btn"))
+        self.organizer_apply_btn = QPushButton(_("organizer_apply_btn"))
+        self.organizer_apply_btn.setEnabled(False)
+        self.organizer_cancel_btn = QPushButton(_("organizer_cancel_btn"))
+        self.organizer_cancel_btn.setEnabled(False)
+        org_btn_row.addWidget(self.organizer_scan_btn)
+        org_btn_row.addWidget(self.organizer_apply_btn)
+        org_btn_row.addWidget(self.organizer_cancel_btn)
+        organizer_layout.addLayout(org_btn_row)
+
+        self.organizer_progress = QProgressBar()
+        self.organizer_progress.setRange(0, 100)
+        organizer_layout.addWidget(self.organizer_progress)
+
+        self.organizer_status_label = QLabel("")
+        organizer_layout.addWidget(self.organizer_status_label)
+
+        self.organizer_summary_label = QLabel(_("organizer_summary_title"))
+        self.organizer_summary_text = QTextEdit()
+        self.organizer_summary_text.setReadOnly(True)
+        organizer_layout.addWidget(self.organizer_summary_label)
+        organizer_layout.addWidget(self.organizer_summary_text)
+        try:
+            self.organizer_progress.setValue(0)
+            self.organizer_summary_text.setPlainText("")
+        except Exception:
+            pass
+
+        self.organizer_tab_index = central.addTab(organizer_widget, _tr('organizer_tab_title', 'Organizer'))
+
         # --- Menu bar / Help → About (Phase 7) -------------------------
         try:
             from PySide6.QtWidgets import QMessageBox
@@ -1627,6 +1717,21 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             pass
 
+        # Organizer tab actions
+        try:
+            if isinstance(self.organizer_dest_browse_btn, QPushButton):
+                self.organizer_dest_browse_btn.clicked.connect(self._choose_organizer_dest)
+            if isinstance(self.organizer_scan_btn, QPushButton):
+                self.organizer_scan_btn.clicked.connect(self._on_organizer_scan)
+            if isinstance(self.organizer_apply_btn, QPushButton):
+                self.organizer_apply_btn.clicked.connect(self._on_organizer_apply)
+            if isinstance(self.organizer_cancel_btn, QPushButton):
+                self.organizer_cancel_btn.clicked.connect(self._on_organizer_cancel)
+            if isinstance(self.organizer_dest_edit, QLineEdit):
+                self.organizer_dest_edit.textChanged.connect(self._on_organizer_dest_changed)
+        except Exception:
+            pass
+
         # Connections
         # Connect dialog buttons to pickers
         if isinstance(self.input_btn, QPushButton):
@@ -1663,6 +1768,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         # Watch fields to enable/disable analyser
         if isinstance(self.input_path_edit, QLineEdit):
             self.input_path_edit.textChanged.connect(self._update_analyse_enabled)
+            self.input_path_edit.textChanged.connect(self._sync_organizer_paths_from_project)
         if isinstance(self.log_path_edit, QLineEdit):
             self.log_path_edit.textChanged.connect(self._update_analyse_enabled)
 
@@ -1832,6 +1938,11 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.snr_reject_dir_edit.setText(settings.value('paths/snr_reject', ''))
             if getattr(self, 'trail_reject_dir_edit', None) is not None:
                 self.trail_reject_dir_edit.setText(settings.value('paths/trail_reject', ''))
+            if getattr(self, 'organizer_dest_edit', None) is not None:
+                org_dest = settings.value('paths/organizer_dest', '')
+                if org_dest:
+                    self.organizer_dest_edit.setText(org_dest)
+                    self._organizer_dest_user_set = True
 
             if getattr(self, 'include_subfolders_cb', None) is not None:
                 self.include_subfolders_cb.setChecked(_truthy(settings.value('options/include_subfolders', False)))
@@ -1839,6 +1950,20 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.use_bortle_cb.setChecked(_truthy(settings.value('options/use_bortle', False)))
             if getattr(self, 'analyze_snr_cb', None) is not None:
                 self.analyze_snr_cb.setChecked(_truthy(settings.value('options/analyze_snr', False)))
+            if getattr(self, 'organizer_include_subfolders_cb', None) is not None:
+                self.organizer_include_subfolders_cb.setChecked(
+                    _truthy(settings.value('organizer/include_subfolders', False))
+                )
+            if getattr(self, 'organizer_skip_organized_cb', None) is not None:
+                self.organizer_skip_organized_cb.setChecked(_truthy(settings.value('organizer/skip_organized', True)))
+            if getattr(self, 'organizer_dry_run_cb', None) is not None:
+                self.organizer_dry_run_cb.setChecked(_truthy(settings.value('organizer/dry_run', True)))
+            if getattr(self, 'organizer_move_rb', None) is not None and getattr(self, 'organizer_copy_rb', None) is not None:
+                mode = settings.value('organizer/mode', 'move')
+                if mode == 'copy':
+                    self.organizer_copy_rb.setChecked(True)
+                else:
+                    self.organizer_move_rb.setChecked(True)
             if getattr(self, 'lang_combo', None) is not None and not self.language_locked_cli:
                 lang_pref = settings.value('options/language', self._preferred_language)
                 self._set_combo_to_value(self.lang_combo, lang_pref)
@@ -1847,6 +1972,11 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self._set_combo_to_value(self.skin_combo, skin_pref)
         except Exception:
             # don't fail on broken stored values
+            pass
+
+        try:
+            self._sync_organizer_paths_from_project()
+        except Exception:
             pass
 
     def _save_settings(self) -> None:
@@ -1886,6 +2016,8 @@ class ZeAnalyserMainWindow(QMainWindow):
                 settings.setValue('paths/snr_reject', self.snr_reject_dir_edit.text())
             if getattr(self, 'trail_reject_dir_edit', None) is not None:
                 settings.setValue('paths/trail_reject', self.trail_reject_dir_edit.text())
+            if getattr(self, 'organizer_dest_edit', None) is not None:
+                settings.setValue('paths/organizer_dest', self.organizer_dest_edit.text())
 
             if getattr(self, 'include_subfolders_cb', None) is not None:
                 settings.setValue('options/include_subfolders', bool(self.include_subfolders_cb.isChecked()))
@@ -1893,6 +2025,15 @@ class ZeAnalyserMainWindow(QMainWindow):
                 settings.setValue('options/use_bortle', bool(self.use_bortle_cb.isChecked()))
             if getattr(self, 'analyze_snr_cb', None) is not None:
                 settings.setValue('options/analyze_snr', bool(self.analyze_snr_cb.isChecked()))
+            if getattr(self, 'organizer_include_subfolders_cb', None) is not None:
+                settings.setValue('organizer/include_subfolders', bool(self.organizer_include_subfolders_cb.isChecked()))
+            if getattr(self, 'organizer_skip_organized_cb', None) is not None:
+                settings.setValue('organizer/skip_organized', bool(self.organizer_skip_organized_cb.isChecked()))
+            if getattr(self, 'organizer_dry_run_cb', None) is not None:
+                settings.setValue('organizer/dry_run', bool(self.organizer_dry_run_cb.isChecked()))
+            if getattr(self, 'organizer_move_rb', None) is not None and getattr(self, 'organizer_copy_rb', None) is not None:
+                mode = 'copy' if self.organizer_copy_rb.isChecked() else 'move'
+                settings.setValue('organizer/mode', mode)
             if getattr(self, 'lang_combo', None) is not None:
                 settings.setValue('options/language', self.lang_combo.currentData())
             if getattr(self, 'skin_combo', None) is not None:
@@ -3604,6 +3745,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             if getattr(self, 'central_tabs', None) is not None:
                 try:
                     self.central_tabs.setTabText(self.project_tab_index, _tr('project_tab_title', 'Project'))
+                    self.central_tabs.setTabText(self.organizer_tab_index, _tr('organizer_tab_title', 'Organizer'))
                     self.central_tabs.setTabText(self.results_tab_index, _tr('results_tab_title', 'Results'))
                     self.central_tabs.setTabText(self.stack_tab_index, _tr('stack_tab_title', 'Stack Plan'))
                     self.central_tabs.setTabText(self.preview_tab_index, _tr('preview_tab_title', 'Preview'))
@@ -3634,6 +3776,28 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.use_bortle_cb.setText(zone._("use_bortle_check_label"))
             if getattr(self, 'organize_btn', None) is not None:
                 self.organize_btn.setText(zone._("organize_files_button"))
+            if getattr(self, 'organizer_source_label', None) is not None:
+                self.organizer_source_label.setText(zone._("organizer_source_label"))
+            if getattr(self, 'organizer_dest_label', None) is not None:
+                self.organizer_dest_label.setText(zone._("organizer_dest_label"))
+            if getattr(self, 'organizer_include_subfolders_cb', None) is not None:
+                self.organizer_include_subfolders_cb.setText(zone._("organizer_include_subfolders"))
+            if getattr(self, 'organizer_skip_organized_cb', None) is not None:
+                self.organizer_skip_organized_cb.setText(zone._("organizer_skip_organized"))
+            if getattr(self, 'organizer_dry_run_cb', None) is not None:
+                self.organizer_dry_run_cb.setText(zone._("organizer_dry_run"))
+            if getattr(self, 'organizer_move_rb', None) is not None:
+                self.organizer_move_rb.setText(zone._("organizer_mode_move"))
+            if getattr(self, 'organizer_copy_rb', None) is not None:
+                self.organizer_copy_rb.setText(zone._("organizer_mode_copy"))
+            if getattr(self, 'organizer_scan_btn', None) is not None:
+                self.organizer_scan_btn.setText(zone._("organizer_scan_btn"))
+            if getattr(self, 'organizer_apply_btn', None) is not None:
+                self.organizer_apply_btn.setText(zone._("organizer_apply_btn"))
+            if getattr(self, 'organizer_cancel_btn', None) is not None:
+                self.organizer_cancel_btn.setText(zone._("organizer_cancel_btn"))
+            if getattr(self, 'organizer_summary_label', None) is not None:
+                self.organizer_summary_label.setText(zone._("organizer_summary_title"))
 
             # Project tab: SNR + trail groups
             if getattr(self, 'snr_group_box', None) is not None:
@@ -5319,6 +5483,340 @@ class ZeAnalyserMainWindow(QMainWindow):
                 r['marked'] = False
                 unmarked += 1
         self._log(f"Unmarked {unmarked} images")
+
+    def _sync_organizer_paths_from_project(self):
+        """Keep organizer source/destination aligned with Project input."""
+        try:
+            src = self.input_path_edit.text().strip() if getattr(self, 'input_path_edit', None) is not None else ''
+        except Exception:
+            src = ''
+
+        try:
+            if getattr(self, 'organizer_source_edit', None) is not None:
+                self.organizer_source_edit.setText(src)
+        except Exception:
+            pass
+
+        try:
+            dest_edit = getattr(self, 'organizer_dest_edit', None)
+            if dest_edit is None or not src:
+                return
+            if (not getattr(self, '_organizer_dest_user_set', False)) or not dest_edit.text().strip():
+                dest_edit.setText(os.path.join(src, "_organized"))
+        except Exception:
+            pass
+
+    def _on_organizer_dest_changed(self, *_):
+        try:
+            self._organizer_dest_user_set = True
+        except Exception:
+            pass
+
+    def _choose_organizer_dest(self):
+        if QFileDialog is object:
+            return
+
+        start_dir = ""
+        try:
+            if getattr(self, 'organizer_dest_edit', None) is not None:
+                start_dir = self.organizer_dest_edit.text().strip()
+        except Exception:
+            start_dir = ""
+
+        folder = QFileDialog.getExistingDirectory(self, _("organizer_dest_label"), start_dir or "")
+        if folder:
+            try:
+                self.organizer_dest_edit.setText(folder)
+            except Exception:
+                pass
+            self._organizer_dest_user_set = True
+
+    def _set_organizer_busy(self, busy: bool):
+        has_plan = bool(getattr(self, '_organizer_plan_entries', None))
+        try:
+            if getattr(self, 'organizer_scan_btn', None):
+                self.organizer_scan_btn.setEnabled(not busy)
+            if getattr(self, 'organizer_apply_btn', None):
+                self.organizer_apply_btn.setEnabled((not busy) and has_plan)
+            if getattr(self, 'organizer_cancel_btn', None):
+                self.organizer_cancel_btn.setEnabled(busy)
+            if getattr(self, 'organizer_dest_browse_btn', None):
+                self.organizer_dest_browse_btn.setEnabled(not busy)
+        except Exception:
+            pass
+
+    def _reset_organizer_progress(self):
+        try:
+            self.organizer_progress.setValue(0)
+        except Exception:
+            pass
+        try:
+            self.organizer_status_label.setText("")
+        except Exception:
+            pass
+
+    def _on_organizer_scan(self):
+        src = ""
+        dest = ""
+        try:
+            if getattr(self, 'organizer_source_edit', None) is not None:
+                src = self.organizer_source_edit.text().strip()
+        except Exception:
+            src = ""
+        if not src and getattr(self, 'input_path_edit', None) is not None:
+            try:
+                src = self.input_path_edit.text().strip()
+            except Exception:
+                pass
+        try:
+            if getattr(self, 'organizer_dest_edit', None) is not None:
+                dest = self.organizer_dest_edit.text().strip()
+        except Exception:
+            dest = ""
+
+        if not dest and src:
+            try:
+                dest = os.path.join(src, "_organized")
+                if getattr(self, 'organizer_dest_edit', None) is not None:
+                    self.organizer_dest_edit.setText(dest)
+            except Exception:
+                pass
+
+        if not src or not os.path.isdir(src) or not dest:
+            try:
+                from PySide6.QtWidgets import QMessageBox
+
+                QMessageBox.warning(self, _("msg_warning"), _("organizer_warn_paths_invalid"))
+            except Exception:
+                self._log(_("organizer_warn_paths_invalid"))
+            return
+
+        include_subfolders = False
+        skip_flag = True
+        try:
+            include_subfolders = bool(self.organizer_include_subfolders_cb.isChecked())
+            skip_flag = bool(self.organizer_skip_organized_cb.isChecked())
+        except Exception:
+            pass
+
+        self._reset_organizer_progress()
+        self._organizer_plan_entries = []
+        self._organizer_plan_summary = {}
+        self._organizer_worker_mode = "scan"
+        self._set_organizer_busy(True)
+
+        w = AnalysisWorker(step_ms=5)
+        self._organizer_worker = w
+        self._connect_organizer_worker_signals(w, self._on_organizer_scan_ready)
+
+        w.start(self._organizer_scan_callable, src, dest, include_subfolders, skip_flag)
+
+    def _on_organizer_apply(self):
+        if not getattr(self, '_organizer_plan_entries', None):
+            self._log("Organizer: no plan to apply. Run a scan first.")
+            return
+
+        move_files = True
+        dry_run = True
+        try:
+            move_files = bool(self.organizer_move_rb.isChecked())
+            dry_run = bool(self.organizer_dry_run_cb.isChecked())
+        except Exception:
+            pass
+
+        self._reset_organizer_progress()
+        self._organizer_worker_mode = "apply"
+        self._set_organizer_busy(True)
+
+        w = AnalysisWorker(step_ms=5)
+        self._organizer_worker = w
+        self._connect_organizer_worker_signals(w, self._on_organizer_apply_ready)
+
+        w.start(self._organizer_apply_callable, self._organizer_plan_entries, move_files, dry_run)
+
+    def _on_organizer_cancel(self):
+        if getattr(self, '_organizer_worker', None) is not None:
+            try:
+                self._organizer_worker.request_cancel()
+            except Exception:
+                self._log('Organizer: cancel requested (best-effort)')
+
+    def _connect_organizer_worker_signals(self, worker, results_slot):
+        try:
+            worker.statusChanged.connect(self._on_organizer_status)
+        except Exception:
+            getattr(worker, 'signals', QObject()).statusChanged.connect(self._on_organizer_status)
+
+        try:
+            worker.progressChanged.connect(self._on_organizer_progress)
+        except Exception:
+            getattr(worker, 'signals', QObject()).progressChanged.connect(self._on_organizer_progress)
+
+        try:
+            worker.logLine.connect(self._on_organizer_log)
+        except Exception:
+            getattr(worker, 'signals', QObject()).logLine.connect(self._on_organizer_log)
+
+        try:
+            worker.resultsReady.connect(results_slot)
+        except Exception:
+            getattr(worker, 'signals', QObject()).resultsReady.connect(results_slot)
+
+        try:
+            worker.error.connect(self._on_organizer_error)
+        except Exception:
+            getattr(worker, 'signals', QObject()).error.connect(self._on_organizer_error)
+
+        try:
+            worker.finished.connect(self._on_organizer_finished)
+        except Exception:
+            getattr(worker, 'signals', QObject()).finished.connect(self._on_organizer_finished)
+
+    def _on_organizer_status(self, text: str):
+        try:
+            try:
+                message = self._format_callback_message(text)
+            except Exception:
+                message = str(text)
+            if getattr(self, 'organizer_status_label', None) is not None:
+                self.organizer_status_label.setText(str(message))
+            if hasattr(self, 'statusBar'):
+                self.statusBar().showMessage(str(message))
+        except Exception:
+            pass
+
+    def _on_organizer_progress(self, value: float):
+        try:
+            if getattr(self, 'organizer_progress', None) is not None:
+                self.organizer_progress.setValue(int(round(float(value))))
+        except Exception:
+            pass
+
+    def _on_organizer_log(self, text: str):
+        self._log(str(text))
+
+    def _on_organizer_error(self, text: str):
+        self._log(f"Organizer error: {text}")
+
+    def _on_organizer_finished(self, cancelled: bool):
+        self._set_organizer_busy(False)
+        try:
+            if getattr(self, 'organizer_cancel_btn', None):
+                self.organizer_cancel_btn.setEnabled(False)
+        except Exception:
+            pass
+        self._organizer_worker = None
+        self._organizer_worker_mode = None
+
+    def _on_organizer_scan_ready(self, result):
+        try:
+            entries, summary = result
+        except Exception:
+            entries, summary = [], {}
+
+        self._organizer_plan_entries = entries or []
+        self._organizer_plan_summary = summary or {}
+
+        if getattr(self, 'organizer_apply_btn', None) is not None:
+            try:
+                self.organizer_apply_btn.setEnabled(bool(self._organizer_plan_entries))
+            except Exception:
+                pass
+
+        try:
+            self._render_organizer_summary(summary)
+            self._log(_("organizer_scan_done"))
+        except Exception:
+            pass
+
+    def _on_organizer_apply_ready(self, apply_summary):
+        summary = apply_summary or {}
+        try:
+            self._render_organizer_summary(self._organizer_plan_summary, summary)
+        except Exception:
+            pass
+
+        try:
+            msg = _("organizer_apply_done")
+            self._log(msg)
+            if not summary.get('dry_run') and not summary.get('cancelled'):
+                from PySide6.QtWidgets import QMessageBox
+
+                QMessageBox.information(self, _("msg_info"), _("organizer_paths_moved_warning"))
+        except Exception:
+            pass
+
+        if getattr(self, 'organizer_apply_btn', None) is not None:
+            try:
+                self.organizer_apply_btn.setEnabled(bool(self._organizer_plan_entries))
+            except Exception:
+                pass
+
+    def _render_organizer_summary(self, plan_summary=None, apply_summary=None):
+        text = self._format_organizer_summary(plan_summary, apply_summary)
+        try:
+            if getattr(self, 'organizer_summary_text', None) is not None:
+                self.organizer_summary_text.setPlainText(text)
+        except Exception:
+            pass
+
+    def _format_organizer_summary(self, plan_summary, apply_summary=None) -> str:
+        lines = []
+        if plan_summary:
+            total = plan_summary.get('input_count', 0)
+            processed = plan_summary.get('processed', 0)
+            planned = plan_summary.get('planned', 0)
+            lines.append(f"Scan: processed {processed}/{total}, planned={planned}")
+            lines.append(f"Skipped already organized: {plan_summary.get('skipped_existing', 0)}")
+            lines.append(f"Header errors: {plan_summary.get('errors', 0)}")
+            buckets = plan_summary.get('by_mount', {}) or {}
+            for mount in ("EQ", "ALTZ", "NO_EQMODE"):
+                b = buckets.get(mount, {}) or {}
+                lines.append(
+                    f"{mount}: IRCUT={b.get('IRCUT', 0)} LP={b.get('LP', 0)} UNKNOWN={b.get('UNKNOWN_FILTER', 0)}"
+                )
+            err_files = plan_summary.get('error_files') or []
+            if err_files:
+                lines.append("Errors:")
+                for err in err_files[:5]:
+                    lines.append(f" - {os.path.basename(err.get('file', ''))}: {err.get('error', '')}")
+                if len(err_files) > 5:
+                    lines.append(f" (+{len(err_files) - 5} more)")
+
+        if apply_summary:
+            if lines:
+                lines.append("")
+            lines.append(f"Apply: planned={apply_summary.get('planned', 0)}")
+            lines.append(f"Dry run: {bool(apply_summary.get('dry_run'))}")
+            lines.append(
+                f"Moved={apply_summary.get('moved', 0)} Copied={apply_summary.get('copied', 0)} "
+                f"Skipped={apply_summary.get('skipped', 0)} Errors={apply_summary.get('errors', 0)}"
+            )
+            if apply_summary.get('cancelled'):
+                lines.append("Cancelled")
+
+        return "\n".join(lines)
+
+    def _organizer_scan_callable(self, input_dir, dest_root, include_subfolders, skip_already_organized, callbacks):
+        skip_dirs = set()
+        try:
+            if skip_already_organized and dest_root:
+                skip_dirs.add(os.path.abspath(dest_root))
+        except Exception:
+            pass
+        files = organizer_module.iter_fits_files(input_dir, include_subfolders, skip_dirs_abs=skip_dirs)
+        entries, summary = organizer_module.build_plan(
+            files,
+            input_dir,
+            dest_root,
+            preserve_rel=False,
+            callbacks=callbacks,
+            skip_already_organized=skip_already_organized,
+        )
+        return entries, summary
+
+    def _organizer_apply_callable(self, entries, move_files, dry_run, callbacks):
+        return organizer_module.apply_plan(entries, move_files=move_files, dry_run=dry_run, callbacks=callbacks)
 
     def _organize_files_auto(self):
         """Applique les actions différées sur les fichiers automatiquement (sans UI)."""
