@@ -1523,58 +1523,43 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.stack_tab_index = central.addTab(stack_widget, _tr('stack_tab_title', 'Stack Plan'))
 
         # --- Preview tab (Phase 5) ----------------------------------
+        self._syncing_from_viewer = False
+        self.preview_image_label = None
+        self.preview_hist_label = None
+        self.preview_hist_min = None
+        self.preview_hist_max = None
+        self.preview_hist_apply = None
+        self.preview_stretch_min_label = None
+        self.preview_stretch_max_label = None
+        self.zeviewer = None
+
         preview_widget = QWidget()
         preview_layout = QVBoxLayout(preview_widget)
 
-        # A simple image area + histogram placeholder and basic stretch controls.
-        # Keep imports guarded so tests can import headlessly.
         try:
-            from PySide6.QtGui import QPixmap
-            self.preview_image_label = QLabel(_("no_preview_selected"))
-            self.preview_image_label.setMinimumSize(320, 240)
-            preview_layout.addWidget(self.preview_image_label)
+            import zeviewer as _zeviewer
 
-            # Histogram area – text placeholder for now and simple stretch controls
-            self.preview_hist_label = QLabel(_tr('preview_hist_label_na', 'Histogram: N/A'))
-            preview_layout.addWidget(self.preview_hist_label)
-
-            # Simple stretch controls: min/max spinboxes + apply button
-            try:
-                from PySide6.QtWidgets import QDoubleSpinBox
-                stretch_row = QHBoxLayout()
-                self.preview_hist_min = QDoubleSpinBox()
-                self.preview_hist_min.setRange(-1e12, 1e12)
-                self.preview_hist_min.setDecimals(6)
-                self.preview_hist_min.setValue(0.0)
-                self.preview_hist_max = QDoubleSpinBox()
-                self.preview_hist_max.setRange(-1e12, 1e12)
-                self.preview_hist_max.setDecimals(6)
-                self.preview_hist_max.setValue(1.0)
-                self.preview_hist_apply = QPushButton(_tr('preview_apply_stretch', 'Apply stretch'))
-                self.preview_stretch_min_label = QLabel(_tr('preview_stretch_min', 'Stretch min'))
-                self.preview_stretch_max_label = QLabel(_tr('preview_stretch_max', 'max'))
-                stretch_row.addWidget(self.preview_stretch_min_label)
-                stretch_row.addWidget(self.preview_hist_min)
-                stretch_row.addWidget(self.preview_stretch_max_label)
-                stretch_row.addWidget(self.preview_hist_max)
-                stretch_row.addWidget(self.preview_hist_apply)
-                preview_layout.addLayout(stretch_row)
-            except Exception:
-                # ensure attributes exist in headless mode
-                self.preview_hist_min = getattr(self, 'preview_hist_min', None)
-                self.preview_hist_max = getattr(self, 'preview_hist_max', None)
-                self.preview_hist_apply = getattr(self, 'preview_hist_apply', None)
-                self.preview_stretch_min_label = getattr(self, 'preview_stretch_min_label', None)
-                self.preview_stretch_max_label = getattr(self, 'preview_stretch_max_label', None)
+            if getattr(_zeviewer, "ZeViewerWidget", None) is not None:
+                self.zeviewer = _zeviewer.ZeViewerWidget()
+                preview_layout.addWidget(self.zeviewer)
+                try:
+                    self.zeviewer.sig_path_navigated.connect(self._on_viewer_path_navigated)
+                    self.zeviewer.sig_file_deleted.connect(self._on_viewer_file_deleted)
+                except Exception:
+                    pass
+            if getattr(self, 'zeviewer', None) is not None:
+                try:
+                    self.zeviewer.retranslate_ui()
+                except Exception:
+                    pass
         except Exception:
-            # Ensure attributes exist for headless tests
-            self.preview_image_label = getattr(self, 'preview_image_label', None)
-            self.preview_hist_label = getattr(self, 'preview_hist_label', None)
-            self.preview_hist_min = getattr(self, 'preview_hist_min', None)
-            self.preview_hist_max = getattr(self, 'preview_hist_max', None)
-            self.preview_hist_apply = getattr(self, 'preview_hist_apply', None)
-            self.preview_stretch_min_label = getattr(self, 'preview_stretch_min_label', None)
-            self.preview_stretch_max_label = getattr(self, 'preview_stretch_max_label', None)
+            self.zeviewer = None
+
+        if self.zeviewer is None:
+            fallback_label = QLabel(_("no_preview_selected"))
+            fallback_label.setMinimumSize(320, 240)
+            preview_layout.addWidget(fallback_label)
+            self.preview_image_label = fallback_label
 
         self.preview_tab_index = central.addTab(preview_widget, _tr('preview_tab_title', 'Preview'))
 
@@ -2476,6 +2461,8 @@ class ZeAnalyserMainWindow(QMainWindow):
         We only respond to the first selected row and attempt to load a preview
         for that item (best-effort, headless-friendly).
         """
+        if getattr(self, "_syncing_from_viewer", False):
+            return
         try:
             # get first selected row index (proxy index)
             sel_model = self.results_view.selectionModel()
@@ -2501,6 +2488,73 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             pass
 
+    def _on_viewer_path_navigated(self, path: str):
+        """Sync Results selection when navigation happens inside the viewer."""
+        if not path:
+            return
+        try:
+            self._syncing_from_viewer = True
+            self._select_results_row_for_path(path)
+        finally:
+            self._syncing_from_viewer = False
+
+    def _on_viewer_file_deleted(self, path: str):
+        """Placeholder hook when viewer deletes a file (no model mutation here)."""
+        try:
+            self._preview_last_path = None if getattr(self, '_preview_last_path', None) == path else getattr(self, '_preview_last_path', None)
+        except Exception:
+            pass
+
+    def _select_results_row_for_path(self, full_path: str) -> bool:
+        """Attempt to select the matching Results row for a given filesystem path."""
+        try:
+            import os
+
+            model = getattr(self, '_results_model', None)
+            view = getattr(self, 'results_view', None)
+            if model is None or view is None:
+                return False
+            rows = getattr(model, '_rows', []) or []
+            if not rows:
+                return False
+            target_idx = None
+            norm_target = os.path.normcase(os.path.abspath(full_path))
+            for i, r in enumerate(rows):
+                candidate = ''
+                if r.get('file_path'):
+                    candidate = r.get('file_path')
+                elif r.get('path') and r.get('file'):
+                    candidate = os.path.join(r.get('path'), r.get('file'))
+                elif r.get('path'):
+                    candidate = r.get('path')
+                if candidate and os.path.normcase(os.path.abspath(candidate)) == norm_target:
+                    target_idx = i
+                    break
+            if target_idx is None:
+                return False
+            try:
+                src_index = model.index(target_idx, 0)
+            except Exception:
+                src_index = None
+            try:
+                proxy = getattr(self, '_results_proxy', None)
+                if proxy is not None and src_index is not None:
+                    idx = proxy.mapFromSource(src_index)
+                else:
+                    idx = src_index
+            except Exception:
+                idx = src_index
+            if idx is None or not getattr(idx, 'isValid', lambda: False)():
+                return False
+            try:
+                self.results_view.setCurrentIndex(idx)
+                self.results_view.selectRow(idx.row())
+            except Exception:
+                pass
+            return True
+        except Exception:
+            return False
+
     def select_result_row_by_file(self, file_name: str):
         """Headless-friendly helper: find a result by file name and load its preview.
 
@@ -2525,16 +2579,11 @@ class ZeAnalyserMainWindow(QMainWindow):
         return False
 
     def _load_preview_from_row(self, row: dict):
-        """Best-effort preview loader for a result row.
+        """Load preview for a result row (delegates to ZeViewer when present)."""
 
-        - Looks for file path data in `file_path`, `path`+`file`, or `path`
-        - For FITS files tries to read the primary HDU data (astropy)
-        - For PNG/JPG tries to load it via PIL
-        - Stores results in `self._preview_last_path` and `self._preview_last_histogram`
-        - Updates the preview labels when running with a real Qt.
-        """
         try:
             import os
+
             path = ''
             if 'file_path' in row and isinstance(row.get('file_path'), str) and row.get('file_path'):
                 path = row.get('file_path')
@@ -2544,96 +2593,26 @@ class ZeAnalyserMainWindow(QMainWindow):
                 path = row.get('path')
 
             self._preview_last_path = path
+            self._preview_last_histogram = None
+            self._preview_last_stretch = None
 
-            if not path:
-                # nothing to preview
-                try:
-                    if hasattr(self, 'preview_image_label') and isinstance(self.preview_image_label, QLabel):
-                        self.preview_image_label.setText('No preview available')
-                except Exception:
-                    pass
-                self._preview_last_histogram = None
+            if self.zeviewer is not None:
+                self.zeviewer.load_path(path)
                 return
 
-            # choose loader based on extension
-            lower = path.lower()
-            hist = None
-            data_shape = None
-            if lower.endswith(('.fit', '.fits', '.fts')):
-                try:
-                    from astropy.io import fits
-                    import numpy as _np
-                    with fits.open(path, memmap=False, lazy_load_hdus=True) as hdul:
-                        arr = hdul[0].data
-                        if arr is None:
-                            # no image data
-                            hist = None
-                        else:
-                            # flatten numeric image and compute histogram
-                            try:
-                                a = _np.asarray(arr).astype(float).ravel()
-                                hist = _np.histogram(a[~_np.isnan(a)], bins=64)
-                                data_shape = getattr(arr, 'shape', None)
-                            except Exception:
-                                hist = None
-                except Exception:
-                    hist = None
-            elif lower.endswith(('.png', '.jpg', '.jpeg')):
-                try:
-                    from PIL import Image
-                    import numpy as _np
-                    im = Image.open(path).convert('L')
-                    a = _np.asarray(im).astype(float).ravel()
-                    hist = _np.histogram(a, bins=64)
-                    data_shape = im.size
-                except Exception:
-                    hist = None
-            else:
-                hist = None
+            # Fallback: simple label update when ZeViewer not available
+            if not path:
+                if isinstance(self.preview_image_label, QLabel):
+                    self.preview_image_label.setText('No preview available')
+                return
 
-            self._preview_last_histogram = hist
-
-            # default stretch values (min/max) derived from histogram bin edges
-            try:
-                if hist is not None and isinstance(hist, tuple) and len(hist) >= 2:
-                    edges = hist[1]
-                    if edges is not None and len(edges) > 0:
-                        lo = float(min(edges))
-                        hi = float(max(edges))
-                        self._preview_last_stretch = (lo, hi)
-                        try:
-                            if getattr(self, 'preview_hist_min', None) is not None:
-                                self.preview_hist_min.setValue(lo)
-                            if getattr(self, 'preview_hist_max', None) is not None:
-                                self.preview_hist_max.setValue(hi)
-                        except Exception:
-                            pass
-                    else:
-                        self._preview_last_stretch = None
-                else:
-                    self._preview_last_stretch = None
-            except Exception:
-                self._preview_last_stretch = None
-
-            # update UI placeholders if present
-            try:
-                if hasattr(self, 'preview_image_label') and isinstance(self.preview_image_label, QLabel):
-                    if data_shape is not None:
-                        self.preview_image_label.setText(f"Loaded {os.path.basename(path)} shape={data_shape}")
-                    else:
-                        self.preview_image_label.setText(f"Loaded {os.path.basename(path)}")
-                if hasattr(self, 'preview_hist_label') and isinstance(self.preview_hist_label, QLabel):
-                    if hist is not None:
-                        self.preview_hist_label.setText(f"Histogram bins={len(hist[0])} min={float(min(hist[1])):.1f} max={float(max(hist[1])):.1f}")
-                    else:
-                        self.preview_hist_label.setText('Histogram: N/A')
-            except Exception:
-                pass
+            if isinstance(self.preview_image_label, QLabel):
+                self.preview_image_label.setText(os.path.basename(path))
         except Exception:
-            # defensive: ensure no exceptions leak from previewing
             try:
                 self._preview_last_path = None
                 self._preview_last_histogram = None
+                self._preview_last_stretch = None
             except Exception:
                 pass
 

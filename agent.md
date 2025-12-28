@@ -1,182 +1,139 @@
-# agent.md — ZeAnalyser (Qt) : File Organizer Seestar — EQ/ALTZ + LP/IRCUT (header-driven)
+# agent.md — ZeViewer: Histogramme plein écran + poignées + balance RVB (anti-vert)
 
 ## Objectif
-Ajouter un nouvel onglet **"Organizer"** (Qt / PySide6) pour trier un lot massif (ex: 20 000 FITS) provenant du Seestar
-en créant une arborescence lisible basée UNIQUEMENT sur le header FITS (HDU0), sans lancer l’analyse.
+Améliorer l’onglet Preview (ZeViewer) pour obtenir :
+1) Un histogramme **plein largeur** (lisible), qui se redimensionne avec la fenêtre.
+2) Deux **poignées/barres** (black point / white point) **draggables** sur l’histogramme, reliées aux spinboxes (min/max) et au stretch.
+3) Une **balance RVB automatique** (preview-only) pour éviter le rendu “tout vert” sur les FITS couleur (mosaïques / RGB).
 
-Arborescence cible (par défaut) :
-<INPUT_DIR>/_organized/
-  EQ/
-    IRCUT/
-    LP/
-    UNKNOWN_FILTER/
-  ALTZ/
-    IRCUT/
-    LP/
-    UNKNOWN_FILTER/
-  NO_EQMODE/
-    IRCUT/
-    LP/
-    UNKNOWN_FILTER/
+## Non-objectifs (ne pas faire)
+- Ne pas modifier le pipeline d’analyse ZeAnalyser (onglets Analyzer/Results/Organizer/etc.).
+- Ne pas ajouter de dépendances (pas de matplotlib, pas de nouveaux packages).
+- Ne pas toucher au backend matplotlib / env MPLBACKEND.
+- Ne pas créer de nouvelle UI complexe (pas de menu settings, pas de persistance disque).
 
-Règle : si `EQMODE` est absent (ou indéterminable), on range dans `NO_EQMODE/*` (tri filtre quand même).
+## Scope verrouillé
+- **Un seul fichier modifié : `zeviewer.py`**
+- Aucune modification de `analyse_gui_qt.py` (il instancie déjà `ZeViewerWidget`).
+- Conserver l’API publique de `ZeViewerWidget` (au minimum `load_path()`, `apply_stretch()`, `clear()`, `go_prev/go_next/delete_current`, `retranslate_ui()`).
 
-## Non-objectifs (important)
-- Ne PAS modifier le pipeline d’analyse (analyse_logic, apply_pending_*, stack plan existant).
-- Ne PAS modifier le bouton "Organiser fichiers" existant (celui des rejets/actions différées).
-- L’Organizer doit fonctionner même si aucune analyse n’a été faite.
-
-## Scope fichiers (strict)
-- [x] **NOUVEAU** : `organizer_module.py` (backend pur, sans Qt)
-- [x] **MODIF** : `analyse_gui_qt.py` (ajout onglet + câblage worker)
-- [x] **MODIF** : `zone.py` (i18n fr/en : labels, messages)
-
-⚠️ Ne toucher à rien d’autre.
+## Contexte technique actuel (à respecter)
+- Chargement asynchrone via `PreviewLoadRunnable` et `QThreadPool` limité à 1 thread.
+- `apply_stretch()` convertit un tableau numpy vers `QImage` et l’affiche.
+- L’histogramme est actuellement rendu dans un `QLabel` avec un pixmap de largeur = nb bins, ce qui le rend minuscule.
+- La sécurité mémoire QImage doit être stricte : `np.ascontiguousarray(...)` + `QImage(...).copy()`.
 
 ---
 
-## Spécification (basée sur ton header Seestar)
+## Plan d’implémentation
 
-### Tags à lire (HDU0)
-- `EQMODE` (int) : 1 = EQ, 0 = ALTZ
-- `FILTER` (str) : ex 'IRCUT' ou 'LP' (ou autre)
+### [x] 1) Remplacer l’affichage histogramme par un widget custom (plein largeur)
+Créer une classe Qt `ZeHistogramWidget(QWidget)` (dans le bloc `else:` quand Qt est dispo) :
+- Propriétés internes :
+  - `self._hist` (dict `{counts, edges, channels}`)
+  - `self._lo`, `self._hi` (niveaux courants)
+  - `self._drag_handle` ∈ {"lo","hi",None}
+- Signaux :
+  - `sig_levels_changing = Signal(float, float)` (émis pendant drag, throttlé côté parent)
+  - `sig_levels_changed = Signal(float, float)` (émis au mouseRelease)
+- Rendu :
+  - `paintEvent()` dessine :
+    - fond sombre
+    - histogramme RGB si `counts` shape=(3,bins), sinon mono
+    - barres verticales lo/hi (couleur distincte)
+  - IMPORTANT : dessiner à la taille réelle du widget (`self.rect()`), donc histogramme “plein écran” horizontal.
+- Interaction :
+  - `mousePressEvent`: sélectionner la poignée la plus proche (lo/hi) si click à ±N pixels d’une barre, sinon sélectionner la plus proche par distance.
+  - `mouseMoveEvent`: convertir `x` -> valeur data via `edges[0]..edges[-1]`, clamp, maintenir `lo < hi` (avec epsilon).
+  - `mouseReleaseEvent`: fin drag, émettre `sig_levels_changed`.
 
-Ton header type :
-- `EQMODE  = 1`
-- `FILTER  = 'IRCUT'`
+UI :
+- Dans `_build_ui()` : remplacer `self.hist_label = QLabel("")` par `self.hist_widget = ZeHistogramWidget()`
+- `SizePolicy` : `Expanding` en largeur, `Minimum` en hauteur, et min height ~ 120.
 
-### Classification mount-mode
-- si `EQMODE` absent → `NO_EQMODE`
-- sinon :
-  - `int(EQMODE) == 1` → `EQ`
-  - `int(EQMODE) == 0` → `ALTZ`
-  - erreur conversion → `NO_EQMODE`
+### [x] 2) Synchronisation poignées <-> spinboxes <-> stretch (avec garde anti-récursion)
+Dans `ZeViewerWidget` :
+- Ajouter champs :
+  - `self._levels_sync_guard = False`
+  - `self._pending_levels = None`
+  - `self._levels_timer = QTimer(...)` (ou `QTimer.singleShot` pattern), interval ~ 30–50ms
+- Connexions :
+  - `hist_widget.sig_levels_changing.connect(self._on_hist_levels_changing)`
+  - `hist_widget.sig_levels_changed.connect(self._on_hist_levels_changed_final)`
+- Implémenter :
+  - `_on_hist_levels_changing(lo,hi)` :
+    - Met à jour les spinboxes (sans boucler) : si `_levels_sync_guard` -> ignore
+    - Stocker `self._pending_levels=(lo,hi)` et démarrer timer si pas actif
+  - Timer callback :
+    - Si `pending_levels` existe : appeler `apply_stretch(lo,hi)` (au plus 20–30 fps)
+  - `_on_hist_levels_changed_final(lo,hi)` :
+    - Appliquer immédiatement `apply_stretch(lo,hi)` (et effacer pending)
+- Quand `apply_stretch()` est appelé (par bouton, auto-level, etc.) :
+  - Mettre à jour l’histogramme : `hist_widget.set_levels(lo,hi)` + `update()`
 
-### Classification filtre
-- si `FILTER` absent/empty → `UNKNOWN_FILTER`
-- sinon normaliser : `val = str(FILTER).strip().upper()`
-  - si `val` contient `IRCUT` → `IRCUT`
-  - sinon si `val` contient `LP` → `LP`
-  - sinon → `UNKNOWN_FILTER`
+⚠️ Verrou : aucune récursion infinie (guard obligatoire).
+- Utiliser `self._levels_sync_guard=True` pendant `spinbox.setValue(...)`.
+- Ne pas connecter `valueChanged` des spinboxes pour l’instant (on garde “Apply stretch” + drag handles).
 
-⚠️ On ne tente pas d’inventer d’autres filtres. Simple, stable.
+### [x] 3) Corriger le rendu “vert” par une auto white-balance preview-only
+Implémenter une balance “gray-world” **dans le worker preview** (pas dans l’analyse) :
+- Ajouter une fonction pure helper (en bas du fichier, côté helpers) :
+  - `_compute_gray_world_gains_rgb(arr_rgb, sample_max=200000) -> (gains_rgb_tuple, medians_tuple)`
+    - Échantillonner des pixels (pas flatten channels mélangés) :
+      - Sélectionner un sous-échantillonnage régulier sur (H,W) pour limiter à ~sample_max pixels.
+      - Pour chaque canal, prendre `median` des valeurs finies.
+    - Gains :
+      - cible = median_G (ou median moyenne des 3)
+      - gain_R = cible / median_R, gain_G = 1.0, gain_B = cible / median_B
+      - clamp gains, ex : [0.25, 4.0] (éviter délire si median quasi 0)
+      - si median_R/B invalides (nan, <=0), fallback gain=1.
+- Dans `PreviewLoadRunnable.run()` :
+  - Après `linear = self._load_image(...)` :
+    - si `linear.ndim==3 and linear.shape[2]==3` :
+      - calculer gains
+      - `balanced = linear * gains` (broadcast float32)
+      - Utiliser `balanced` pour :
+        - `hist_sample`, `stats`, `hist`, `auto_lo/auto_hi`
+      - Mettre dans payload :
+        - `payload["linear_ds"] = balanced` (utilisé pour display)
+        - `payload["wb_gains"] = gains`
+    - sinon : garder comportement actuel.
+- Dans `ZeViewerWidget._on_worker_result()` :
+  - stocker `self._wb_gains = payload.get("wb_gains")`
+  - `self._linear_ds = payload["linear_ds"]` (donc déjà équilibrée si RGB)
+  - IMPORTANT : stats/hist/auto doivent correspondre à `linear_ds` affichée.
 
----
+### [x] 4) Sécurité mémoire QImage (MUST)
+Dans `apply_stretch()` :
+- Avant création `QImage`, forcer `disp = np.ascontiguousarray(disp)`
+- Conserver `QImage(...).copy()` (déjà présent).
+- Idem grayscale : contigu + copy.
 
-## Règles de déplacement/copie (anti-casse)
-- Par défaut : destination `<input_dir>/_organized`
-- `Dry run` = ON par défaut : construit un plan + stats, sans modifier le disque.
-- Mode : `Move` ou `Copy` (Move par défaut)
-- Collisions : ne JAMAIS écraser. Si dst existe → suffixe `__01`, `__02`, etc.
-- Anti-boucle : si `dest_root` est dans `input_dir`, ignorer tous fichiers déjà sous `dest_root`.
-- Skip already organized = ON par défaut.
-
----
-
-## Performance / lot massif
-- Lire le header uniquement (pas de data)
-- Utiliser `astropy.io.fits.getheader(path, 0)` (fiable)
-- Scanner en `ThreadPoolExecutor` (IO bound)
-  - `max_workers = min(8, os.cpu_count() or 4)`
-- Vérifier `callbacks['is_cancelled']()` régulièrement (scan + apply).
-
----
-
-## API backend (organizer_module.py)
-
-### 1) Découverte fichiers
-`iter_fits_files(input_dir, include_subfolders, skip_dirs_abs) -> list[str]`
-- extensions : .fit/.fits (case-insensitive)
-- ignore `dest_root` (skip_dirs_abs)
-
-### 2) Lecture tags rapide
-`read_seestar_tags(path) -> dict`
-- retourne :
-  - `eqmode_raw` (ou None)
-  - `filter_raw` (ou None)
-  - `error` (str) si header illisible
-
-### 3) Classifs
-`classify_mount(eqmode_raw) -> "EQ"|"ALTZ"|"NO_EQMODE"`
-`classify_filter(filter_raw) -> "IRCUT"|"LP"|"UNKNOWN_FILTER"`
-
-### 4) Planification
-`build_plan(files, input_dir, dest_root, preserve_rel=False) -> (entries, summary)`
-- `entries`: liste dict avec
-  - `src_abs`, `dst_abs`, `mount_bucket`, `filter_bucket`, `status`
-- `summary`: counts total + par buckets + erreurs
-
-### 5) Application
-`apply_plan(entries, move_files: bool, dry_run: bool, callbacks: dict) -> dict`
-- applique move/copy
-- collisions → suffixe
-- cancel-safe
-- retourne bilan : moved/copied/skipped/errors
-
----
-
-## Intégration Qt (analyse_gui_qt.py)
-
-### UI nouvel onglet "Organizer"
-- Source folder (read-only) : reflète l’input du Project tab
-- Destination folder : défaut `<input_dir>/_organized` + Browse
-- Options :
-  - include_subfolders
-  - dry_run
-  - move/copy (radio)
-  - skip_already_organized
-- Boutons :
-  - Scan / Preview
-  - Apply
-  - Cancel
-- Zone Summary (multi-lignes) : totaux + breakdown (EQ/ALTZ/NO_EQMODE) x (LP/IRCUT/UNKNOWN)
-
-### Exécution thread
-- Réutiliser `AnalysisWorker.start(analysis_callable=...)`
-- 2 callables :
-  - `_organizer_scan_callable(input_dir, dest_root, include_subfolders, skip, callbacks)`
-    -> retourne `(entries, summary)`
-  - `_organizer_apply_callable(entries, move_files, dry_run, callbacks)`
-    -> retourne `apply_summary`
-
-### UX guard rail (très important)
-Après un APPLY (Move/Copy), afficher un message :
-- “Les fichiers ont été déplacés/copés. Si vous aviez des résultats d’analyse affichés, ils peuvent référencer d’anciens chemins.
-  Relancez une analyse en pointant sur le dossier _organized.”
-
-⚠️ Ne pas auto-modifier le project path (disjoint), mais prévenir.
+### [x] 5) Compat et robustesse
+- Le mode headless / Qt absent doit continuer à importer sans crash :
+  - Si besoin, définir un dummy `ZeHistogramWidget` (no-op) dans la branche `if not QT_AVAILABLE or np is None`.
+- Ne pas changer la logique de tri existante (stable sort déjà ok).
+- Ne pas modifier la logique navigation/suppression.
 
 ---
 
-## i18n (zone.py)
-Ajouter clés fr/en :
-- [x] organizer_tab_title
-- [x] organizer_source_label, organizer_dest_label
-- [x] organizer_include_subfolders, organizer_dry_run
-- [x] organizer_mode_move, organizer_mode_copy
-- [x] organizer_skip_organized
-- [x] organizer_scan_btn, organizer_apply_btn, organizer_cancel_btn
-- [x] organizer_summary_title
-- [x] organizer_scan_done, organizer_apply_done, organizer_error, organizer_warn_paths_invalid
-- [x] organizer_paths_moved_warning
-
-- [x] Mettre à jour `_retranslate_ui()` pour cet onglet.
+## Critères d’acceptation (Definition of Done)
+1) L’histogramme occupe **toute la largeur disponible** et reste lisible après resize.
+2) Deux barres lo/hi sont visibles et **draggables** à la souris.
+3) Pendant le drag : l’image se met à jour (throttlée) et les spinboxes reflètent les valeurs.
+4) Le rendu “vert” est **fortement réduit** sur FITS couleur (RGB) via auto WB preview-only.
+5) Aucune régression :
+   - Navigation left/right, touches clavier, delete confirm intact
+   - Open file dialog démarre dans le bon dossier
+   - Import headless ne casse pas
+6) Pas de dépendances ajoutées, pas de modifications hors `zeviewer.py`.
 
 ---
 
-## Critères d’acceptation
-1) Avec ton header type : un fichier EQMODE=1 + FILTER=IRCUT va dans `EQ/IRCUT/`
-2) Si EQMODE absent : va dans `NO_EQMODE/<filter>/`
-3) Dry-run ne change rien sur disque.
-4) Aucun écrasement en cas de collisions.
-5) Pas de régression : analyse/organize existants inchangés.
-
----
-### Nom des callbacks (côté organizer_module)
-Dans la partie API backend, tu peux préciser :
-
-Dans organizer_module, utiliser uniquement les callbacks
-callbacks['status'], callbacks['progress'], callbacks['log'], callbacks['is_cancelled']
-(noms alignés sur AnalysisWorker), et tester leur présence avec callbacks.get(...) avant appel.
-
-Ça évite que Codex invente des noms exotiques du type update_progress.
+## Notes d’implémentation (détails attendus)
+- Couleurs histogramme : rester simple (RGB) ; pas besoin d’axes numériques pour ce patch.
+- Epsilon pour lo/hi : ex `eps = 1e-9 * max(1, abs(hi-lo))` ou petit constant.
+- Conversion position -> valeur :
+  - utiliser `edges[0]..edges[-1]` pour mapping linéaire
+  - clamp aux bornes
+- Performances : timer 30–50ms, ne pas recalculer histogramme pendant drag (juste redraw barres + apply stretch).

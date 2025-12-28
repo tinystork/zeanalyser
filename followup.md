@@ -1,50 +1,72 @@
-# followup.md — Checklist & test lot massif (Organizer)
+# followup.md — QA & vérifications ZeViewer histogram handles + anti-vert
 
-## Test rapide (6 fichiers)
-- [ ] Créer un dossier avec FITS :
-  - 2x EQMODE=1 FILTER=IRCUT
-  - 2x EQMODE=0 FILTER=LP
-  - 1x EQMODE absent FILTER=IRCUT
-  - 1x header cassé / FILTER absent
+## Checklist de QA manuelle (Windows / Linux / macOS)
+### [ ] A) Histogramme plein écran
+1. Lancer ZeAnalyser Qt.
+2. Onglet Preview → Open file → sélectionner un FITS (mono + RGB si possible).
+3. Vérifier :
+   - l’histogramme remplit la largeur
+   - pas de “petit histogramme collé à gauche”
+4. Redimensionner la fenêtre :
+   - l’histogramme se redessine et reste plein écran.
 
-- [ ] Onglet Organizer → Scan/Preview (dry run ON)
-  - Vérifier summary :
-    - EQ: IRCUT=2
-    - ALTZ: LP=2
-    - NO_EQMODE: IRCUT=1
-    - erreurs header = 1 (ou UNKNOWN_FILTER selon le cas)
+### [ ] B) Poignées / barres lo-hi (black/white points)
+1. Charger une image, observer les deux barres verticales sur l’histogramme.
+2. Drag la barre “lo” vers la droite :
+   - l’image se renforce en contraste (noirs plus denses)
+   - le spinbox min change
+3. Drag la barre “hi” vers la gauche :
+   - hautes lumières plus compressées
+   - le spinbox max change
+4. Vérifier que lo ne peut pas dépasser hi (clamp correct).
+5. Lâcher la souris :
+   - l’état final est appliqué
+   - pas de freeze / pas de lag cumulatif
 
-- [ ] Dry run OFF → Apply (Move)
-  - Vérifier arborescence `_organized` correcte
-  - Vérifier collisions (si tu dupliques les noms) : suffixes __01 etc
+### [ ] C) Anti-vert (auto white-balance preview-only)
+1. Charger un FITS couleur (mosaïque / RGB).
+2. Comparer avant/après :
+   - le rendu ne doit plus être “tout vert”
+   - un fond neutre doit apparaître (ou au minimum beaucoup moins vert)
+3. Vérifier que la balance ne s’applique pas aux images mono (aucun changement).
 
-## Test lot réel (20 000 FITS)
-- [ ] Destination : `<input_dir>/_organized`
-- [ ] Include subfolders : ON si l'arbre est profond
-- [ ] Skip already organized : ON
-- [ ] Scan (dry run ON) : vérifier counts
-- [ ] Apply (Move)
+### [ ] D) Zéro régression navigation / delete
+1. Dans un dossier avec plusieurs images :
+   - boutons Previous/Next ok
+   - touches gauche/droite ok
+2. Delete :
+   - confirmation Yes/No ok
+   - checkbox “don’t show again this session” ok
+3. Après suppression :
+   - on passe à l’image suivante (ou clear si plus d’images)
 
-Attendus :
-- Pas d'explosion RAM (header only)
-- Progress régulier
-- Cancel fonctionne sans crash
-
-## Après Move : avertissement utilisateur
-- [x] Revenir onglet Project et choisir `_organized` comme dossier pour les analyses futures
-- [x] Si des résultats d'analyse étaient ouverts avant : relancer une analyse (chemins obsolètes)
-
-## Si beaucoup de UNKNOWN_FILTER
-- [ ] Vérifier que le keyword est bien `FILTER` partout
-- [ ] Sinon, étendre (optionnel) read_seestar_tags pour fallback sur un second keyword
-  MAIS ne le faire que si nécessaire (éviter régression).
+### [ ] E) Pas de régression “Open file” dossier
+1. Ouvrir une image dans un dossier A.
+2. Ouvrir une image dans un dossier B.
+3. Cliquer Open file à nouveau :
+   - le dialog doit démarrer dans B (dernier dossier utilisé / current image dir).
 
 ---
-### Clé de traduction pour le message d’avertissement post-Apply
-Comme dit plus haut, ajouter une clé dans la section i18n :
 
-organizer_paths_moved_warning
+## Vérifications techniques rapides (sanity)
+- [x] L’import de `zeviewer.py` ne doit pas casser si PySide6 absent (headless fallback).
+- [x] `apply_stretch()` doit utiliser `np.ascontiguousarray(...)` + `QImage(...).copy()` pour éviter crash/artefacts.
+- [x] Aucun changement de threadpool (toujours 1 thread dédié preview).
+- [x] Pas de dépendances additionnelles.
 
-Et une phrase :
+---
 
-Après un APPLY réussi, afficher zone._("organizer_paths_moved_warning") dans une boîte de dialogue d’information (et ne pas modifier automatiquement le project path).
+## Signaux d’alerte (à corriger si observés)
+- Histogramme flou / pixellisé excessif : vérifier le `paintEvent()` (dessin vectoriel simple, pas de scaling pixmap).
+- Drag qui “rame” : réduire fréquence d’apply via timer (50ms), ou n’appliquer que sur release.
+- Image toujours très verte :
+  - clamp gains trop faible
+  - médianes calculées sur mauvais échantillon
+  - data pas RGB (ordre des canaux) → si suspicion, log optionnel via env `ZE_VIEWER_DEBUG`.
+
+---
+
+## “Done” final
+- Commit unique : “ZeViewer: resizable histogram + draggable levels + preview white balance”
+- Fichier modifié : `zeviewer.py` uniquement
+
