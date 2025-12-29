@@ -1,45 +1,85 @@
-# agent.md - Hotfix autoload Preview depuis Project (Qt)
+# agent.md — ZeViewer Preview: ajouter un QSplitter VERTICAL (haut vs histogramme)
 
 ## Objectif
-Corriger le bug : quand l’utilisateur choisit un dossier dans l’onglet **Project** puis va dans **Preview**, la première image du dossier **doit** s’afficher automatiquement (sans “Open file”).
+Dans `zeviewer.py`, dans l’onglet Preview, ajouter un **QSplitter vertical** entre :
+- **Bloc haut** : preview (QSplitter horizontal image + header)
+- **Bloc bas** : histogramme + contrôles stretch + stats
 
-## Constat
-Le viewer peut savoir autoload, mais `analyse_gui_qt.py` ne déclenche pas l’autoload au changement d’onglet (pas de wiring `QTabWidget.currentChanged` / pas d’appel `maybe_autoload_from_project_dir`).
+But : éviter que l’image soit “rétatinée” et permettre un redimensionnement vertical naturel (comme sur la capture).
 
-## Périmètre STRICT
-- Modifier uniquement `analyse_gui_qt.py`
-- Ne pas modifier le comportement de l’onglet Project (browse, champs, logique existante)
-- Ne pas toucher aux autres onglets (Results/Stack/Organizer/etc.)
-- Aucune régression multi-OS (Windows/macOS/Linux)
+## Contraintes anti-régression
+- Scope strict : **zeviewer.py uniquement**.
+- Ne pas toucher à la logique de chargement, navigation, suppression, histogramme, stretch, autoload.
+- Ne pas ajouter de styles/couleurs hardcodés (le thème/skin pilote).
+- Pas de freeze UI : aucune nouvelle lecture disque côté thread UI.
+- Garder le threadpool viewer dédié tel quel (1 thread), ne pas toucher au global.
 
-## Tâches
-- [x] **Identifier l’instance du QTabWidget principal**
-  - c’est celui qui contient Project/Organizer/Results/Stack Plan/Preview/Settings.
+## Design attendu
+- La toolbar (boutons Prev/Next/Delete/Open/Fit/Zoom/Reset/Clear) reste **hors splitter** (en haut, fixe).
+- Juste en dessous : `QSplitter(Qt.Vertical)` :
+  - Widget 0 (haut) : le splitter horizontal existant (image+header)
+  - Widget 1 (bas) : le panneau histogramme/stretch existant
 
-- [x] **Connecter le signal de changement d’onglet**
-  - Après la création des tabs et après avoir stocké `self.preview_tab_index`
-  - Ajouter :
-    - `self._main_tabs.currentChanged.connect(self._on_main_tab_changed)` (ou équivalent)
-  - Le wiring doit être entouré d’un try/except pour rester safe en environnements partiels.
+## Implémentation (étapes précises)
 
-- [x] **Implémenter `_on_main_tab_changed(self, idx: int)`**
-  - Si `idx != self.preview_tab_index` -> return
-  - Lire `project_dir = (self.input_path_edit.text() or "").strip()`
-  - Si `project_dir` vide ou non-dir -> return
-  - Récupérer l’instance du viewer Preview (ex: `self.zeviewer`, `self.preview_viewer`, etc.)
-    - Si introuvable -> return (ne pas crash)
-  - Si le viewer expose `maybe_autoload_from_project_dir` -> l’appeler avec `project_dir`
+### 1) Imports
+Ajouter dans les imports PySide6 (si pas déjà) :
+- `QSplitter`
+- `QWidget`
+- `QVBoxLayout`
+- `QSizePolicy` (si tu dois ajuster les policies)
 
-- [x] **Gérer le cas “Preview onglet par défaut au démarrage”**
-  - Ajouter un `QTimer.singleShot(0, ...)` qui appelle `_on_main_tab_changed(self._main_tabs.currentIndex())`
-  - Safe guard try/except
+### 2) Regrouper le bas (histogramme) dans un conteneur unique
+Dans `ZeViewerWidget._build_ui()` :
+- Créer `self.hist_container = QWidget()`
+- Mettre **tout ce qui est histogramme + stats + stretch controls** dans un `QVBoxLayout(self.hist_container)`
+  - IMPORTANT : tu ne changes pas les widgets, tu les **déplaces** dans ce layout.
 
-## Verrous anti-régression
-- Ne pas changer la logique de Project (juste lire `input_path_edit.text()`).
-- Ne pas forcer de scan lourd dans `analyse_gui_qt.py` (tout est délégué au viewer).
-- Aucune exception non gérée : tout le wiring doit être défensif.
+Astuce : si aujourd’hui tu ajoutes au layout principal des éléments du bas via `layout.addWidget(...)`,
+remplace-les par `hist_layout.addWidget(...)`.
 
-## Définition de Done
-- Choisir Input Folder dans Project -> switch Preview -> une image s’affiche sans “Open file”.
-- Si aucun dossier Project -> switch Preview -> rien ne s’affiche, aucun crash.
-- Aucun changement de comportement de Project.
+### 3) Ajouter le QSplitter vertical
+Toujours dans `_build_ui()` :
+- Tu as déjà un splitter horizontal (souvent `self.splitter` ou `self.hsplitter`) contenant `image_view` et `header_view`.
+- Créer :
+  - `self.vsplitter = QSplitter(Qt.Vertical)`
+  - `self.vsplitter.setChildrenCollapsible(False)`
+
+Puis :
+- `self.vsplitter.addWidget(self.splitter)`   # le splitter horizontal existant (image+header)
+- `self.vsplitter.addWidget(self.hist_container)`
+
+Et dans le layout principal :
+- Remplacer l’ajout direct de `self.splitter` + histogram widgets par **un seul** `layout.addWidget(self.vsplitter)`.
+
+### 4) Taille initiale + policies (pour éviter l’écrasement)
+Réglages recommandés :
+- `self.splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)`
+- `self.vsplitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)`
+- Donner une hauteur minimale raisonnable au bas :
+  - `self.hist_container.setMinimumHeight(220)` (ou 250 selon ton UI)
+- Priorité au haut :
+  - `self.vsplitter.setStretchFactor(0, 4)`
+  - `self.vsplitter.setStretchFactor(1, 1)`
+- (optionnel mais efficace) tailles initiales :
+  - `self.vsplitter.setSizes([700, 300])`
+    (valeurs “safe”, Qt adaptera selon la taille de fenêtre)
+
+### 5) Ne pas casser les hooks existants
+- Ne change pas les noms/refs des widgets histogramme existants (canvas, controls, labels).
+- Ne change pas les connexions signals/slots.
+- Juste du **re-layouting**.
+
+## Critères d’acceptation
+- [ ] L’image n’est plus écrasée verticalement à l’ouverture (elle a de la hauteur).
+- [ ] Un handle de splitter vertical apparaît entre le bloc haut et l’histogramme, redimensionnable.
+- [ ] Le comportement histogramme/stretch/stats est inchangé.
+- [ ] Le thème/skin est respecté (pas de fond blanc imposé).
+- [ ] Aucun lag/freeze supplémentaire.
+
+## Tests manuels
+1) Ouvrir un FITS : image + header OK, histogramme OK.
+2) Redimensionner la fenêtre : le bloc haut grandit/rétrécit correctement.
+3) Drag du handle vertical : le ratio haut/bas change en live.
+4) Next/Prev : tout reste cohérent.
+5) Clear : comportement inchangé.

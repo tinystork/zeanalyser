@@ -1,20 +1,20 @@
-# followup.md - Validation Hotfix autoload Preview
+# followup.md — Vérifs et checklist (splitter vertical)
 
-- [ ] **Cas 1 - Autoload OK**
-  - Lancer l’app
-  - Onglet Project : choisir un dossier avec des images (fit/fits/png)
-  - Aller sur Preview
-  - Attendu : la première image apparaît automatiquement.
+## Checklist code
+- [ ] Modifs limitées à `zeviewer.py`.
+- [ ] Toolbar hors splitter (inchangée).
+- [ ] `self.vsplitter` créé en `Qt.Vertical`, `childrenCollapsible=False`.
+- [ ] Le bas est regroupé dans `self.hist_container` (un seul widget ajouté au splitter).
+- [ ] `setStretchFactor(0,4)` et `setStretchFactor(1,1)` (ou équivalent).
+- [ ] `hist_container` a un `minimumHeight` pour éviter qu’il disparaisse.
+- [ ] Aucun changement aux signaux/slots histogramme/stretch.
 
-- [ ] **Cas 2 - Pas de Project folder**
-  - Lancer l’app
-  - Ne rien choisir dans Project
-  - Aller Preview
-  - Attendu : rien ne charge, aucun crash.
+## Tests manuels
+- Ouvrir FITS → image non écrasée, header affiché, histogramme OK.
+- Drag splitter vertical → haut/bas se redimensionnent.
+- Resize fenêtre → layout stable.
+- Next/Prev → tout se met à jour normalement.
+- Clear → vide image + header, histogramme reste conforme.
 
-- [ ] **Cas 3 - Preview par défaut (si applicable)**
-  - Configurer l’app pour démarrer sur Preview (ou simuler via code)
-  - Attendu : autoload se déclenche via QTimer.singleShot.
-
-- [ ] **Cas 4 - Non-régression Project**
-  - Browse, include_subfolders, log path, boutons Analyse/Organize : inchangés.
+## Sanity
+- `python -m compileall zeviewer.py`

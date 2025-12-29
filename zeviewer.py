@@ -82,6 +82,7 @@ try:  # pragma: no cover - GUI runtime only
         QColor,
         QPen,
         QPolygonF,
+        QFontDatabase,
     )
     from PySide6.QtWidgets import (
         QWidget,
@@ -97,6 +98,8 @@ try:  # pragma: no cover - GUI runtime only
         QMessageBox,
         QSizePolicy,
         QFileDialog,
+        QSplitter,
+        QPlainTextEdit,
     )
 except Exception:  # pragma: no cover - allow import without Qt
     QT_AVAILABLE = False
@@ -485,7 +488,7 @@ else:
         def run(self):
             payload = {"token": self.token, "path": self.path}
             try:
-                linear = self._load_image(self.path)
+                linear, header_text = self._load_image(self.path)
                 if linear is None:
                     payload["error"] = "no_preview"
                     self.signals.result.emit(payload)
@@ -500,6 +503,7 @@ else:
                         preview_arr = np.ascontiguousarray(linear * np.asarray(gains, dtype=np.float32))
                         payload["wb_gains"] = gains
 
+                payload["header_text"] = header_text
                 payload["linear_ds"] = preview_arr
                 payload["hist_sample"] = _build_hist_sample(preview_arr, self.sample_max)
                 payload["stats"] = _compute_stats(payload["hist_sample"])
@@ -520,18 +524,19 @@ else:
 
             lower = (path or "").lower()
             arr = None
+            header_text = None
             if lower.endswith((".fit", ".fits", ".fts")):
-                arr = _load_fits_array(path)
+                arr, header_text = _load_fits_preview_and_header(path)
             elif lower.endswith((".png", ".jpg", ".jpeg")):
                 arr = _load_pil_array(path)
             if arr is None or np is None:
-                return None
+                return None, None
             arr = np.ascontiguousarray(arr, dtype=np.float32)
             h, w = arr.shape[:2]
             if self.max_dim and max(h, w) > self.max_dim:
                 step = int(math.ceil(max(h, w) / float(self.max_dim)))
                 arr = arr[::step, ::step].copy()
-            return arr
+            return arr, header_text
 
     class PickFirstFileSignals(QObject):
         picked = Signal(dict)
@@ -1097,13 +1102,49 @@ else:
 
             layout.addWidget(self.toolbar)
 
+            self.splitter = QSplitter(Qt.Horizontal)
+            try:
+                self.splitter.setChildrenCollapsible(False)
+            except Exception:
+                pass
+
             self.image_view = ZeImageView(self)
             self.image_view.setMinimumSize(320, 240)
             try:
                 self.image_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             except Exception:
                 pass
-            layout.addWidget(self.image_view)
+            self.splitter.addWidget(self.image_view)
+
+            header_container = QWidget(self)
+            header_layout = QVBoxLayout(header_container)
+            try:
+                header_layout.setContentsMargins(0, 0, 0, 0)
+            except Exception:
+                pass
+            self.header_title = QLabel("")
+            self.header_view = QPlainTextEdit()
+            self.header_view.setReadOnly(True)
+            self.header_view.setUndoRedoEnabled(False)
+            self.header_view.setLineWrapMode(QPlainTextEdit.NoWrap)
+            try:
+                self.header_view.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
+            except Exception:
+                pass
+            try:
+                self.header_view.setMinimumWidth(320)
+            except Exception:
+                pass
+            header_layout.addWidget(self.header_title)
+            header_layout.addWidget(self.header_view)
+            self.splitter.addWidget(header_container)
+            try:
+                self.splitter.setStretchFactor(0, 3)
+                self.splitter.setStretchFactor(1, 2)
+            except Exception:
+                pass
+
+            layout.addWidget(self.splitter)
 
             info_row = QHBoxLayout()
             self.status_label = QLabel("")
@@ -1496,6 +1537,10 @@ else:
             except Exception:
                 pass
             try:
+                self.header_view.setPlainText("")
+            except Exception:
+                pass
+            try:
                 self.hist_widget.set_histogram(None, None, None)
                 self.stats_label.setText("")
             except Exception:
@@ -1655,6 +1700,13 @@ else:
             try:
                 # drop backing store to avoid lingering locks
                 self.image_view.set_pixmap(None)
+            except Exception:
+                pass
+            try:
+                self.header_view.setPlainText("")
+            except Exception:
+                pass
+            try:
                 self._linear_ds = None
                 self._display_u8 = None
                 os.remove(path)
@@ -1700,6 +1752,11 @@ else:
                 self.action_zoom_out.setText(_tr("preview_zoom_out", "Zoom out"))
                 self.action_reset.setText(_tr("preview_reset", "Reset"))
                 self.action_clear.setText(_tr("preview_clear", "Clear"))
+                self.header_title.setText(_tr("preview_header_title", "Header"))
+                try:
+                    self.header_view.setToolTip(_tr("preview_header_tip", "FITS header for the current image"))
+                except Exception:
+                    pass
                 self.stretch_min_label.setText(_tr("preview_stretch_min", "Stretch min"))
                 self.stretch_max_label.setText(_tr("preview_stretch_max", "max"))
                 self.stretch_apply.setText(_tr("preview_apply_stretch", "Apply stretch"))
@@ -1715,11 +1772,16 @@ else:
         def _on_worker_result(self, payload: dict):
             if payload.get("token") != self._active_token:
                 return
+            header_text = payload.get("header_text")
             if payload.get("error"):
                 if payload.get("error") == "no_preview":
                     self.reset_session_state("no_preview")
                     try:
                         self.image_view.set_pixmap(None)
+                    except Exception:
+                        pass
+                    try:
+                        self.header_view.setPlainText("")
                     except Exception:
                         pass
                     self._linear_ds = None
@@ -1730,6 +1792,10 @@ else:
                     self._update_toolbar_state()
                     return
                 self._set_status("preview_failed", "Failed to load preview.")
+                try:
+                    self.header_view.setPlainText("")
+                except Exception:
+                    pass
                 return
 
             self._linear_ds = payload.get("linear_ds")
@@ -1743,6 +1809,10 @@ else:
             except Exception:
                 pass
             self._pending_levels = None
+            try:
+                self.header_view.setPlainText(header_text or "")
+            except Exception:
+                pass
 
             # Update directory cache if provided
             if payload.get("dir_files") is not None:
@@ -1951,9 +2021,9 @@ def _pick_first_image_hdu(hdulist):
     return None
 
 
-def _load_fits_array(path: str):
+def _load_fits_preview_and_header(path: str):
     if fits is None or np is None:
-        return None
+        return None, None
 
     def _open(_memmap: bool):
         try:
@@ -1961,8 +2031,18 @@ def _load_fits_array(path: str):
         except TypeError:
             return fits.open(path, memmap=_memmap)
 
+    def _format_header(hdu):
+        try:
+            return hdu.header.tostring(sep="\n", endcard=False, padding=False)
+        except Exception:
+            try:
+                return str(hdu.header)
+            except Exception:
+                return None
+
     data = None
     hdu = None
+    header_text = None
 
     try:
         # Try memmap=True first (faster when supported)
@@ -1977,16 +2057,19 @@ def _load_fits_array(path: str):
                         data = None
                     else:
                         raise
+                header_text = _format_header(hdu)
 
         # Fallback memmap=False if memmap=True failed to load the data
         if data is None:
             with _open(False) as hdulist2:
                 hdu = _pick_first_image_hdu(hdulist2)
                 if hdu is None:
-                    return None
+                    return None, header_text
                 data = getattr(hdu, "data", None)
                 if data is None:
-                    return None
+                    return None, header_text
+                if header_text is None:
+                    header_text = _format_header(hdu)
 
         arr = np.array(data, dtype=np.float32, copy=True)
         arr = np.squeeze(arr)
@@ -2003,8 +2086,13 @@ def _load_fits_array(path: str):
     except Exception:
         if os.environ.get("ZE_VIEWER_DEBUG", "").strip() not in ("", "0", "false", "False"):
             traceback.print_exc()
-        return None
-    return _normalize_image_array(arr)
+        return None, header_text
+    return _normalize_image_array(arr), header_text
+
+
+def _load_fits_array(path: str):
+    arr, _header = _load_fits_preview_and_header(path)
+    return arr
 
 
 def _load_pil_array(path: str):
