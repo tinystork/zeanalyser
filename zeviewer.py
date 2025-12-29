@@ -1105,6 +1105,7 @@ else:
             self.splitter = QSplitter(Qt.Horizontal)
             try:
                 self.splitter.setChildrenCollapsible(False)
+                self.splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             except Exception:
                 pass
 
@@ -1144,7 +1145,20 @@ else:
             except Exception:
                 pass
 
-            layout.addWidget(self.splitter)
+            self.vsplitter = QSplitter(Qt.Vertical)
+            try:
+                self.vsplitter.setChildrenCollapsible(False)
+                self.vsplitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            except Exception:
+                pass
+            self.vsplitter.addWidget(self.splitter)
+
+            self.hist_container = QWidget(self)
+            hist_layout = QVBoxLayout(self.hist_container)
+            try:
+                hist_layout.setContentsMargins(0, 0, 0, 0)
+            except Exception:
+                pass
 
             info_row = QHBoxLayout()
             self.status_label = QLabel("")
@@ -1152,7 +1166,7 @@ else:
             info_row.addWidget(self.status_label)
             info_row.addStretch(1)
             info_row.addWidget(self.stats_label)
-            layout.addLayout(info_row)
+            hist_layout.addLayout(info_row)
 
             self.hist_widget = ZeHistogramWidget(self)
             try:
@@ -1160,7 +1174,7 @@ else:
                 self.hist_widget.sig_levels_changed.connect(self._on_hist_levels_changed_final)
             except Exception:
                 pass
-            layout.addWidget(self.hist_widget)
+            hist_layout.addWidget(self.hist_widget)
 
             stretch_row = QHBoxLayout()
             self.stretch_min_label = QLabel("")
@@ -1190,7 +1204,21 @@ else:
             stretch_row.addWidget(self.stretch_max)
             stretch_row.addWidget(self.hist_zoom_btn)
             stretch_row.addWidget(self.stretch_apply)
-            layout.addLayout(stretch_row)
+            hist_layout.addLayout(stretch_row)
+            try:
+                self.hist_container.setMinimumHeight(220)
+            except Exception:
+                pass
+
+            self.vsplitter.addWidget(self.hist_container)
+            try:
+                self.vsplitter.setStretchFactor(0, 4)
+                self.vsplitter.setStretchFactor(1, 1)
+                self.vsplitter.setSizes([700, 300])
+            except Exception:
+                pass
+
+            layout.addWidget(self.vsplitter)
 
         # Remaining behaviour defined below (status updates, load, nav, delete)
 
