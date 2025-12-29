@@ -685,6 +685,7 @@ translations = {
         'exposure': "Exposure",
         'ascending': "Ascending",
         'descending': "Descending",
+        'sort_order': "Sort order",
 
         #--- Apply SNR
         'apply_snr_rejection_button': "Apply SNR Rejection",

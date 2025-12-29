@@ -1713,7 +1713,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             if isinstance(self.open_log_btn, QPushButton):
                 self.open_log_btn.clicked.connect(self._open_log_file)
             if isinstance(self.create_stack_plan_btn, QPushButton):
-                self.create_stack_plan_btn.clicked.connect(self._create_stack_plan)
+                self.create_stack_plan_btn.clicked.connect(self.open_stack_plan_window)
             if isinstance(self.stack_export_csv_btn, QPushButton):
                 try:
                     self.stack_export_csv_btn.clicked.connect(self._on_export_stack_plan_clicked)
@@ -3514,17 +3514,18 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def open_stack_plan_window(self):
         """Open a window to create a stacking plan CSV with advanced options."""
+        created_path = None
         try:
             rows = self._get_analysis_results_rows()
             if not rows:
                 self._log(_("stack_plan_alert_no_analysis"))
-                return
+                return None
 
             kept_results = [r for r in rows if r.get('status') == 'ok' and r.get('action') == 'kept']
 
             if not kept_results:
                 self._log(_("msg_export_no_images"))
-                return
+                return None
 
             # Create advanced dialog
             from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QComboBox, QPushButton, QGroupBox, QScrollArea, QWidget, QMessageBox
@@ -3586,6 +3587,13 @@ class ZeAnalyserMainWindow(QMainWindow):
             scroll.setWidgetResizable(True)
             layout.addWidget(scroll)
 
+            include_label = _("include_exposure_in_batch")
+            if include_label == "include_exposure_in_batch":
+                include_label = "Inclure le temps de pose dans le batch"
+            include_exposure_cb = QCheckBox(include_label)
+            include_exposure_cb.setChecked(False)
+            layout.addWidget(include_exposure_cb)
+
             # Preview labels
             preview_layout = QHBoxLayout()
             total_label = QLabel(_("stack_plan_preview_total", count=0))
@@ -3620,6 +3628,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 import stack_plan
                 plan_rows = stack_plan.generate_stacking_plan(
                     kept_results,
+                    include_exposure_in_batch=include_exposure_cb.isChecked(),
                     criteria=criteria,
                     sort_spec=sort_spec,
                 )
@@ -3631,6 +3640,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 batch_label.setText(_("stack_plan_preview_batches", count=batch_count))
 
             def generate_plan():
+                nonlocal created_path
                 criteria = {}
                 for cat, var_map in criteria_vars.items():
                     selected = [v for v, cb in var_map.items() if cb.isChecked()]
@@ -3647,6 +3657,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 import stack_plan
                 plan_rows = stack_plan.generate_stacking_plan(
                     kept_results,
+                    include_exposure_in_batch=include_exposure_cb.isChecked(),
                     criteria=criteria,
                     sort_spec=sort_spec,
                 )
@@ -3666,6 +3677,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
                 try:
                     stack_plan.write_stacking_plan_csv(csv_path, plan_rows)
+                    created_path = csv_path
                     self._last_stack_plan_path = csv_path
                     self._log(f"Stack plan created: {csv_path} with {len(plan_rows)} batches")
                     self.set_stack_plan_rows(csv_path)
@@ -3685,15 +3697,18 @@ class ZeAnalyserMainWindow(QMainWindow):
                     cb.stateChanged.connect(update_preview)
             for combo in sort_vars.values():
                 combo.currentTextChanged.connect(update_preview)
+            include_exposure_cb.stateChanged.connect(update_preview)
 
             generate_btn.clicked.connect(generate_plan)
             cancel_btn.clicked.connect(dialog.reject)
 
             update_preview()
             dialog.exec()
+            return created_path
 
         except Exception as e:
             self._log(f"Error opening stack plan window: {e}")
+            return None
 
     def _export_stack_plan_csv(self, dest_path: str = None) -> str:
         """Export the current stack plan to CSV.
@@ -3860,13 +3875,14 @@ class ZeAnalyserMainWindow(QMainWindow):
 
             stack_plan_path = self._get_project_stack_plan_path(project_dir_abs)
             if not (stack_plan_path and os.path.isfile(stack_plan_path)):
-                stack_plan_path = self._create_stack_plan() or stack_plan_path
-                if not (stack_plan_path and os.path.isfile(stack_plan_path)):
+                created = self.open_stack_plan_window()
+                if not (created and os.path.isfile(created)):
                     try:
                         QMessageBox.warning(self, _("msg_warning"), _("stack_plan_alert_no_analysis"))
                     except Exception:
                         pass
                     return
+                stack_plan_path = created
 
             try:
                 if os.path.getsize(stack_plan_path) <= 100 * 1024 * 1024:
