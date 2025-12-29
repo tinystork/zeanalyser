@@ -1145,7 +1145,12 @@ class ZeAnalyserMainWindow(QMainWindow):
             # checkbox to enable detection
             self.detect_trails_cb = QCheckBox(_("detect_trails_check_label"))
             self.detect_trails_cb.setChecked(False)
-            trail_layout.addWidget(self.detect_trails_cb)
+            status_row = QHBoxLayout()
+            status_row.addWidget(self.detect_trails_cb)
+            self.acstools_status_label = QLabel("")
+            status_row.addWidget(self.acstools_status_label)
+            status_row.addStretch(1)
+            trail_layout.addLayout(status_row)
 
             params_row = QHBoxLayout()
             # numeric params (use QDoubleSpinBox for decimal precision where needed)
@@ -1207,6 +1212,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             # If fields can't be created, keep attributes None for test fallbacks
             self.detect_trails_cb = getattr(self, 'detect_trails_cb', None)
+            self.acstools_status_label = getattr(self, 'acstools_status_label', None)
             self.trail_sigma_spin = getattr(self, 'trail_sigma_spin', None)
             self.trail_low_thr_spin = getattr(self, 'trail_low_thr_spin', None)
             self.trail_high_thr_spin = getattr(self, 'trail_high_thr_spin', None)
@@ -1221,6 +1227,11 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.trail_line_len_label = getattr(self, 'trail_line_len_label', None)
             self.trail_small_edge_label = getattr(self, 'trail_small_edge_label', None)
             self.trail_line_gap_label = getattr(self, 'trail_line_gap_label', None)
+
+        try:
+            self._update_acstools_status_label()
+        except Exception:
+            pass
 
         # Add the trail groupbox to the Project layout
         if self.trail_group_box is not None:
@@ -4185,6 +4196,52 @@ class ZeAnalyserMainWindow(QMainWindow):
             except Exception:
                 pass
 
+    def _update_acstools_status_label(self) -> None:
+        """Refresh the Trail Detection acstools availability indicator."""
+        try:
+            label = getattr(self, 'acstools_status_label', None)
+            checkbox = getattr(self, 'detect_trails_cb', None)
+            if label is None or checkbox is None or QLabel is object:
+                return
+        except Exception:
+            return
+
+        try:
+            try:
+                import trail_module
+                satdet_available = bool(getattr(trail_module, 'SATDET_AVAILABLE', False))
+                satdet_uses_searchpattern = bool(getattr(trail_module, 'SATDET_USES_SEARCHPATTERN', False))
+            except Exception:
+                satdet_available = False
+                satdet_uses_searchpattern = False
+
+            if not satdet_available:
+                key = "acstools_missing"
+                color = "red"
+            elif not satdet_uses_searchpattern:
+                key = "acstools_sig_error"
+                color = "orange"
+            else:
+                key = "acstools_ok"
+                color = "green"
+
+            try:
+                text = zone._(key)
+            except Exception:
+                text = key
+
+            try:
+                label.setText(f"({text})")
+            except Exception:
+                pass
+
+            try:
+                label.setStyleSheet(f"color: {color};")
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def _retranslate_ui(self) -> None:
         """Update UI texts when language changes."""
         try:
@@ -4288,6 +4345,10 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.trail_reject_browse.setText(zone._("browse_button"))
             if getattr(self, 'trail_apply_btn', None) is not None:
                 self.trail_apply_btn.setText(zone._("apply_snr_rejection_button"))
+            try:
+                self._update_acstools_status_label()
+            except Exception:
+                pass
 
             if getattr(self, 'action_group_box', None) is not None:
                 self.action_group_box.setTitle(zone._("action_frame_title"))
