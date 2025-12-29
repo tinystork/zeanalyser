@@ -1,76 +1,51 @@
-# agent.md
+# Mission: Restore acstools availability indicator in Qt "Trail Detection" section
 
 ## Goal
-Dans le GUI PySide6 (`analyse_gui_qt.py`), faire en sorte que :
-- Le bouton "Create stacking plan" (onglet Project) ouvre la fenêtre de sélection/tri (comme Tk).
-- Le bouton "Prepare stacking script" (onglet Stack Plan) utilise EXACTEMENT le même flux : si aucun `stack_plan.csv` n’existe, ouvrir cette fenêtre, puis seulement ensuite préparer le script.
-- Ne PAS réutiliser de code Tkinter (copier le comportement en Qt uniquement). Tkinter restera inchangé.
+In `analyse_gui_qt.py`, the "Trail Detection" UI is missing the small status indicator present in the Tkinter GUI:
+- show an inline text indicator next to the trail detection checkbox
+- green when acstools is usable, red when missing/incompatible
+- translated using existing zone keys
+
+This must match the Tk behavior conceptually (based on SATDET flags from `trail_module.py`).
 
 ## Scope (STRICT)
-- Modifier uniquement `analyse_gui_qt.py`.
-- Optionnel : si une clé de traduction manque et casse l’UI, ajouter la/les clés manquantes dans le fichier de traductions existant (uniquement si nécessaire).
-- Ne pas modifier `analyse_gui.py` (Tk).
-- Ne pas modifier `stack_plan.py`.
+- Modify **only**: `analyse_gui_qt.py`
+- Do NOT touch: `analyse_gui.py`, `trail_module.py`, other modules.
+- Do NOT change any analysis logic, only UI.
 
-## Current bug / Why
-- `open_stack_plan_window()` contient déjà la fenêtre de sélection (critères + tri + aperçu + génération CSV).
-- Mais le bouton "Create stacking plan" appelle `_create_stack_plan()` (génération directe sans UI).
-- Et "Prepare stacking script" fallback appelle aussi `_create_stack_plan()`.
-=> Résultat : aucune fenêtre de sélection n’apparaît en Qt.
+## Requirements
+- [x] Add a QLabel next to the checkbox `self.detect_trails_cb` inside the Trail Detection group.
+  - Layout: checkbox + a small status label on the same row (like Tk).
+  - The label text must be wrapped in parentheses: `( . )`.
+- [x] Status rules (use `trail_module` flags):
+  - Read `SATDET_AVAILABLE` and `SATDET_USES_SEARCHPATTERN` from `trail_module` (safe import).
+  - If `SATDET_AVAILABLE` is False => text key `acstools_missing`, color **red**
+  - Else if `SATDET_USES_SEARCHPATTERN` is False => text key `acstools_sig_error`, color **orange** (optional but recommended; matches existing keys)
+  - Else => text key `acstools_ok`, color **green**
+- [x] Translation:
+  - Use existing translation mechanism already used in `analyse_gui_qt.py` (same `_()` / `_tr()` pattern).
+  - Ensure label updates when language changes:
+    - update it from the UI retranslate function (whatever the file uses for retranslation).
+- [x] Robustness / no crash:
+  - `analyse_gui_qt.py` supports headless / missing-Qt environments by setting Qt classes to `object`.
+  - Your changes MUST respect that:
+    - if `QLabel is object` or checkbox not created, skip silently.
+    - wrap updates in try/except; never raise.
 
-## Required changes
+## Implementation outline
+- [x] Add an attribute: `self.acstools_status_label = QLabel("")` (guarded).
+- [x] Create a helper method (or small inline function) `_update_acstools_status_label()` that:
+  - imports `trail_module` safely
+  - decides text + color
+  - applies `setText(f"({text})")`
+  - applies `setStyleSheet("color: ...;")` (simple is fine)
+- [x] Call `_update_acstools_status_label()`:
+  - after creating the Trail Detection widgets (end of that group build)
+  - inside the retranslate routine after setting texts
 
-- [x] A) Brancher "Create stacking plan" sur la fenêtre Qt
-  - Localiser le connect du bouton `create_stack_plan_btn.clicked.connect(...)`
-  - Remplacer la cible par `self.open_stack_plan_window` (ou wrapper dédié), afin d’ouvrir la fenêtre.
-
-- [x] B) Faire retourner un chemin par `open_stack_plan_window()`
-  - Modifier `open_stack_plan_window()` pour retourner `csv_path` si l’utilisateur clique "Générer le plan" (dialog accepté),
-    et retourner `None` si l’utilisateur annule/ferme.
-  - Implementation recommandée :
-    - Déclarer `created_path = None` dans `open_stack_plan_window()`.
-    - Dans `generate_plan()`, après écriture CSV, faire `created_path = csv_path`, puis `dialog.accept()`.
-    - Après `dialog.exec()`, retourner `created_path`.
-
-- [x] C) "Prepare stacking script" doit utiliser le même flux
-  - Dans `_on_prepare_stacking_script_clicked()` :
-    - Si `stack_plan.csv` n’existe pas :
-      - Appeler `created = self.open_stack_plan_window()`
-      - Si `created` est None ou fichier absent => afficher warning et STOP.
-      - Sinon utiliser `created` comme `stack_plan_path`.
-    - Ensuite continuer le flux existant (load table, SaveAs script, `_prepare_stacking_script(dest_path)`).
-
-- [x] D) Checkbox "Inclure le temps de pose dans le batch" (matching Tk)
-  - Ajouter dans la fenêtre `open_stack_plan_window()` une QCheckBox :
-    - label: clé trad `include_exposure_in_batch` (ou fallback FR/EN si pas de clé)
-    - default: unchecked
-    - connecter `stateChanged` à `update_preview()`
-  - Dans `update_preview()` et `generate_plan()` passer :
-    `include_exposure_in_batch=include_exposure_cb.isChecked()`
-    à `stack_plan.generate_stacking_plan(...)`.
-
-## Non-regression constraints
-- Ne pas casser le flux "Analyze and Stack" : il peut continuer à utiliser `_create_simple_stack_plan()` (auto) sans ouvrir de fenêtre.
-- Ne pas changer le format CSV ni les colonnes.
-- Ne pas introduire de dépendances.
-- Comportement multi-OS : Windows/Mac/Linux.
-
-## Acceptance tests (manual)
-- [ ] Après une analyse (résultats présents), cliquer "Create stacking plan" (Project) :
-  - La fenêtre de sélection apparaît.
-  - Modifier des critères/tri met à jour "Images sélectionnées" + "Nombre de batchs".
-  - Cliquer "Générer le plan" crée `stack_plan.csv` (project dir si possible, sinon log dir, sinon cwd) et remplit l’onglet Stack Plan.
-
-- [ ] Cliquer "Prepare stacking script" (Stack Plan) :
-  - Si `stack_plan.csv` existe : propose SaveAs script puis écrit le script.
-  - Si `stack_plan.csv` n’existe pas : ouvre la fenêtre de sélection, et si l’utilisateur génère le plan, alors propose SaveAs script.
-
-- [ ] Annuler la fenêtre :
-  - Aucun fichier n’est créé.
-  - Aucun script n’est généré.
-
-### CRITIQUE — préserver RA/DEC (compat ZeMosaic)
-- Le fichier `stack_plan.csv` DOIT continuer d’inclure les colonnes `ra` et `dec` (headers exacts: `ra`, `dec`).
-- Ces colonnes doivent être écrites dans TOUS les chemins de génération/export du plan (Create stack plan, Prepare stacking script fallback, génération via la fenêtre).
-- Interdiction de “rebuild” un CSV manuellement sans `ra/dec`. Utiliser le writer existant (ou respecter exactement son header/order).
-- Si un `stack_plan.csv` legacy sans `ra/dec` est chargé, le modèle UI doit rester robuste (valeurs vides), mais lors d’un nouvel export/génération, `ra/dec` doivent être présents.
+## Acceptance criteria
+- [ ] With acstools usable: label visible and green.
+- [ ] Without acstools / incompatible: label visible and red.
+- [ ] Language switch updates the label text immediately.
+- [ ] No other UI regression in Trail Detection.
+- [ ] No crash when PySide6 is missing.
