@@ -1522,6 +1522,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.stack_prepare_script_btn = getattr(self, 'stack_prepare_script_btn', None)
 
         self.stack_tab_index = central.addTab(stack_widget, _tr('stack_tab_title', 'Stack Plan'))
+        self._stack_tab_index = self.stack_tab_index
 
         # --- Preview tab (Phase 5) ----------------------------------
         self._syncing_from_viewer = False
@@ -1715,12 +1716,12 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.create_stack_plan_btn.clicked.connect(self._create_stack_plan)
             if isinstance(self.stack_export_csv_btn, QPushButton):
                 try:
-                    self.stack_export_csv_btn.clicked.connect(self._export_stack_plan_csv)
+                    self.stack_export_csv_btn.clicked.connect(self._on_export_stack_plan_clicked)
                 except Exception:
                     pass
             if isinstance(self.stack_prepare_script_btn, QPushButton):
                 try:
-                    self.stack_prepare_script_btn.clicked.connect(self._prepare_stacking_script)
+                    self.stack_prepare_script_btn.clicked.connect(self._on_prepare_stacking_script_clicked)
                 except Exception:
                     pass
             if isinstance(self.quit_btn, QPushButton):
@@ -1807,6 +1808,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         if isinstance(self.input_path_edit, QLineEdit):
             self.input_path_edit.textChanged.connect(self._update_analyse_enabled)
             self.input_path_edit.textChanged.connect(self._sync_organizer_paths_from_project)
+            self.input_path_edit.textChanged.connect(self._on_project_dir_changed)
         if isinstance(self.log_path_edit, QLineEdit):
             self.log_path_edit.textChanged.connect(self._update_analyse_enabled)
 
@@ -2702,9 +2704,6 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def _on_main_tab_changed(self, idx: int):
         try:
-            preview_idx = getattr(self, '_preview_tab_index', None)
-            if preview_idx is None:
-                return
             current_idx = idx
             try:
                 # currentChanged may deliver either an index or a QWidget; normalize to int
@@ -2714,52 +2713,64 @@ class ZeAnalyserMainWindow(QMainWindow):
                     current_idx = self._main_tabs.currentIndex()
             except Exception:
                 pass
-            if not isinstance(current_idx, int) or current_idx != preview_idx:
-                return
-            project_dir = ""
-            try:
-                if getattr(self, 'input_path_edit', None) is not None:
-                    project_dir = self.input_path_edit.text()
-            except Exception:
+            preview_idx = getattr(self, '_preview_tab_index', None)
+            stack_idx = getattr(self, '_stack_tab_index', None)
+
+            if isinstance(current_idx, int) and preview_idx is not None and current_idx == preview_idx:
                 project_dir = ""
-            try:
-                project_dir = (project_dir or "").strip()
-                if project_dir:
-                    project_dir = os.path.abspath(project_dir)
-            except Exception:
-                pass
-            try:
-                if not project_dir or not os.path.isdir(project_dir):
+                try:
+                    if getattr(self, 'input_path_edit', None) is not None:
+                        project_dir = self.input_path_edit.text()
+                except Exception:
+                    project_dir = ""
+                try:
+                    project_dir = (project_dir or "").strip()
+                    if project_dir:
+                        project_dir = os.path.abspath(project_dir)
+                except Exception:
+                    pass
+                try:
+                    if not project_dir or not os.path.isdir(project_dir):
+                        return
+                except Exception:
                     return
-            except Exception:
-                return
-            viewer = getattr(self, 'zeviewer', None)
-            if viewer is None:
-                return
-            autoload_started = False
-            try:
-                maybe_autoload = getattr(viewer, 'maybe_autoload_from_project_dir', None)
-                if callable(maybe_autoload):
-                    autoload_started = bool(maybe_autoload(project_dir))
-            except Exception:
+                viewer = getattr(self, 'zeviewer', None)
+                if viewer is None:
+                    return
                 autoload_started = False
-            try:
-                has_image = getattr(viewer, 'has_image', None)
-                if callable(has_image) and has_image():
-                    return
-            except Exception:
-                pass
-            try:
-                autoload_first = getattr(viewer, 'autoload_first_from_dir', None)
-                if callable(autoload_first) and not autoload_started:
-                    autoload_started = bool(autoload_first(project_dir))
-            except Exception:
-                pass
-            try:
-                if hasattr(QTimer, "singleShot"):
-                    QTimer.singleShot(350, lambda dir_path=project_dir: self._ensure_preview_autoload(dir_path))
-            except Exception:
-                pass
+                try:
+                    maybe_autoload = getattr(viewer, 'maybe_autoload_from_project_dir', None)
+                    if callable(maybe_autoload):
+                        autoload_started = bool(maybe_autoload(project_dir))
+                except Exception:
+                    autoload_started = False
+                try:
+                    has_image = getattr(viewer, 'has_image', None)
+                    if callable(has_image) and has_image():
+                        return
+                except Exception:
+                    pass
+                try:
+                    autoload_first = getattr(viewer, 'autoload_first_from_dir', None)
+                    if callable(autoload_first) and not autoload_started:
+                        autoload_started = bool(autoload_first(project_dir))
+                except Exception:
+                    pass
+                try:
+                    if hasattr(QTimer, "singleShot"):
+                        QTimer.singleShot(350, lambda dir_path=project_dir: self._ensure_preview_autoload(dir_path))
+                except Exception:
+                    pass
+
+            if isinstance(current_idx, int) and stack_idx is not None and current_idx == stack_idx:
+                project_dir_abs = self._get_project_dir_abs()
+                try:
+                    if hasattr(QTimer, "singleShot"):
+                        QTimer.singleShot(0, lambda dir_path=project_dir_abs: self._maybe_autoload_stack_plan(dir_path))
+                    else:
+                        self._maybe_autoload_stack_plan(project_dir_abs)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -2818,6 +2829,119 @@ class ZeAnalyserMainWindow(QMainWindow):
                     pass
         except Exception:
             pass
+
+    def _get_project_dir_abs(self) -> str:
+        """Return the absolute project directory if valid, else empty string."""
+        project_dir = ""
+        try:
+            if getattr(self, 'input_path_edit', None) is not None:
+                project_dir = self.input_path_edit.text()
+        except Exception:
+            project_dir = ""
+        try:
+            project_dir = (project_dir or "").strip()
+            if project_dir:
+                project_dir = os.path.abspath(project_dir)
+        except Exception:
+            project_dir = ""
+        try:
+            if project_dir and os.path.isdir(project_dir):
+                return project_dir
+        except Exception:
+            pass
+        return ""
+
+    def _get_project_stack_plan_path(self, project_dir_abs: str) -> str:
+        try:
+            if not project_dir_abs:
+                return ""
+            return os.path.join(project_dir_abs, "stack_plan.csv")
+        except Exception:
+            return ""
+
+    def _on_project_dir_changed(self, *_args, **_kwargs) -> None:
+        """Trigger stack plan autoload when project path changes while on the Stack tab."""
+        try:
+            stack_idx = getattr(self, '_stack_tab_index', None)
+            if stack_idx is None or getattr(self, '_main_tabs', None) is None:
+                return
+            current_idx = self._main_tabs.currentIndex()
+            if not isinstance(current_idx, int) or current_idx != stack_idx:
+                return
+            project_dir_abs = self._get_project_dir_abs()
+            if hasattr(QTimer, "singleShot"):
+                QTimer.singleShot(0, lambda dir_path=project_dir_abs: self._maybe_autoload_stack_plan(dir_path))
+            else:
+                self._maybe_autoload_stack_plan(project_dir_abs)
+        except Exception:
+            pass
+
+    def _maybe_autoload_stack_plan(self, project_dir_abs: str) -> None:
+        """Load Project/stack_plan.csv into the Stack tab when present."""
+        try:
+            if not project_dir_abs or not os.path.isdir(project_dir_abs):
+                try:
+                    self.set_stack_plan_rows([])
+                    self._stack_plan_loaded_path = None
+                    self._stack_plan_loaded_mtime = None
+                except Exception:
+                    pass
+                return
+
+            stack_plan_path = self._get_project_stack_plan_path(project_dir_abs)
+            if not stack_plan_path or not os.path.isfile(stack_plan_path):
+                try:
+                    self.set_stack_plan_rows([])
+                    self._stack_plan_loaded_path = None
+                    self._stack_plan_loaded_mtime = None
+                except Exception:
+                    pass
+                try:
+                    self._log(_("stack_plan_autoload_missing"))
+                except Exception:
+                    pass
+                return
+
+            try:
+                size_bytes = os.path.getsize(stack_plan_path)
+                if size_bytes > 100 * 1024 * 1024:
+                    self.set_stack_plan_rows([])
+                    self._stack_plan_loaded_path = None
+                    self._stack_plan_loaded_mtime = None
+                    try:
+                        self._log(_("stack_plan_autoload_too_large"))
+                    except Exception:
+                        pass
+                    return
+            except Exception:
+                pass
+
+            try:
+                mtime = os.path.getmtime(stack_plan_path)
+            except Exception:
+                mtime = None
+
+            try:
+                if getattr(self, '_stack_plan_loaded_path', None) == stack_plan_path and getattr(self, '_stack_plan_loaded_mtime', None) == mtime:
+                    return
+            except Exception:
+                pass
+
+            self.set_stack_plan_rows(stack_plan_path)
+            try:
+                self._stack_plan_loaded_path = stack_plan_path
+                self._stack_plan_loaded_mtime = mtime
+            except Exception:
+                pass
+            try:
+                self._log(_("stack_plan_autoload_loaded", path=stack_plan_path))
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                self._log(f"Failed to autoload stack plan: {e}")
+            except Exception:
+                pass
 
     def _on_sort_by_snr_changed(self, state:int):
         try:
@@ -3211,12 +3335,21 @@ class ZeAnalyserMainWindow(QMainWindow):
 
             if stack_plan_rows:
                 # Save to CSV
-                csv_path = os.path.join(os.path.dirname(self.log_path_edit.text().strip() or ''), 'stack_plan.csv')
+                project_dir_abs = self._get_project_dir_abs()
+                csv_path = self._get_project_stack_plan_path(project_dir_abs)
+                if not csv_path:
+                    log_dir = os.path.dirname(self.log_path_edit.text().strip() or '')
+                    csv_path = os.path.join(log_dir, 'stack_plan.csv') if log_dir else 'stack_plan.csv'
                 stack_plan.write_stacking_plan_csv(csv_path, stack_plan_rows)
                 self._log(f"Stack plan created: {csv_path} with {len(stack_plan_rows)} batches")
 
                 # Store in the Stack Plan tab
-                self.set_stack_plan_rows(stack_plan_rows)
+                self.set_stack_plan_rows(csv_path)
+                try:
+                    self._stack_plan_loaded_path = csv_path
+                    self._stack_plan_loaded_mtime = os.path.getmtime(csv_path)
+                except Exception:
+                    pass
                 self._last_stack_plan_path = csv_path
             else:
                 self._log("Stack plan generation returned no results")
@@ -3318,7 +3451,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception as e:
             self._log(f"Open log failed: {e}")
 
-    def _create_stack_plan(self) -> None:
+    def _create_stack_plan(self) -> str | None:
         """Create a stack plan from current analysis results."""
         try:
             rows = self._get_analysis_results_rows()
@@ -3353,21 +3486,31 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self._log(_("msg_export_no_images"))
                 return
 
-            # Save to CSV in the same folder as the log
-            log_path = getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip()
-            if log_path:
-                csv_path = os.path.join(os.path.dirname(log_path), 'stack_plan.csv')
-            else:
-                csv_path = 'stack_plan.csv'
+            # Save to CSV in the Project folder when possible, else fallback to log dir, else cwd
+            project_dir_abs = self._get_project_dir_abs()
+            csv_path = self._get_project_stack_plan_path(project_dir_abs)
+            if not csv_path:
+                log_path = getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip()
+                if log_path:
+                    csv_path = os.path.join(os.path.dirname(log_path), 'stack_plan.csv')
+            if not csv_path:
+                csv_path = os.path.abspath('stack_plan.csv')
 
             stack_plan.write_stacking_plan_csv(csv_path, stack_plan_rows)
             self._last_stack_plan_path = csv_path
             self._log(f"Stack plan created: {csv_path} with {len(stack_plan_rows)} batches")
             # Store in the Stack Plan tab
-            self.set_stack_plan_rows(stack_plan_rows)
+            self.set_stack_plan_rows(csv_path)
+            try:
+                self._stack_plan_loaded_path = csv_path
+                self._stack_plan_loaded_mtime = os.path.getmtime(csv_path)
+            except Exception:
+                pass
+            return csv_path
 
         except Exception as e:
             self._log(f"Error creating stack plan: {e}")
+            return None
 
     def open_stack_plan_window(self):
         """Open a window to create a stacking plan CSV with advanced options."""
@@ -3512,17 +3655,25 @@ class ZeAnalyserMainWindow(QMainWindow):
                     QMessageBox.warning(dialog, _("msg_warning"), _("msg_export_no_images"))
                     return
 
-                log_path = getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip()
-                if log_path:
-                    csv_path = os.path.join(os.path.dirname(log_path), 'stack_plan.csv')
-                else:
-                    csv_path = 'stack_plan.csv'
+                project_dir_abs = self._get_project_dir_abs()
+                csv_path = self._get_project_stack_plan_path(project_dir_abs)
+                if not csv_path:
+                    log_path = getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip()
+                    if log_path:
+                        csv_path = os.path.join(os.path.dirname(log_path), 'stack_plan.csv')
+                if not csv_path:
+                    csv_path = os.path.abspath('stack_plan.csv')
 
                 try:
                     stack_plan.write_stacking_plan_csv(csv_path, plan_rows)
                     self._last_stack_plan_path = csv_path
                     self._log(f"Stack plan created: {csv_path} with {len(plan_rows)} batches")
-                    self.set_stack_plan_rows(plan_rows)
+                    self.set_stack_plan_rows(csv_path)
+                    try:
+                        self._stack_plan_loaded_path = csv_path
+                        self._stack_plan_loaded_mtime = os.path.getmtime(csv_path)
+                    except Exception:
+                        pass
                     QMessageBox.information(dialog, _("msg_info"), _("stack_plan_created", path=csv_path))
                     dialog.accept()
                 except Exception as e:
@@ -3575,16 +3726,25 @@ class ZeAnalyserMainWindow(QMainWindow):
             content = out.getvalue()
 
         # attempt to write file if a path is provided
+        write_ok = False
         if dest_path is not None:
             try:
                 with open(dest_path, 'w', encoding='utf-8', newline='') as fh:
                     fh.write(content)
-                self._log(f"Stack plan exported to: {dest_path}")
+                write_ok = True
+                self._log(_("stack_plan_export_saved", path=dest_path))
             except Exception as e:
-                self._log(f"Failed to export stack plan: {e}")
+                try:
+                    self._log(_("stack_plan_export_failed", e=e))
+                except Exception:
+                    self._log(f"Failed to export stack plan: {e}")
 
         # expose for tests / introspection
         self._last_stack_plan_export = content
+        try:
+            self._last_stack_plan_export_path = dest_path if write_ok else None
+        except Exception:
+            pass
         return content
 
     def _prepare_stacking_script(self, dest_path: str = None) -> str:
@@ -3605,28 +3765,149 @@ class ZeAnalyserMainWindow(QMainWindow):
             rows = getattr(self, '_stack_rows', []) or []
 
         lines = []
-        # Build a simple bash-friendly script (best-effort)
-        lines.append('#!/usr/bin/env bash')
-        lines.append('# Generated by ZeAnalyser – non-destructive stacking script (preview)')
+        is_windows = os.name == "nt"
+        # Build a simple platform-friendly script (best-effort)
+        if is_windows:
+            lines.append('@echo off')
+            lines.append('rem Generated by ZeAnalyser - non-destructive stacking script (preview)')
+        else:
+            lines.append('#!/usr/bin/env bash')
+            lines.append('# Generated by ZeAnalyser - non-destructive stacking script (preview)')
         for r in rows:
             fp = r.get('file_path') or r.get('path') or r.get('filename') or ''
             if not fp:
                 continue
-            # this is intentionally non-destructive – just echo the file path for review
-            lines.append(f'echo "Would stack: {fp}"')
+            # this is intentionally non-destructive - just echo the file path for review
+            if is_windows:
+                lines.append(f'echo Would stack: "{fp}"')
+            else:
+                lines.append(f'echo "Would stack: {fp}"')
 
         script = '\n'.join(lines) + ('\n' if lines else '')
 
+        write_ok = False
         if dest_path is not None:
             try:
                 with open(dest_path, 'w', encoding='utf-8', newline='') as fh:
                     fh.write(script)
-                self._log(f"Stacking script written to: {dest_path}")
+                write_ok = True
+                if not is_windows:
+                    try:
+                        import stat
+
+                        mode = os.stat(dest_path).st_mode
+                        os.chmod(dest_path, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+                    except Exception:
+                        # best-effort; ignore chmod errors
+                        pass
+                self._log(_("stack_plan_script_saved", path=dest_path))
             except Exception as e:
-                self._log(f"Failed to write stacking script: {e}")
+                try:
+                    self._log(_("stack_plan_script_failed", e=e))
+                except Exception:
+                    self._log(f"Failed to write stacking script: {e}")
 
         self._last_stack_plan_script = script
+        try:
+            self._last_stack_plan_script_path = dest_path if write_ok else None
+        except Exception:
+            pass
         return script
+
+    def _on_export_stack_plan_clicked(self) -> None:
+        """Open a Save As dialog to export the current stack plan CSV."""
+        try:
+            default_dir = self._get_project_dir_abs()
+            default_path = os.path.join(default_dir, "stack_plan.csv") if default_dir else "stack_plan.csv"
+
+            if QFileDialog is object:
+                self._export_stack_plan_csv(default_path)
+                return
+
+            dest_path, _ = QFileDialog.getSaveFileName(
+                self,
+                _("stack_export_csv"),
+                default_path,
+                "CSV Files (*.csv);;All Files (*)",
+            )
+            if not dest_path:
+                return
+
+            self._export_stack_plan_csv(dest_path)
+            try:
+                if os.path.isfile(dest_path):
+                    QMessageBox.information(self, _("msg_info"), _("stack_plan_export_saved", path=dest_path))
+                else:
+                    QMessageBox.warning(self, _("msg_warning"), _("stack_plan_export_failed", e="write failed"))
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                self._log(f"Failed to export stack plan: {e}")
+            except Exception:
+                pass
+
+    def _on_prepare_stacking_script_clicked(self) -> None:
+        """Handle UI action for preparing a stacking script in the Project folder."""
+        try:
+            project_dir_abs = self._get_project_dir_abs()
+            if not project_dir_abs:
+                try:
+                    QMessageBox.warning(self, _("msg_warning"), _("msg_input_dir_invalid"))
+                except Exception:
+                    pass
+                return
+
+            stack_plan_path = self._get_project_stack_plan_path(project_dir_abs)
+            if not (stack_plan_path and os.path.isfile(stack_plan_path)):
+                stack_plan_path = self._create_stack_plan() or stack_plan_path
+                if not (stack_plan_path and os.path.isfile(stack_plan_path)):
+                    try:
+                        QMessageBox.warning(self, _("msg_warning"), _("stack_plan_alert_no_analysis"))
+                    except Exception:
+                        pass
+                    return
+
+            try:
+                if os.path.getsize(stack_plan_path) <= 100 * 1024 * 1024:
+                    self.set_stack_plan_rows(stack_plan_path)
+                    self._stack_plan_loaded_path = stack_plan_path
+                    self._stack_plan_loaded_mtime = os.path.getmtime(stack_plan_path)
+                else:
+                    self._log(_("stack_plan_autoload_too_large"))
+                    return
+                self._last_stack_plan_path = stack_plan_path
+            except Exception:
+                pass
+
+            default_script_name = "prepare_stacking_script.bat" if os.name == "nt" else "prepare_stacking_script.sh"
+            default_script_path = os.path.join(project_dir_abs, default_script_name)
+
+            if QFileDialog is object:
+                dest_path = default_script_path
+            else:
+                dest_path, _ = QFileDialog.getSaveFileName(
+                    self,
+                    _("stack_prepare_script"),
+                    default_script_path,
+                    "Batch / Shell (*.bat *.sh);;All Files (*)",
+                )
+            if not dest_path:
+                return
+
+            self._prepare_stacking_script(dest_path)
+            try:
+                if os.path.isfile(dest_path):
+                    QMessageBox.information(self, _("msg_info"), _("stack_plan_script_saved", path=dest_path))
+                else:
+                    QMessageBox.warning(self, _("msg_warning"), _("stack_plan_script_failed", e="write failed"))
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                self._log(f"Failed to prepare stacking script: {e}")
+            except Exception:
+                pass
 
     def _choose_snr_reject_dir(self) -> None:
         """Choose a directory for SNR-rejected images (browse dialog)."""

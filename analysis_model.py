@@ -79,6 +79,26 @@ class _DummyQt:
 
 _QT = Qt if Qt is not None else _DummyQt()
 
+
+def _is_dark_theme() -> bool:
+    """Best-effort detection of a dark Qt palette; safe if Qt is missing."""
+    try:
+        if Qt is None:
+            return False
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtGui import QPalette
+    except Exception:
+        return False
+
+    try:
+        app = QApplication.instance()
+        if app is None:
+            return False
+        base = app.palette().color(QPalette.Base)
+        return base.lightness() < 128
+    except Exception:
+        return False
+
 import analysis_schema
 
 
@@ -190,7 +210,11 @@ class AnalysisResultsModel(QAbstractTableModel):
         h = abs(hash(indicator)) % 360
         import colorsys
 
-        r, g, b = colorsys.hls_to_rgb(h / 360.0, 0.85, 0.45)
+        dark = _is_dark_theme()
+        lightness = 0.28 if dark else 0.85
+        saturation = 0.45
+
+        r, g, b = colorsys.hls_to_rgb(h / 360.0, lightness, saturation)
         rgb = (int(r * 255), int(g * 255), int(b * 255))
 
         if 'QColor' in globals() and QColor is not None:
@@ -353,7 +377,11 @@ class StackPlanModel(QAbstractTableModel):
         # Keep saturation and lightness soft for pleasant pastels
         import colorsys
 
-        r, g, b = colorsys.hls_to_rgb(h / 360.0, 0.85, 0.45)
+        dark = _is_dark_theme()
+        lightness = 0.28 if dark else 0.85
+        saturation = 0.45
+
+        r, g, b = colorsys.hls_to_rgb(h / 360.0, lightness, saturation)
         rgb = (int(r * 255), int(g * 255), int(b * 255))
 
         if 'QColor' in globals() and QColor is not None:
