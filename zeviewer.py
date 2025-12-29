@@ -357,12 +357,30 @@ if not QT_AVAILABLE or np is None:
 
         def __init__(self, *_a, **_k):
             super().__init__()
+            self._hist = None
+            self._lo = None
+            self._hi = None
+            self._zoom_active = False
+            self._zoom_view_lo = None
+            self._zoom_view_hi = None
 
         def set_histogram(self, *_a, **_k):
             return None
 
         def set_levels(self, *_a, **_k):
             return None
+
+        def is_zoomed(self):
+            return bool(self._zoom_active)
+
+        def zoom_to_current_levels(self):
+            self._zoom_active = False
+            return False
+
+        def zoom_reset(self):
+            self._zoom_active = False
+            self._zoom_view_lo = None
+            self._zoom_view_hi = None
 
     class ZeViewerWidget(QWidget):
         sig_path_navigated = _DummyQtSignal()
@@ -372,6 +390,17 @@ if not QT_AVAILABLE or np is None:
         def __init__(self, *_a, **_k):
             super().__init__()
             self._last_path = None
+            self._session_active = False
+            self._session_levels = None
+            self._session_hist_zoom = None
+            self._session_view_zoom_mode = "fit"
+            self._session_view_scale = 1.0
+            self._ui_sync_guard = 0
+            self._open_source = "none"
+            self._autoload_project_dir = None
+            self._autoload_token = 0
+            self._display_u8 = None
+            self._linear_ds = None
 
         # Public API (no-op)
         def load_path(self, *_a, **_k):
@@ -379,6 +408,28 @@ if not QT_AVAILABLE or np is None:
 
         def clear(self):
             return None
+
+        def current_path(self):
+            return self._last_path
+
+        def has_image(self):
+            return bool(self._last_path)
+
+        def reset_session_state(self, *_a, **_k):
+            self._session_active = False
+            self._session_levels = None
+            self._session_hist_zoom = None
+            self._session_view_zoom_mode = "fit"
+            self._session_view_scale = 1.0
+            self._ui_sync_guard = 0
+            self._open_source = "none"
+            self._autoload_project_dir = None
+
+        def maybe_autoload_from_project_dir(self, *_a, **_k):
+            return False
+
+        def autoload_first_from_dir(self, *_a, **_k):
+            return False
 
         def apply_stretch(self, *_a, **_k):
             return None
@@ -482,6 +533,53 @@ else:
                 arr = arr[::step, ::step].copy()
             return arr
 
+    class PickFirstFileSignals(QObject):
+        picked = Signal(dict)
+
+
+    class PickFirstFileRunnable(QRunnable):
+        """Worker that finds the first supported file in a directory."""
+
+        def __init__(self, dir_path: str, token: int):
+            super().__init__()
+            self.dir_path = dir_path
+            self.token = token
+            self.signals = PickFirstFileSignals()
+            try:
+                self.setAutoDelete(True)
+            except Exception:
+                pass
+
+        def run(self):
+            payload = {"token": self.token, "dir_path": self.dir_path, "path": None}
+            try:
+                payload["path"] = self._pick_first_supported()
+            except Exception as exc:  # pragma: no cover - defensive
+                payload["error"] = f"{exc}"
+                payload["traceback"] = traceback.format_exc()
+            self.signals.picked.emit(payload)
+
+        def _pick_first_supported(self) -> Optional[str]:
+            if not self.dir_path or not os.path.isdir(self.dir_path):
+                return None
+            first_path = None
+            first_key = None
+            try:
+                with os.scandir(self.dir_path) as it:
+                    for entry in it:
+                        if not entry.is_file():
+                            continue
+                        name_lower = entry.name.lower()
+                        if not name_lower.endswith(SUPPORTED_EXTS):
+                            continue
+                        key = (name_lower, entry.name)
+                        if first_key is None or key < first_key:
+                            first_key = key
+                            first_path = entry.path
+            except Exception:
+                return None
+            return first_path
+
     # -----------------------------------------------------------------------
     # Graphics view with pan/zoom + key handling
     # -----------------------------------------------------------------------
@@ -545,6 +643,12 @@ else:
             try:
                 self.scale(factor, factor)
                 self._fit_on_resize = False
+                viewer = self.parent()
+                try:
+                    if viewer is not None and hasattr(viewer, "_on_image_view_scaled"):
+                        viewer._on_image_view_scaled()
+                except Exception:
+                    pass
             except Exception:
                 pass
 
@@ -609,6 +713,9 @@ else:
             self._hist = None
             self._lo: Optional[float] = None
             self._hi: Optional[float] = None
+            self._zoom_active: bool = False
+            self._zoom_view_lo: Optional[float] = None
+            self._zoom_view_hi: Optional[float] = None
             self._drag_handle: Optional[str] = None
             self._grab_radius = 12
             self.setMinimumHeight(120)
@@ -619,6 +726,8 @@ else:
 
         # Public API ---------------------------------------------------
         def set_histogram(self, hist, lo: Optional[float] = None, hi: Optional[float] = None):
+            if hist is None or hist is not self._hist:
+                self.zoom_reset()
             self._hist = hist
             if lo is not None:
                 self._lo = lo
@@ -631,6 +740,48 @@ else:
             self._hi = hi
             self.update()
 
+        def is_zoomed(self) -> bool:
+            return bool(self._zoom_active)
+
+        def zoom_to_current_levels(self) -> bool:
+            hist = self._hist if isinstance(self._hist, dict) else None
+            edges = hist.get("edges") if hist else None
+            if edges is None or len(edges) < 2:
+                return False
+            if self._lo is None or self._hi is None:
+                return False
+            try:
+                lo_val = float(self._lo)
+                hi_val = float(self._hi)
+                edge_lo = float(edges[0])
+                edge_hi = float(edges[-1])
+            except Exception:
+                return False
+            if not (
+                math.isfinite(lo_val)
+                and math.isfinite(hi_val)
+                and math.isfinite(edge_lo)
+                and math.isfinite(edge_hi)
+            ):
+                return False
+            if lo_val >= hi_val:
+                return False
+            view_lo = max(edge_lo, lo_val)
+            view_hi = min(edge_hi, hi_val)
+            if view_lo >= view_hi:
+                return False
+            self._zoom_active = True
+            self._zoom_view_lo = view_lo
+            self._zoom_view_hi = view_hi
+            self.update()
+            return True
+
+        def zoom_reset(self) -> None:
+            self._zoom_active = False
+            self._zoom_view_lo = None
+            self._zoom_view_hi = None
+            self.update()
+
         # Internal helpers --------------------------------------------
         def _value_range(self) -> Optional[tuple[float, float]]:
             hist = self._hist if isinstance(self._hist, dict) else None
@@ -638,9 +789,24 @@ else:
             if edges is None or len(edges) < 2:
                 return None
             try:
-                return float(edges[0]), float(edges[-1])
+                lo_edge = float(edges[0])
+                hi_edge = float(edges[-1])
             except Exception:
                 return None
+            if self._zoom_active:
+                view_lo = self._zoom_view_lo
+                view_hi = self._zoom_view_hi
+                if (
+                    view_lo is not None
+                    and view_hi is not None
+                    and math.isfinite(view_lo)
+                    and math.isfinite(view_hi)
+                    and view_lo < view_hi
+                ):
+                    return view_lo, view_hi
+            if not math.isfinite(lo_edge) or not math.isfinite(hi_edge) or lo_edge >= hi_edge:
+                return None
+            return lo_edge, hi_edge
 
         def _value_to_pos(self, value: Optional[float]) -> Optional[int]:
             rng = self._value_range()
@@ -725,6 +891,10 @@ else:
             edges = hist.get("edges")
             if counts is None or edges is None:
                 return
+            view_range = self._value_range()
+            if view_range is None:
+                return
+            view_lo, view_hi = view_range
             counts_arr = np.asarray(counts)
             if counts_arr.ndim == 1:
                 counts_arr = counts_arr[np.newaxis, :]
@@ -744,12 +914,23 @@ else:
             height = max(1, rect.height() - 4)
             base_y = rect.bottom() - 2
             scale = float(height) / max_count if max_count else 1.0
+            zoom_active = (
+                self._zoom_active
+                and self._zoom_view_lo is not None
+                and self._zoom_view_hi is not None
+                and math.isfinite(self._zoom_view_lo)
+                and math.isfinite(self._zoom_view_hi)
+                and view_lo == self._zoom_view_lo
+                and view_hi == self._zoom_view_hi
+            )
 
             for idx, row in enumerate(counts_arr):
                 if row.size == 0:
                     continue
                 pts = []
                 for cx, count in zip(centers, row):
+                    if zoom_active and (cx < view_lo or cx > view_hi):
+                        continue
                     pos_x = self._value_to_pos(float(cx))
                     if pos_x is None:
                         continue
@@ -828,6 +1009,15 @@ else:
             self._dir_index: int = -1
             self._dir_cache_key: Optional[tuple[str, float, int]] = None
             self._skip_delete_confirm_session = False
+            self._session_active = False
+            self._session_levels: Optional[tuple[float, float]] = None
+            self._session_hist_zoom: Optional[bool] = None
+            self._session_view_zoom_mode: Optional[str] = "fit"
+            self._session_view_scale: float = 1.0
+            self._ui_sync_guard = 0
+            self._open_source = "none"
+            self._autoload_project_dir: Optional[str] = None
+            self._autoload_token = 0
             self._linear_ds = None
             self._display_u8 = None
             self._hist_sample = None
@@ -836,7 +1026,6 @@ else:
             self._hist = None
             self._wb_gains = None
             self._last_open_dir: Optional[str] = None
-            self._levels_sync_guard = False
             self._pending_levels: Optional[tuple[float, float]] = None
             self._levels_timer = QTimer(self)
             try:
@@ -942,6 +1131,14 @@ else:
             self.stretch_max = QDoubleSpinBox()
             self.stretch_max.setRange(-1e12, 1e12)
             self.stretch_max.setDecimals(6)
+            try:
+                self.stretch_min.valueChanged.connect(self._on_spin_levels_changed)
+                self.stretch_max.valueChanged.connect(self._on_spin_levels_changed)
+            except Exception:
+                pass
+
+            self.hist_zoom_btn = QPushButton("")
+            self.hist_zoom_btn.clicked.connect(self._toggle_hist_zoom)
 
             self.stretch_apply = QPushButton("")
             self.stretch_apply.clicked.connect(lambda: self.apply_stretch(self.stretch_min.value(), self.stretch_max.value()))
@@ -950,6 +1147,7 @@ else:
             stretch_row.addWidget(self.stretch_min)
             stretch_row.addWidget(self.stretch_max_label)
             stretch_row.addWidget(self.stretch_max)
+            stretch_row.addWidget(self.hist_zoom_btn)
             stretch_row.addWidget(self.stretch_apply)
             layout.addLayout(stretch_row)
 
@@ -987,6 +1185,23 @@ else:
                 except Exception:
                     pass
 
+        def _update_hist_zoom_button(self):
+            try:
+                zoomed = self.hist_widget.is_zoomed()
+            except Exception:
+                zoomed = False
+            try:
+                if zoomed:
+                    text = _tr("preview_hist_zoom_reset", "Hist 1:1")
+                    tooltip = _tr("preview_hist_zoom_reset_tip", "Reset histogram view")
+                else:
+                    text = _tr("preview_hist_zoom", "Hist zoom")
+                    tooltip = _tr("preview_hist_zoom_tip", "Zoom histogram to current stretch range")
+                self.hist_zoom_btn.setText(text)
+                self.hist_zoom_btn.setToolTip(tooltip)
+            except Exception:
+                pass
+
         def _update_stats_label(self, stats):
             if not stats:
                 try:
@@ -1011,18 +1226,146 @@ else:
                 except Exception:
                     pass
 
+        def current_path(self) -> Optional[str]:
+            return self._last_path
+
+        def has_image(self) -> bool:
+            return bool(self._last_path and (self._display_u8 is not None or self._linear_ds is not None))
+
+        def reset_session_state(self, reason: str = "") -> None:
+            self._session_active = False
+            self._session_levels = None
+            self._session_hist_zoom = None
+            self._session_view_zoom_mode = "fit"
+            self._session_view_scale = 1.0
+            self._ui_sync_guard = 0
+            self._open_source = "none"
+            self._autoload_project_dir = None
+            self._pending_levels = None
+            try:
+                if self._levels_timer.isActive():
+                    self._levels_timer.stop()
+            except Exception:
+                pass
+            try:
+                self.hist_widget.zoom_reset()
+            except Exception:
+                pass
+            self._update_hist_zoom_button()
+
+        def _update_session_levels(self, lo: Optional[float], hi: Optional[float]):
+            if getattr(self, "_ui_sync_guard", 0):
+                return
+            try:
+                lo_val = float(lo) if lo is not None else None
+                hi_val = float(hi) if hi is not None else None
+            except Exception:
+                return
+            if lo_val is None or hi_val is None:
+                return
+            if not math.isfinite(lo_val) or not math.isfinite(hi_val):
+                return
+            if lo_val >= hi_val:
+                return
+            self._session_levels = (lo_val, hi_val)
+            self._session_active = True
+
+        def _current_view_scale(self) -> Optional[float]:
+            try:
+                tr = self.image_view.transform()
+                scale = float(tr.m11())
+                if not math.isfinite(scale):
+                    return None
+                return abs(scale)
+            except Exception:
+                return None
+
+        def _update_session_view_zoom(self, mode: str, scale: Optional[float] = None):
+            if getattr(self, "_ui_sync_guard", 0):
+                return
+            self._session_view_zoom_mode = mode
+            if scale is not None and math.isfinite(scale) and scale > 0:
+                self._session_view_scale = float(scale)
+            self._session_active = True
+
+        def _apply_session_view_zoom(self):
+            mode = self._session_view_zoom_mode or "fit"
+            scale = self._session_view_scale or 1.0
+            self._ui_sync_guard += 1
+            try:
+                if mode == "one":
+                    self.image_view.set_zoom_1_1()
+                    try:
+                        self.image_view._fit_on_resize = False
+                    except Exception:
+                        pass
+                elif mode == "manual":
+                    self.image_view.set_zoom_1_1()
+                    try:
+                        self.image_view._fit_on_resize = False
+                    except Exception:
+                        pass
+                    if scale and math.isfinite(scale) and scale > 0:
+                        self.image_view.scale(scale, scale)
+                else:
+                    self.image_view.fit_in_view()
+            except Exception:
+                pass
+            self._ui_sync_guard = max(0, self._ui_sync_guard - 1)
+
+        def _apply_session_hist_zoom(self):
+            zoom_pref = self._session_hist_zoom
+            try:
+                if zoom_pref is None:
+                    self._session_hist_zoom = bool(self.hist_widget.is_zoomed())
+                    self._update_hist_zoom_button()
+                    return
+                if zoom_pref:
+                    ok = self.hist_widget.zoom_to_current_levels()
+                    if not ok:
+                        self.hist_widget.zoom_reset()
+                        self._session_hist_zoom = False
+                else:
+                    self.hist_widget.zoom_reset()
+            except Exception:
+                pass
+            self._update_hist_zoom_button()
+
+        def _on_image_view_scaled(self):
+            if getattr(self, "_ui_sync_guard", 0):
+                return
+            scale = self._current_view_scale()
+            if scale is None:
+                return
+            self._update_session_view_zoom("manual", scale)
+
+        def _on_spin_levels_changed(self, *_args):
+            if getattr(self, "_ui_sync_guard", 0):
+                return
+            lo = None
+            hi = None
+            try:
+                lo = float(self.stretch_min.value())
+            except Exception:
+                lo = None
+            try:
+                hi = float(self.stretch_max.value())
+            except Exception:
+                hi = None
+            self._update_session_levels(lo, hi)
+
         def _sync_spinboxes(self, lo: Optional[float], hi: Optional[float]):
             if lo is None or hi is None:
                 return
-            if getattr(self, "_levels_sync_guard", False):
+            if getattr(self, "_ui_sync_guard", 0):
                 return
-            self._levels_sync_guard = True
+            self._ui_sync_guard += 1
             try:
                 self.stretch_min.setValue(float(lo))
                 self.stretch_max.setValue(float(hi))
             except Exception:
                 pass
-            self._levels_sync_guard = False
+            self._ui_sync_guard = max(0, self._ui_sync_guard - 1)
 
         def _update_histogram_display(self, hist, lo: Optional[float] = None, hi: Optional[float] = None):
             try:
@@ -1030,9 +1373,28 @@ else:
             except Exception:
                 pass
 
+        def _toggle_hist_zoom(self):
+            try:
+                if getattr(self, "_ui_sync_guard", 0):
+                    self._update_hist_zoom_button()
+                    return
+                if self.hist_widget.is_zoomed():
+                    self.hist_widget.zoom_reset()
+                else:
+                    ok = self.hist_widget.zoom_to_current_levels()
+                    if not ok:
+                        self._update_hist_zoom_button()
+                        return
+                self._session_hist_zoom = bool(self.hist_widget.is_zoomed())
+                self._session_active = True
+                self._update_hist_zoom_button()
+            except Exception:
+                self._update_hist_zoom_button()
+
         def _on_hist_levels_changing(self, lo: float, hi: float):
-            if getattr(self, "_levels_sync_guard", False):
+            if getattr(self, "_ui_sync_guard", 0):
                 return
+            self._update_session_levels(lo, hi)
             self._sync_spinboxes(lo, hi)
             self._pending_levels = (float(lo), float(hi))
             try:
@@ -1044,6 +1406,7 @@ else:
 
         def _on_hist_levels_changed_final(self, lo: float, hi: float):
             self._pending_levels = None
+            self._update_session_levels(lo, hi)
             self._sync_spinboxes(lo, hi)
             self.apply_stretch(lo, hi)
 
@@ -1055,7 +1418,70 @@ else:
             self.apply_stretch(*pending)
 
         # Public API ------------------------------------------------------
+        def _dirs_match(self, a: Optional[str], b: Optional[str]) -> bool:
+            if not a or not b:
+                return False
+            try:
+                return _is_within_dir(a, b) and _is_within_dir(b, a)
+            except Exception:
+                return False
+
+        def maybe_autoload_from_project_dir(self, project_dir: str) -> bool:
+            try:
+                dir_path = project_dir.strip()
+            except Exception:
+                dir_path = project_dir
+            if not dir_path:
+                return False
+            try:
+                dir_path = os.path.abspath(dir_path)
+            except Exception:
+                pass
+            if not dir_path or not os.path.isdir(dir_path):
+                return False
+            if not self.has_image():
+                return self.autoload_first_from_dir(dir_path, reset_reason="autoload_first")
+            if self._open_source == "manual":
+                return False
+            if self._open_source == "project":
+                if self._autoload_project_dir and self._dirs_match(dir_path, self._autoload_project_dir):
+                    return False
+                return self.autoload_first_from_dir(dir_path, reset_reason="autoload_project_dir_changed")
+            return self.autoload_first_from_dir(dir_path, reset_reason="autoload_override")
+
+        def autoload_first_from_dir(self, project_dir: str, reset_reason: str = "autoload_first") -> bool:
+            if not project_dir or not os.path.isdir(project_dir):
+                return False
+            self._autoload_token += 1
+            token = self._autoload_token
+            runnable = PickFirstFileRunnable(project_dir, token)
+            runnable.signals.picked.connect(lambda payload, reason=reset_reason: self._on_autoload_picked(payload, reason))
+            try:
+                self._thread_pool.start(runnable)
+            except Exception:
+                runnable.run()
+            return True
+
+        def _on_autoload_picked(self, payload: dict, reset_reason: str = "autoload_first"):
+            if payload.get("token") != self._autoload_token:
+                return
+            first_path = payload.get("path")
+            if not first_path:
+                if not self.has_image():
+                    self._set_status("no_preview_selected", "No preview selected.")
+                return
+            dir_path = payload.get("dir_path") or os.path.dirname(first_path)
+            try:
+                norm_dir = os.path.abspath(dir_path) if dir_path else dir_path
+            except Exception:
+                norm_dir = dir_path
+            self.reset_session_state(reset_reason)
+            self._open_source = "project"
+            self._autoload_project_dir = norm_dir
+            self.load_path(first_path, source="project", project_dir=norm_dir, index_dir=True)
+
         def clear(self):
+            self.reset_session_state("clear")
             self._linear_ds = None
             self._display_u8 = None
             self._hist_sample = None
@@ -1065,11 +1491,6 @@ else:
             self._wb_gains = None
             self._last_path = None
             self._dir_index = -1
-            self._pending_levels = None
-            try:
-                self._levels_timer.stop()
-            except Exception:
-                pass
             try:
                 self.image_view.set_pixmap(None)
             except Exception:
@@ -1082,7 +1503,20 @@ else:
             self._set_status("no_preview_selected", "No preview selected.")
             self._update_toolbar_state()
 
-        def load_path(self, path: str):
+        def load_path(
+            self,
+            path: str,
+            source: Optional[str] = None,
+            index_dir: Optional[bool] = None,
+            project_dir: Optional[str] = None,
+        ):
+            if source:
+                self._open_source = source
+                if source == "project":
+                    try:
+                        self._autoload_project_dir = os.path.abspath(project_dir) if project_dir else project_dir
+                    except Exception:
+                        self._autoload_project_dir = project_dir
             try:
                 path = os.path.abspath(path)
             except Exception:
@@ -1099,7 +1533,7 @@ else:
             dir_path = os.path.dirname(os.path.abspath(path))
             self._last_open_dir = dir_path
             self._dir_path = dir_path
-            need_index = self._should_index_dir(dir_path)
+            need_index = self._should_index_dir(dir_path) if index_dir is None else bool(index_dir)
             runnable = PreviewLoadRunnable(
                 path=path,
                 token=token,
@@ -1273,6 +1707,7 @@ else:
                     self._set_status("no_preview_selected", "No preview selected.")
             except Exception:
                 pass
+            self._update_hist_zoom_button()
             self._update_toolbar_state()
 
         # Slots -----------------------------------------------------------
@@ -1282,6 +1717,7 @@ else:
                 return
             if payload.get("error"):
                 if payload.get("error") == "no_preview":
+                    self.reset_session_state("no_preview")
                     try:
                         self.image_view.set_pixmap(None)
                     except Exception:
@@ -1322,39 +1758,70 @@ else:
                     self._dir_path = os.path.dirname(os.path.abspath(self._last_path))
                     self._dir_index = self._dir_files.index(self._last_path) if self._last_path in self._dir_files else -1
 
-            self._update_histogram_display(self._hist, self._auto_lo, self._auto_hi)
-            self._sync_spinboxes(self._auto_lo, self._auto_hi)
-            self.apply_stretch(self._auto_lo, self._auto_hi)
+            def _valid_levels(lo, hi):
+                try:
+                    lo_f = float(lo)
+                    hi_f = float(hi)
+                except Exception:
+                    return False
+                if not math.isfinite(lo_f) or not math.isfinite(hi_f):
+                    return False
+                return lo_f < hi_f
+
+            target_lo, target_hi = self._auto_lo, self._auto_hi
+            if self._session_levels is not None and _valid_levels(*self._session_levels):
+                target_lo, target_hi = self._session_levels
+            elif _valid_levels(self._auto_lo, self._auto_hi):
+                try:
+                    self._session_levels = (float(self._auto_lo), float(self._auto_hi))
+                    target_lo, target_hi = self._session_levels
+                except Exception:
+                    pass
+
+            if not self._session_view_zoom_mode:
+                self._session_view_zoom_mode = "fit"
+            if target_lo is not None and target_hi is not None:
+                self._session_active = True
+            self._update_histogram_display(self._hist, target_lo, target_hi)
+            self._sync_spinboxes(target_lo, target_hi)
+            self.apply_stretch(target_lo, target_hi)
+            self._apply_session_hist_zoom()
+            self._apply_session_view_zoom()
             self._update_toolbar_state()
 
         # Internal helpers -------------------------------------------------
         def _fit_view(self):
             try:
                 self.image_view.fit_in_view()
+                self._update_session_view_zoom("fit", 1.0)
             except Exception:
                 pass
 
         def _one_to_one(self):
             try:
                 self.image_view.set_zoom_1_1()
+                self._update_session_view_zoom("one", 1.0)
             except Exception:
                 pass
 
         def _zoom_in(self):
             try:
                 self.image_view.zoom_in()
+                self._update_session_view_zoom("manual", self._current_view_scale())
             except Exception:
                 pass
 
         def _zoom_out(self):
             try:
                 self.image_view.zoom_out()
+                self._update_session_view_zoom("manual", self._current_view_scale())
             except Exception:
                 pass
 
         def _reset_view(self):
             try:
                 self.image_view.reset_view()
+                self._update_session_view_zoom("fit", 1.0)
             except Exception:
                 pass
 
@@ -1385,7 +1852,8 @@ else:
                         self._last_open_dir = os.path.dirname(os.path.abspath(fname))
                     except Exception:
                         pass
-                    self.load_path(fname)
+                    self.reset_session_state("manual_open")
+                    self.load_path(fname, source="manual")
             except Exception:
                 pass
 

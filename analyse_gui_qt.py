@@ -961,6 +961,7 @@ class ZeAnalyserMainWindow(QMainWindow):
     def _build_ui(self):
         central = QTabWidget(self)
         self.setCentralWidget(central)
+        self._main_tabs = central
 
         # --- Project tab ---
         project_widget = QWidget()
@@ -1541,6 +1542,42 @@ class ZeAnalyserMainWindow(QMainWindow):
 
             if getattr(_zeviewer, "ZeViewerWidget", None) is not None:
                 self.zeviewer = _zeviewer.ZeViewerWidget()
+                try:
+                    pool = getattr(self.zeviewer, "_thread_pool", None)
+                    if pool is not None and hasattr(pool, "start"):
+                        keepalive = []
+                        orig_start = pool.start
+
+                        def _cleanup(r):
+                            try:
+                                keepalive.remove(r)
+                            except Exception:
+                                pass
+
+                        def _start_with_keepalive(runnable, *args, **kwargs):
+                            keepalive.append(runnable)
+                            try:
+                                res = orig_start(runnable, *args, **kwargs)
+                            except Exception:
+                                try:
+                                    runnable.run()
+                                finally:
+                                    _cleanup(runnable)
+                                return None
+                            try:
+                                sigs = getattr(runnable, "signals", None)
+                                for sig_name in ("picked", "result", "finished"):
+                                    sig = getattr(sigs, sig_name, None)
+                                    if sig is not None and hasattr(sig, "connect"):
+                                        sig.connect(lambda *_a, _r=runnable: _cleanup(_r))
+                            except Exception:
+                                pass
+                            return res
+
+                        pool.start = _start_with_keepalive
+                        self._zeviewer_keepalive = keepalive
+                except Exception:
+                    pass
                 preview_layout.addWidget(self.zeviewer)
                 try:
                     self.zeviewer.sig_path_navigated.connect(self._on_viewer_path_navigated)
@@ -1562,6 +1599,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.preview_image_label = fallback_label
 
         self.preview_tab_index = central.addTab(preview_widget, _tr('preview_tab_title', 'Preview'))
+        self._preview_tab_index = self.preview_tab_index
 
         # --- Settings tab (Language / Skin) -----------------------------
         settings_widget = QWidget()
@@ -1602,6 +1640,21 @@ class ZeAnalyserMainWindow(QMainWindow):
         settings_layout.addStretch(1)
 
         self.settings_tab_index = central.addTab(settings_widget, _tr('settings_tab_title', 'Settings / Préférences'))
+        try:
+            if hasattr(central, "currentChanged"):
+                try:
+                    central.currentChanged[int].connect(self._on_main_tab_changed)
+                except Exception:
+                    central.currentChanged.connect(self._on_main_tab_changed)
+        except Exception:
+            pass
+        try:
+            if hasattr(QTimer, "singleShot"):
+                QTimer.singleShot(0, lambda: self._on_main_tab_changed(
+                    self._main_tabs.currentIndex() if getattr(self, "_main_tabs", None) is not None else -1
+                ))
+        except Exception:
+            pass
 
         try:
             if self.lang_combo is not None:
@@ -2642,6 +2695,125 @@ class ZeAnalyserMainWindow(QMainWindow):
                 try:
                     if hasattr(self, 'preview_image_label') and isinstance(self.preview_image_label, QLabel):
                         self.preview_image_label.setText(f"Loaded (stretched) lo={lo:.3f} hi={hi:.3f}")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _on_main_tab_changed(self, idx: int):
+        try:
+            preview_idx = getattr(self, '_preview_tab_index', None)
+            if preview_idx is None:
+                return
+            current_idx = idx
+            try:
+                # currentChanged may deliver either an index or a QWidget; normalize to int
+                if not isinstance(current_idx, int) and getattr(self, '_main_tabs', None) is not None:
+                    current_idx = self._main_tabs.indexOf(current_idx)
+                if not isinstance(current_idx, int) and getattr(self, '_main_tabs', None) is not None:
+                    current_idx = self._main_tabs.currentIndex()
+            except Exception:
+                pass
+            if not isinstance(current_idx, int) or current_idx != preview_idx:
+                return
+            project_dir = ""
+            try:
+                if getattr(self, 'input_path_edit', None) is not None:
+                    project_dir = self.input_path_edit.text()
+            except Exception:
+                project_dir = ""
+            try:
+                project_dir = (project_dir or "").strip()
+                if project_dir:
+                    project_dir = os.path.abspath(project_dir)
+            except Exception:
+                pass
+            try:
+                if not project_dir or not os.path.isdir(project_dir):
+                    return
+            except Exception:
+                return
+            viewer = getattr(self, 'zeviewer', None)
+            if viewer is None:
+                return
+            autoload_started = False
+            try:
+                maybe_autoload = getattr(viewer, 'maybe_autoload_from_project_dir', None)
+                if callable(maybe_autoload):
+                    autoload_started = bool(maybe_autoload(project_dir))
+            except Exception:
+                autoload_started = False
+            try:
+                has_image = getattr(viewer, 'has_image', None)
+                if callable(has_image) and has_image():
+                    return
+            except Exception:
+                pass
+            try:
+                autoload_first = getattr(viewer, 'autoload_first_from_dir', None)
+                if callable(autoload_first) and not autoload_started:
+                    autoload_started = bool(autoload_first(project_dir))
+            except Exception:
+                pass
+            try:
+                if hasattr(QTimer, "singleShot"):
+                    QTimer.singleShot(350, lambda dir_path=project_dir: self._ensure_preview_autoload(dir_path))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _ensure_preview_autoload(self, project_dir: str):
+        try:
+            preview_idx = getattr(self, '_preview_tab_index', None)
+            if preview_idx is None:
+                return
+            try:
+                if getattr(self, '_main_tabs', None) is not None:
+                    current_idx = self._main_tabs.currentIndex()
+                    if isinstance(current_idx, int) and current_idx != preview_idx:
+                        return
+            except Exception:
+                pass
+            try:
+                if not project_dir or not os.path.isdir(project_dir):
+                    return
+            except Exception:
+                return
+            viewer = getattr(self, 'zeviewer', None)
+            if viewer is None:
+                return
+            try:
+                has_image = getattr(viewer, 'has_image', None)
+                if callable(has_image) and has_image():
+                    return
+            except Exception:
+                pass
+            first_path = None
+            try:
+                import zeviewer as _zeviewer
+                supported = tuple(getattr(_zeviewer, 'SUPPORTED_EXTS', ()))
+                best_key = None
+                if supported:
+                    with os.scandir(project_dir) as it:
+                        for entry in it:
+                            try:
+                                if not entry.is_file():
+                                    continue
+                            except Exception:
+                                continue
+                            name_lower = entry.name.lower()
+                            if not name_lower.endswith(supported):
+                                continue
+                            key = (name_lower, entry.name)
+                            if best_key is None or key < best_key:
+                                best_key = key
+                                first_path = entry.path
+            except Exception:
+                first_path = None
+            if first_path and hasattr(viewer, 'load_path'):
+                try:
+                    viewer.load_path(first_path, source="project", project_dir=project_dir, index_dir=True)
                 except Exception:
                     pass
         except Exception:
