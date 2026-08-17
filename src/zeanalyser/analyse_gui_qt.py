@@ -194,6 +194,32 @@ except ImportError:
 # ---------------------------------------------------------------------------
 ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon")
 
+# Stable Windows taskbar/application identity (must NOT change between
+# upgrades, so no version number here).  Without an explicit AppUserModelID,
+# Windows groups the process under the default python.exe identity and shows
+# the Python icon in the taskbar even when the Qt window icon is correct.
+_WINDOWS_APP_USER_MODEL_ID = "ZeSoftware.ZeAnalyser"
+
+
+def _set_windows_app_user_model_id() -> bool:
+    """Bind the process to the ZeAnalyser Windows taskbar identity.
+
+    Windows-only: calls ``SetCurrentProcessExplicitAppUserModelID`` through
+    ``ctypes`` before ``QApplication`` is created.  Returns True when the
+    identity was applied.  On any other platform this is a no-op returning
+    False, and any Windows API failure degrades to False without raising.
+    """
+    if platform.system() != "Windows":
+        return False
+    try:
+        import ctypes
+
+        shell32 = ctypes.windll.shell32  # type: ignore[attr-defined]
+        shell32.SetCurrentProcessExplicitAppUserModelID(_WINDOWS_APP_USER_MODEL_ID)
+        return True
+    except Exception:
+        return False
+
 
 def get_app_icon() -> QIcon:
     """Return the best available application icon from the icon/ folder."""
@@ -919,31 +945,24 @@ class ZeAnalyserMainWindow(QMainWindow):
             return default
 
     def _apply_window_icon(self, project_root_dir: str | None) -> None:
-        """Apply a window icon with platform-specific candidates (icns/png/ico)."""
+        """Apply the packaged window icon.
 
-        if QIcon is object or not project_root_dir:
+        The icon always comes from the installed package resources
+        (``ICON_DIR`` beside this module), never from a checkout root, the
+        current working directory or a legacy ``project_root_dir``.  The
+        ``project_root_dir`` argument is kept for historical call-site
+        compatibility and is intentionally unused (ZA-M1-3A.1).
+        """
+
+        if QIcon is object:
             return
 
         try:
-            icon_dir = os.path.join(project_root_dir, "icon")
-            system_name = platform.system()
-            candidates: list[str] = []
-
-            if system_name == "Darwin":
-                candidates.extend([
-                    os.path.join(icon_dir, "icon.icns"),
-                    os.path.join(icon_dir, "icon.png"),
-                ])
-            elif system_name == "Windows":
-                candidates.extend([
-                    os.path.join(icon_dir, "icon.ico"),
-                    os.path.join(icon_dir, "icon.png"),
-                ])
-            else:
-                candidates.extend([
-                    os.path.join(icon_dir, "icon.png"),
-                    os.path.join(icon_dir, "icon.ico"),
-                ])
+            candidates: list[str] = [
+                os.path.join(ICON_DIR, "zeanalyz_icon.png"),
+                os.path.join(ICON_DIR, "zeanalyz_64x64.png"),
+                os.path.join(ICON_DIR, "zeanalyz.ico"),
+            ]
 
             for icon_path in candidates:
                 if not icon_path or not os.path.isfile(icon_path):
@@ -6967,6 +6986,10 @@ def main(argv=None, run_for: int | None = None):
     """
     if QApplication is object:
         raise RuntimeError("PySide6 is not available in the environment")
+
+    # Windows: declare the product identity BEFORE any Qt window exists so the
+    # taskbar shows the ZeAnalyser icon instead of the generic Python one.
+    _set_windows_app_user_model_id()
 
     # Parse command line arguments similar to Tk version
     import argparse
