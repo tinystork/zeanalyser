@@ -1,5 +1,11 @@
 # Changelog
 
+## v3.3.1 – Standalone closure (2026-08-17)
+
+* `acstools` devient une dépendance runtime obligatoire (détection de traînées satellite)
+* Restauration de l'identité/icône Windows dans la taskbar (AppUserModelID `ZeSoftware.ZeAnalyser`)
+* Documentation du lancement standalone packagé (`zeanalyser` / `python -m zeanalyser`)
+
 ## v3.x.x – Migration progressive vers Qt
 
 ### Nouveautés
