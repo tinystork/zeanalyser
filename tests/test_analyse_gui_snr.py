@@ -1,8 +1,6 @@
 import pytest
 
-import analyse_gui_qt as mod
-
-
+import zeanalyser.analyse_gui_qt as mod
 pytestmark = pytest.mark.skipif(
     mod.QApplication is object, reason="PySide6 not installed in this environment"
 )
@@ -73,12 +71,11 @@ def test_qt_and_tk_apply_parity(monkeypatch):
         called_snapshots.append({'pending': pending, 'path': path, 'delete': delete_rejected_flag, 'move': move_rejected_flag})
         return 0
 
-    import analyse_logic
+    from zeanalyser import analyse_logic
     monkeypatch.setattr(analyse_logic, 'apply_pending_snr_actions', fake_apply)
 
     # 1) TK-like behavior (call method directly with a dummy self)
-    import analyse_gui as tkmod
-
+    import zeanalyser.analyse_gui as tkmod
     class DummyTk:
         pass
 
@@ -175,7 +172,7 @@ def test_apply_snr_calls_logic(monkeypatch):
                 r['rejected_reason'] = 'low_snr'
         return 1
 
-    import analyse_logic
+    from zeanalyser import analyse_logic
     monkeypatch.setattr(analyse_logic, 'apply_pending_snr_actions', fake_apply)
 
     # Make background thread run synchronously for the test

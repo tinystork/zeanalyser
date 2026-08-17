@@ -1,9 +1,8 @@
 import time
 import pytest
 
-import analyse_gui_qt as mod
-import analysis_schema
-
+import zeanalyser.analyse_gui_qt as mod
+from zeanalyser import analysis_schema
 pytestmark = pytest.mark.skipif(
     mod.QApplication is object or mod.QTableView is object, reason="PySide6 not available"
 )

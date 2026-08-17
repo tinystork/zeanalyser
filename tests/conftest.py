@@ -2,7 +2,8 @@
 import sys
 from pathlib import Path
 
-# Ensure the repository root is importable so top-level modules resolve
+# Ensure the src/ layout is importable so the ``zeanalyser`` package resolves
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))

@@ -99,9 +99,7 @@ def _is_dark_theme() -> bool:
     except Exception:
         return False
 
-import analysis_schema
-
-
+from zeanalyser import analysis_schema
 class AnalysisResultsModel(QAbstractTableModel):
     """A simple table model for analysis results (list of dicts).
 

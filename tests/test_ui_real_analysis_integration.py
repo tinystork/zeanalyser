@@ -1,8 +1,7 @@
 import time
 import pytest
 
-import analyse_gui_qt as mod
-
+import zeanalyser.analyse_gui_qt as mod
 pytestmark = pytest.mark.skipif(
     mod.QApplication is object or mod.Signal is None, reason="PySide6 not available"
 )
@@ -42,8 +41,7 @@ def test_ui_runs_real_analysis_without_freeze(monkeypatch):
         return ['ok']
 
     # monkeypatch perform_analysis into analyse_logic so worker.start will use it
-    import analyse_logic as logic_mod
-
+    import zeanalyser.analyse_logic as logic_mod
     monkeypatch.setattr(logic_mod, 'perform_analysis', fake_perform, raising=False)
 
     win = mod.ZeAnalyserMainWindow()

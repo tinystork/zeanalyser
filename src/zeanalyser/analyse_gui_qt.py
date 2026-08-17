@@ -65,8 +65,8 @@ import os
 import platform
 import time
 import traceback
-from platform_utils import open_path_with_default_app
-import organizer_module
+from zeanalyser.platform_utils import open_path_with_default_app
+from zeanalyser import organizer_module
 
 # Set Matplotlib backend for Qt before importing matplotlib
 _env_backend = os.environ.get("MPLBACKEND")
@@ -172,7 +172,7 @@ except Exception:  # pragma: no cover - tests guard for availability
     QModelIndex = object
 try:
     # small i18n helper used across the project (zone.py provides a local wrapper)
-    import zone
+    from zeanalyser import zone
     _ = zone._
 except Exception:  # pragma: no cover - fallback to a no-op name lookup
     def _(k, *a, **kw):
@@ -185,7 +185,7 @@ except Exception:  # pragma: no cover - fallback to a no-op name lookup
 
 # Import translations for log formatting
 try:
-    from zone import translations
+    from zeanalyser.zone import translations
 except ImportError:
     translations = {'en': {}, 'fr': {}}
 
@@ -1550,8 +1550,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         preview_layout = QVBoxLayout(preview_widget)
 
         try:
-            import zeviewer as _zeviewer
-
+            import zeanalyser.zeviewer as _zeviewer
             if getattr(_zeviewer, "ZeViewerWidget", None) is not None:
                 self.zeviewer = _zeviewer.ZeViewerWidget()
                 try:
@@ -2378,7 +2377,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.analysis_results = list(rows)
 
         try:
-            from analysis_model import AnalysisResultsModel
+            from zeanalyser.analysis_model import AnalysisResultsModel
             from PySide6.QtCore import QSortFilterProxyModel
         except Exception:
             # in environments without Qt, keep an internal reference
@@ -2427,7 +2426,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         Uses StackPlanModel when available.
         """
         try:
-            from analysis_model import StackPlanModel
+            from zeanalyser.analysis_model import StackPlanModel
         except Exception:
             # fallback: store rows
             try:
@@ -2813,7 +2812,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 pass
             first_path = None
             try:
-                import zeviewer as _zeviewer
+                import zeanalyser.zeviewer as _zeviewer
                 supported = tuple(getattr(_zeviewer, 'SUPPORTED_EXTS', ()))
                 best_key = None
                 if supported:
@@ -3269,8 +3268,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             # defensive: fallthrough to try starting the worker
             pass
         try:
-            import analyse_logic
-
+            from zeanalyser import analyse_logic
             if hasattr(analyse_logic, 'perform_analysis'):
                 w.start(analyse_logic.perform_analysis, input_path, output_path, options, log_callback=log_callback)
                 return
@@ -3328,8 +3326,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 return
 
             # Import stack_plan module
-            import stack_plan
-
+            from zeanalyser import stack_plan
             # Create stack plan with default parameters
             default_sort_spec = [
                 ('mount', False),
@@ -3477,8 +3474,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 return
 
             # Import stack_plan module
-            import stack_plan
-
+            from zeanalyser import stack_plan
             # Generate stacking plan with default parameters
             default_sort_spec = [
                 ('mount', False),
@@ -3636,7 +3632,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                         reverse = order == _("descending")
                         sort_spec.append((cat, reverse))
 
-                import stack_plan
+                from zeanalyser import stack_plan
                 plan_rows = stack_plan.generate_stacking_plan(
                     kept_results,
                     include_exposure_in_batch=include_exposure_cb.isChecked(),
@@ -3665,7 +3661,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                         reverse = order == _("descending")
                         sort_spec.append((cat, reverse))
 
-                import stack_plan
+                from zeanalyser import stack_plan
                 plan_rows = stack_plan.generate_stacking_plan(
                     kept_results,
                     include_exposure_in_batch=include_exposure_cb.isChecked(),
@@ -4006,7 +4002,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         # call analysis logic in background thread so tests can patch threading.Thread
         def _run_apply():
             try:
-                import analyse_logic
+                from zeanalyser import analyse_logic
                 analyse_logic.apply_pending_snr_actions(
                     rows,
                     opts.get('snr_reject_dir'),
@@ -4086,7 +4082,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         # run apply in background thread (tests can monkeypatch threading.Thread)
         def _run_apply_trail():
             try:
-                import analyse_logic
+                from zeanalyser import analyse_logic
                 analyse_logic.apply_pending_trail_actions(
                     rows,
                     opts.get('trail_reject_dir'),
@@ -4208,7 +4204,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         try:
             try:
-                import trail_module
+                from zeanalyser import trail_module
                 satdet_available = bool(getattr(trail_module, 'SATDET_AVAILABLE', False))
                 satdet_uses_searchpattern = bool(getattr(trail_module, 'SATDET_USES_SEARCHPATTERN', False))
             except Exception:
@@ -4607,8 +4603,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                         object.__setattr__(self, '_last_loaded_log_path', log_path)
                     except Exception:
                         self._last_loaded_log_path = log_path
-                    import analyse_logic
-
+                    from zeanalyser import analyse_logic
                     try:
                         (
                             self.recommended_images,
@@ -5874,8 +5869,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
             applied = 0
             try:
-                import analyse_logic
-
+                from zeanalyser import analyse_logic
                 applied += analyse_logic.apply_pending_reco_actions(
                     rows,
                     opts.get('snr_reject_dir'),
@@ -6346,8 +6340,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         total = 0
         try:
-            import analyse_logic
-
+            from zeanalyser import analyse_logic
             total += analyse_logic.apply_pending_snr_actions(
                 rows,
                 opts.get('snr_reject_dir'),
@@ -6482,8 +6475,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         total = 0
         try:
-            import analyse_logic
-
+            from zeanalyser import analyse_logic
             total += analyse_logic.apply_pending_snr_actions(
                 rows,
                 opts.get('snr_reject_dir'),
@@ -6622,7 +6614,7 @@ class ZeAnalyserMainWindow(QMainWindow):
     def _apply_pending_actions(self, action_type, opts, callbacks, input_dir):
         """Apply pending actions for a specific type."""
         try:
-            import analyse_logic
+            from zeanalyser import analyse_logic
         except ImportError:
             return 0
 
@@ -6972,7 +6964,7 @@ def main(argv=None, run_for: int | None = None):
     parser.add_argument('--lang', default='fr', help='Language (en/fr)')
     parser.add_argument('--lock-lang', action='store_true', help='Lock language selection')
 
-    args, remaining_argv = parser.parse_known_args(argv or [])
+    args, remaining_argv = parser.parse_known_args(argv)
 
     app = QApplication.instance() or QApplication(remaining_argv)
     # Set organization and application name for QSettings persistence

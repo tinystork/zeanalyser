@@ -1,7 +1,5 @@
-import analyse_logic
-import analysis_schema
-
-
+from zeanalyser import analyse_logic
+from zeanalyser import analysis_schema
 def test_result_keys_contains_core_fields():
     keys = analysis_schema.get_result_keys()
     # basic required keys that analyse_logic uses

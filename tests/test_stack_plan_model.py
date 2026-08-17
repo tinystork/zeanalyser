@@ -2,8 +2,8 @@ import os
 import tempfile
 import pytest
 
-from stack_plan import generate_stacking_plan, write_stacking_plan_csv
-from analysis_model import StackPlanModel
+from zeanalyser.stack_plan import generate_stacking_plan, write_stacking_plan_csv
+from zeanalyser.analysis_model import StackPlanModel
 
 
 def _sample_results():

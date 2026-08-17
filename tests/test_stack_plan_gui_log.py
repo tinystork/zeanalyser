@@ -1,6 +1,4 @@
-import zone
-
-
+from zeanalyser import zone
 def test_translations_have_stack_plan_keys():
     fr = zone.translations.get('fr', {})
     assert 'stack_plan_summary' in fr

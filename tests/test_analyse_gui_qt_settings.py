@@ -7,9 +7,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-import analyse_gui_qt as mod
-
-
+import zeanalyser.analyse_gui_qt as mod
 pytestmark = pytest.mark.skipif(
     mod.QApplication is object, reason="PySide6 not installed in this environment"
 )

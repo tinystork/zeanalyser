@@ -101,9 +101,8 @@ from PIL import Image, ImageTk
 import json
 import importlib.util
 import numbers
-from platform_utils import open_path_with_default_app
-from stack_plan import generate_stacking_plan, write_stacking_plan_csv
-
+from zeanalyser.platform_utils import open_path_with_default_app
+from zeanalyser.stack_plan import generate_stacking_plan, write_stacking_plan_csv
 # Détection de l'environnement : intégré ou autonome
 try:
     import zeseestarstacker  # package parent
@@ -215,21 +214,16 @@ except Exception as e_path_setup:
 try:
     from seestar.gui.ui_utils import ToolTip 
     print("DEBUG (analyse_gui.py): Import de 'seestar.gui.ui_utils.ToolTip' réussi.")
-except ImportError as e_tooltip:
-    print(f"ERREUR CRITIQUE (analyse_gui.py): Impossible d'importer ToolTip depuis seestar.gui.ui_utils. Erreur: {e_tooltip}")
-    print(f"  Vérifiez que le chemin ajouté à sys.path ('{project_root_dir if 'project_root_dir' in locals() else 'NON_CALCULE'}') est correct et que le fichier seestar/gui/ui_utils.py existe et est accessible.")
-    traceback.print_exc() # Afficher la trace complète de l'ImportError
-    try:
-        root_err_tooltip = tk.Tk(); root_err_tooltip.withdraw()
-        messagebox.showerror("Erreur Module Manquant", f"Impossible d'importer un composant UI essentiel (ToolTip).\nErreur: {e_tooltip}\nL'application va se fermer.")
-        root_err_tooltip.destroy()
-    except Exception: pass
-    sys.exit(1)
+except ImportError:
+    # Mode autonome : le namespace top-level 'seestar' est réservé à
+    # ZeSeestarStacker. ZeAnalyser embarque sa propre copie du helper.
+    from zeanalyser._legacy_seestar.gui.ui_utils import ToolTip
+    print("DEBUG (analyse_gui.py): Import de 'zeanalyser._legacy_seestar.gui.ui_utils.ToolTip' réussi (mode autonome).")
 
 # Importe le module contenant la logique d'analyse principale
 # Cet import devrait fonctionner car analyse_logic.py est dans le même dossier 'beforehand'
 try:
-    import analyse_logic
+    from zeanalyser import analyse_logic
     SATDET_AVAILABLE = analyse_logic.SATDET_AVAILABLE
     SATDET_USES_SEARCHPATTERN = analyse_logic.SATDET_USES_SEARCHPATTERN
     print("DEBUG (analyse_gui.py): Import de 'analyse_logic' réussi.")
@@ -563,7 +557,7 @@ if not hasattr(analyse_logic, 'apply_pending_ecc_actions'):
 # Importe le module contenant les textes traduits
 # Cet import devrait fonctionner car zone.py est dans le même dossier 'beforehand'
 try:
-    from zone import translations
+    from zeanalyser.zone import translations
     print("DEBUG (analyse_gui.py): Import de 'zone.translations' réussi.")
 except ImportError as e_zone:
     print(f"ERREUR CRITIQUE (analyse_gui.py): Fichier de langue zone.py introuvable. Erreur: {e_zone}")
@@ -4065,7 +4059,7 @@ class AstroImageAnalyzerGUI:
             self.apply_ecc_button.config(state=tk.NORMAL)
 
     def _regenerate_stack_plan(self):
-        from stack_plan import generate_stacking_plan, write_stacking_plan_csv
+        from zeanalyser.stack_plan import generate_stacking_plan, write_stacking_plan_csv
         import os
         import tkinter.messagebox as messagebox
 

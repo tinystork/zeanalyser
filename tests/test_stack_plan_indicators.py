@@ -1,6 +1,6 @@
 import pytest
 
-from analysis_model import StackPlanModel
+from zeanalyser.analysis_model import StackPlanModel
 
 
 def _rows():

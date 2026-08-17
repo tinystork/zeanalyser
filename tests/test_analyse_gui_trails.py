@@ -1,8 +1,6 @@
 import pytest
 
-import analyse_gui_qt as mod
-
-
+import zeanalyser.analyse_gui_qt as mod
 pytestmark = pytest.mark.skipif(
     mod.QApplication is object, reason="PySide6 not installed in this environment"
 )
@@ -71,12 +69,11 @@ def test_qt_and_tk_trail_apply_parity(monkeypatch):
         called_snapshots.append({'pending': pending, 'path': path, 'delete': delete_rejected_flag, 'move': move_rejected_flag})
         return 0
 
-    import analyse_logic
+    from zeanalyser import analyse_logic
     monkeypatch.setattr(analyse_logic, 'apply_pending_trail_actions', fake_apply)
 
     # TK parity
-    import analyse_gui as tkmod
-
+    import zeanalyser.analyse_gui as tkmod
     class DummyTk:
         pass
 
@@ -165,7 +162,7 @@ def test_apply_trail_calls_logic(monkeypatch):
                 r['rejected_reason'] = 'trail'
         return 1
 
-    import analyse_logic
+    from zeanalyser import analyse_logic
     monkeypatch.setattr(analyse_logic, 'apply_pending_trail_actions', fake_apply)
 
     import threading

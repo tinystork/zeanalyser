@@ -16,8 +16,7 @@ from typing import Iterable, Optional
 # Translations helper (matches zone.py behaviour with graceful fallback)
 # ---------------------------------------------------------------------------
 try:
-    import zone
-
+    from zeanalyser import zone
     _ = zone._
     translations = getattr(zone, "translations", {"en": {}, "fr": {}})
 except Exception:  # pragma: no cover - headless fallback

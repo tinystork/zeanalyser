@@ -1,9 +1,7 @@
 import pytest
 
-import analyse_gui
-import analyse_gui_qt as mod
-
-
+from zeanalyser import analyse_gui
+import zeanalyser.analyse_gui_qt as mod
 def _stub_var(value):
     class _Var:
         def get(self):

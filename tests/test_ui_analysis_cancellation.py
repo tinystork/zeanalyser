@@ -1,9 +1,7 @@
 import time
 import pytest
 
-import analyse_gui_qt as mod
-
-
+import zeanalyser.analyse_gui_qt as mod
 pytestmark = pytest.mark.skipif(
     mod.QApplication is object or mod.Signal is None, reason="PySide6 not available"
 )
@@ -51,7 +49,7 @@ def test_ui_perform_analysis_respects_cancel(monkeypatch):
             time.sleep(0.005)
         return ['ok']
 
-    import analyse_logic as logic_mod
+    import zeanalyser.analyse_logic as logic_mod
     # monkeypatch the real logic to our long running implementation
     monkeypatch.setattr(logic_mod, 'perform_analysis', long_perform, raising=False)
 

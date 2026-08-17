@@ -1,3 +1,24 @@
+# -----------------------------------------------------------------------------
+# Auteur       : TRISTAN NAULEAU 
+# Date         : 2025-07-12
+# Licence      : GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007
+#
+# Ce travail est distribué librement en accord avec les termes de la
+# GNU GPL v3 (https://www.gnu.org/licenses/gpl-3.0.html).
+# Vous êtes libre de redistribuer et de modifier ce code, à condition
+# de conserver cette notice et de mentionner que je suis l’auteur
+# de tout ou partie du code si vous le réutilisez.
+# -----------------------------------------------------------------------------
+# Author       : TRISTAN NAULEAU
+# Date         : 2025-07-12
+# License      : GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007
+#
+# This work is freely distributed under the terms of the
+# GNU GPL v3 (https://www.gnu.org/licenses/gpl-3.0.html).
+# You are free to redistribute and modify this code, provided that
+# you keep this notice and mention that I am the author
+# of all or part of the code if you reuse it.
+# -----------------------------------------------------------------------------
 """
 
 ╔═════════════════════════════════════════════════════════════════════════════════╗
@@ -20,6 +41,8 @@
 ║   Aucune IA ni aucun couteau à beurre n’a été blessé durant le                  ║
 ║   développement de ce code.                                                     ║
 ╚═════════════════════════════════════════════════════════════════════════════════╝
+# Par la présente, nous adoubons Fabian, Chevalier des pinces à épiler,
+# pour avoir isolé un cas rarissime et permis d'améliorer l’équilibre ECC / starcount.
 
 
 ╔═════════════════════════════════════════════════════════════════════════════════╗
@@ -41,31 +64,34 @@
 ║ Disclaimer:                                                                     ║
 ║   No AIs or butter knives were harmed in the making of this code.               ║
 ╚═════════════════════════════════════════════════════════════════════════════════╝
+# Hereby we knight Fabian, Noble Knight of the Tweezers,
+# for isolating a rare edge case and helping improve ECC / starcount balance.
+
 """
 
-# Qt translation wrapper for ZeAnalyser
-
-from typing import Optional
-from zone import translations
-
-class QtTranslator:
-    def __init__(self, lang: str = 'fr'):
-        self.lang = lang if lang in translations else 'fr'
-
-    def set_language(self, lang: str):
-        if lang in translations:
-            self.lang = lang
-
-    def tr(self, key: str, **kwargs) -> str:
-        """
-        Return the translated string for the given key, formatted with kwargs if needed.
-        """
-        value = translations.get(self.lang, {}).get(key, key)
-        if kwargs:
-            try:
-                return value.format(**kwargs)
-            except Exception:
-                return value
-        return value
-
-qt_translator = QtTranslator()
+import numpy as np
+from zeanalyser.ecc_module import _detect_stars, DEFAULT_THRESHOLD_SIGMA
+def calculate_starcount(
+    data,
+    fwhm: float = 3.5,
+    threshold_sigma: float = DEFAULT_THRESHOLD_SIGMA,
+    *,
+    sky_bg=None,
+    sky_noise=None,
+) -> int:
+    """
+    Return number of stars detected in ``data`` using DAOStarFinder.
+    Uses the same detection logic as ``calculate_fwhm_ecc`` to ensure
+    consistent star selection.
+    """
+    try:
+        _, _, sources = _detect_stars(
+            data=np.asarray(data),
+            fwhm=fwhm,
+            threshold_sigma=threshold_sigma,
+            sky_bg=sky_bg,
+            sky_noise=sky_noise,
+        )
+        return 0 if sources is None else int(len(sources))
+    except Exception:
+        return 0

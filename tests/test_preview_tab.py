@@ -8,9 +8,7 @@ import sys
 import pathlib
 # Ensure repository root is on sys.path so top-level modules import reliably during test runs
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-import analyse_gui_qt as mod
-
-
+import zeanalyser.analyse_gui_qt as mod
 def _write_test_fits(tmpdir, name="a.fits"):
     arr = np.arange(100, dtype=float).reshape((10, 10))
     p = os.path.join(tmpdir, name)

@@ -1,8 +1,7 @@
 import pytest
 
-import analysis_schema
-import analysis_model
-
+from zeanalyser import analysis_schema
+from zeanalyser import analysis_model
 if analysis_model.Qt is not None:
     from PySide6.QtCore import Qt
 
