@@ -90,20 +90,47 @@ DEFAULT_THRESHOLDS = {
     "9": 0.0
 }
 
-def _load_thresholds():
-    if os.path.exists(THRESHOLD_FILE):
-        try:
-            with open(THRESHOLD_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                return {int(k): float(v) for k, v in data.items()}
-        except Exception:
-            pass
+
+def _user_override_path():
+    """Return the user-space override path for bortle thresholds."""
+    config_home = os.environ.get("XDG_CONFIG_HOME")
+    if config_home:
+        base_dir = config_home
     else:
-        try:
-            with open(THRESHOLD_FILE, 'w', encoding='utf-8') as f:
-                json.dump(DEFAULT_THRESHOLDS, f, indent=2)
-        except Exception:
-            pass
+        base_dir = os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base_dir, "ZeAnalyser", "bortle_thresholds.json")
+
+
+def _read_thresholds_file(path):
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    return {int(k): float(v) for k, v in data.items()}
+
+
+def _load_thresholds():
+    """Load Bortle thresholds, read-only, with user override support.
+
+    Resolution order:
+      1. user override: ``$XDG_CONFIG_HOME/ZeAnalyser/bortle_thresholds.json``
+         (or ``~/.config/ZeAnalyser/bortle_thresholds.json`` when
+         XDG_CONFIG_HOME is not set);
+      2. package resource shipped next to this module (read-only);
+      3. built-in DEFAULT_THRESHOLDS.
+
+    This function NEVER writes anything: no file is created beside the
+    module and no user override is generated automatically.
+    """
+    try:
+        user_path = _user_override_path()
+        if user_path and os.path.isfile(user_path):
+            return _read_thresholds_file(user_path)
+    except Exception:
+        pass
+    try:
+        if os.path.isfile(THRESHOLD_FILE):
+            return _read_thresholds_file(THRESHOLD_FILE)
+    except Exception:
+        pass
     return {int(k): float(v) for k, v in DEFAULT_THRESHOLDS.items()}
 
 THRESHOLDS = _load_thresholds()

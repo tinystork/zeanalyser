@@ -206,7 +206,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-bortle_thresholds.json
 
 #tests
 seestar/tests/
