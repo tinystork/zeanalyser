@@ -41,7 +41,7 @@ bortle = ["rasterio"]
 trails = ["acstools"]
 tools = ["drizzle"]
 
-[project.scripts]
+[project.gui-scripts]
 zeanalyser = "zeanalyser.analyse_gui_qt:main"
 
 [project.urls]
