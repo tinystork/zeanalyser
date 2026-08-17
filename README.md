@@ -10,9 +10,9 @@ Gui based Zesee Star Zenalalyser is a standalone analysis module for a lot of li
 ## Installation / Installation
 ### pip install / Installation pip
 
-**English** — Install ZeAnalyser as a standalone product and launch it through the `zeanalyser` entrypoint (Qt/PySide6 GUI): `pip install .` then `zeanalyser`. Optional extras: `[bortle]` (rasterio), `[trails]` (acstools), `[tools]` (drizzle), combinable: `pip install .[bortle,trails,tools]`.
+**English** — Install ZeAnalyser as a standalone product and launch it through the `zeanalyser` entrypoint (Qt/PySide6 GUI): `pip install .` then `zeanalyser` (or `python -m zeanalyser`). All normal runtime dependencies — including `acstools` for satellite-trail detection — are installed automatically by pip. Optional extras: `[bortle]` (rasterio, for Bortle GeoTIFF maps) and `[tools]` (drizzle, for the drizzle inspection helper), combinable: `pip install .[bortle,tools]`.
 
-**Français** — Installez ZeAnalyser en produit autonome et lancez-le via le point d'entrée `zeanalyser` (interface Qt/PySide6) : `pip install .` puis `zeanalyser`. Extras optionnels : `[bortle]` (rasterio), `[trails]` (acstools), `[tools]` (drizzle), combinables : `pip install .[bortle,trails,tools]`.
+**Français** — Installez ZeAnalyser en produit autonome et lancez-le via le point d'entrée `zeanalyser` (interface Qt/PySide6) : `pip install .` puis `zeanalyser` (ou `python -m zeanalyser`). Toutes les dépendances runtime normales — y compris `acstools` pour la détection des traînées de satellite — sont installées automatiquement par pip. Extras optionnels : `[bortle]` (rasterio, pour les cartes Bortle GeoTIFF) et `[tools]` (drizzle, pour l'outil d'inspection drizzle), combinables : `pip install .[bortle,tools]`.
 
 
 ### PySide6 installation / Installation de PySide6
@@ -64,63 +64,75 @@ Gui based Zesee Star Zenalalyser is a standalone analysis module for a lot of li
 ### Usage / Utilisation
 
 - **English**
-  1. Create a virtual environment and activate it:
+  1. (Recommended) Install the packaged product and launch the official Qt
+     entrypoint:
 
      ```bash
-     python3 -m venv .venv
-     source .venv/bin/activate
+     python -m pip install .
+     zeanalyser
      ```
 
-  2. Install the required dependencies:
+     The equivalent module form also works:
 
      ```bash
-     pip install -r requirements.txt
+     python -m zeanalyser
      ```
 
-  3. Launch the Tk interface (reference GUI):
+  2. (Development) For an editable install during development:
 
      ```bash
-     python analyse_gui.py
+     python -m pip install -e .
+     zeanalyser
      ```
 
-  4. Launch the Qt interface:
+  3. (Legacy) The historical Tk interface is still shipped inside the package
+     and can be run from a source checkout for maintenance purposes:
 
      ```bash
-     python analyse_gui_qt.py
+     python -m zeanalyser.analyse_gui
      ```
 
   For details on the result viewer interface, see [docs/visualisation.md](docs/visualisation.md).
 
 - **Français**
-  1. Créez un environnement virtuel et activez-le&nbsp;:
+  1. (Recommandé) Installez le produit packagé et lancez le point d'entrée
+     officiel Qt&nbsp;:
 
      ```bash
-     python3 -m venv .venv
-     source .venv/bin/activate
+     python -m pip install .
+     zeanalyser
      ```
 
-  2. Installez les dépendances&nbsp;:
+     La forme module équivalente fonctionne aussi&nbsp;:
 
      ```bash
-     pip install -r requirements.txt
+     python -m zeanalyser
      ```
 
-  3. Lancez l'interface Tk (GUI de référence) :
+  2. (Développement) Pour une installation éditable pendant le développement&nbsp;:
 
      ```bash
-     python analyse_gui.py
+     python -m pip install -e .
+     zeanalyser
      ```
 
-  4. Lancez l'interface Qt :
+  3. (Historique) L'interface Tk historique reste embarquée dans le package et
+     peut être lancée depuis un checkout source pour maintenance&nbsp;:
 
      ```bash
-     python analyse_gui_qt.py
+     python -m zeanalyser.analyse_gui
      ```
 
 ## Launch the Qt interface / Lancer l’interface Qt
 
 ```bash
-python analyse_gui_qt.py
+zeanalyser
+```
+
+or / ou :
+
+```bash
+python -m zeanalyser
 ```
 
 - **English**
@@ -210,8 +222,8 @@ python analyse_gui_qt.py
 - **Optional Bortle maps / Cartes Bortle optionnelles** : `rasterio` repose sur GDAL. Si l'installation des roues échoue, installez GDAL via Homebrew (`brew install gdal`) ou désactivez cette fonctionnalité ; l'application affiche un message clair plutôt que de planter.
 - **Headless usage / Mode sans affichage** : pour les environnements CI ou sans écran, forcez `QT_QPA_PLATFORM=offscreen` et `MPLBACKEND=Agg` afin d'éviter les erreurs liées à l'absence de serveur d'affichage.
 - **Shell open helpers / Ouverture via le shell** : les actions qui ouvrent un dossier ou un fichier utilisent la commande `open`. Si macOS demande une autorisation d'accès au disque, acceptez-la pour permettre l'ouverture dans le Finder.
-- Les dépendances principales (NumPy, Matplotlib, PySide6, rasterio) sont disponibles sous forme de roues binaires macOS ; installez-les via `pip install -r requirements.txt`.
-- Les fonctions Bortle s'appuient sur `rasterio`. Si elle n'est pas installée, l'application signale clairement que cette fonctionnalité est indisponible plutôt que de planter.
+- Les dépendances runtime (NumPy, Matplotlib, PySide6, astropy, scipy, scikit-image, astroalign, photutils, acstools, Pillow) sont disponibles sous forme de roues binaires macOS et sont installées automatiquement avec le package.
+- Les fonctions Bortle s'appuient sur l'extra optionnel `[bortle]` (`rasterio`). Si elle n'est pas installée, l'application signale clairement que cette fonctionnalité est indisponible plutôt que de planter.
 
 ## Pre-computed sky statistics reuse
 
@@ -260,4 +272,3 @@ Je remercie chaleureusement **Astrobirder**, rencontré sur Discord, à l'origin
 **English**
 
 Many thanks to **Astrobirder**, whom I met on Discord, for inspiring the idea of sorting by telescope and Bortle class. I also want to thank the authors of all the libraries used in this project. Feel free to use it in compliance with the license, but I would appreciate a citation if you reuse my work.
-
