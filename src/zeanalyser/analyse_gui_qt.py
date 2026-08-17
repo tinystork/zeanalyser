@@ -621,18 +621,30 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.parent_token_available = False
         self.analysis_results = []
         self.analysis_completed_successfully = False
+        # Debt (ZA-M1-3A A2, defer M1-3B): the legacy checkout-relative probe
+        # (project root derived from __file__) is meaningless once installed.
+        # Until the token.zsss contract is modernized, we probe documented
+        # user-space locations only:
+        #   1. $ZEANALYSER_ZSSS_TOKEN_DIR/token.zsss (explicit override)
+        #   2. ~/token.zsss (user home)
         try:
-            analyzer_script_path = os.path.abspath(__file__)
-            beforehand_dir = os.path.dirname(analyzer_script_path)
-            seestar_package_dir = os.path.dirname(beforehand_dir)
-            project_root_dir = os.path.dirname(seestar_package_dir)
-            self.parent_project_dir = project_root_dir
-            self.parent_token_file_path = os.path.normpath(os.path.join(project_root_dir, 'token.zsss'))
-            self.parent_token_available = os.path.isfile(self.parent_token_file_path)
+            probe_dirs = []
+            token_dir_env = os.environ.get("ZEANALYSER_ZSSS_TOKEN_DIR")
+            if token_dir_env:
+                probe_dirs.append(os.path.abspath(os.path.expanduser(token_dir_env)))
+            probe_dirs.append(os.path.abspath(os.path.expanduser("~")))
+            for candidate_dir in probe_dirs:
+                candidate = os.path.join(candidate_dir, 'token.zsss')
+                if os.path.isfile(candidate):
+                    self.parent_project_dir = candidate_dir
+                    self.parent_token_file_path = os.path.normpath(candidate)
+                    self.parent_token_available = True
+                    break
             if self.parent_token_available:
-                print(f"DEBUG (analyse_gui_qt __init__): token.zsss found in {project_root_dir}.")
+                print(f"DEBUG (analyse_gui_qt __init__): token.zsss found in {self.parent_project_dir}.")
             else:
-                print(f"WARNING (analyse_gui_qt __init__): token.zsss not found in {project_root_dir}. Stacking/communication buttons will remain disabled.")
+                print("WARNING (analyse_gui_qt __init__): token.zsss not found in "
+                      f"{', '.join(probe_dirs)}. Stacking/communication buttons will remain disabled.")
         except Exception as e:
             print(f"Error detecting token: {e}")
 

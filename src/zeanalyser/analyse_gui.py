@@ -67,7 +67,7 @@
 # === Imports Standard ===
 import logging
 import os
-import sys  # Nécessaire pour sys.path
+import sys
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, scrolledtext, messagebox
@@ -97,7 +97,6 @@ import shutil
 import gc
 import argparse # Pour gérer les arguments de ligne de commande
 from PIL import Image, ImageTk
-# L'import de ToolTip est déplacé APRES l'ajustement de sys.path
 import json
 import importlib.util
 import numbers
@@ -162,63 +161,26 @@ def safe_set_maximized(root):
     except Exception:
         pass
 
-# --- AJUSTEMENT DE SYS.PATH POUR PERMETTRE LES IMPORTS DEPUIS LA RACINE DU PROJET ---
-# Ceci est crucial lorsque ce script (analyse_gui.py) est exécuté directement
-# ou via subprocess, car Python a besoin de savoir où se trouve le package 'seestar'.
-print("DEBUG (analyse_gui.py): Début de l'ajustement de sys.path...")
+# --- INTEGRATION MODE (ZeSeestarStacker) ------------------------------------
+# Rule 2 compliance: ZeAnalyser MUST NOT mutate sys.path to reach the
+# ZeSeestarStacker repository/checkout. Embedded mode relies on the installed
+# ``zeseestarstacker`` package (detected above); standalone mode uses the
+# bundled copy in ``zeanalyser._legacy_seestar``. No parent-directory probing
+# is performed.
+# -----------------------------------------------------------------------------
+
+# === Imports Locaux ===
+
+# ToolTip: prefer the ZSSS-provided top-level ``seestar`` namespace when the
+# stacker is installed; otherwise fall back to the bundled legacy copy.
 try:
-    # Chemin absolu du script actuel (analyse_gui.py)
-    current_script_path = os.path.abspath(__file__)
-    print(f"  DEBUG (analyse_gui.py): Chemin du script actuel: {current_script_path}")
-
-    # Remonter pour trouver le dossier 'beforehand'
-    beforehand_dir = os.path.dirname(current_script_path)
-    print(f"  DEBUG (analyse_gui.py): Dossier 'beforehand': {beforehand_dir}")
-
-    # Remonter encore pour trouver le dossier du package 'seestar'
-    seestar_package_dir = os.path.dirname(beforehand_dir)
-    print(f"  DEBUG (analyse_gui.py): Dossier du package 'seestar': {seestar_package_dir}")
-
-    # Remonter une dernière fois pour trouver la racine du projet
-    # (le dossier qui CONTIENT le dossier 'seestar')
-    project_root_dir = os.path.dirname(seestar_package_dir)
-    print(f"  DEBUG (analyse_gui.py): Racine du projet calculée: {project_root_dir}")
-
-    # Ajouter la racine du projet au début de sys.path si elle n'y est pas déjà.
-    # sys.path.insert(0, ...) la met en priorité pour la recherche de modules.
-    if project_root_dir not in sys.path:
-        sys.path.insert(0, project_root_dir)
-        print(f"  DEBUG (analyse_gui.py): '{project_root_dir}' ajouté à sys.path.")
-    else:
-        print(f"  DEBUG (analyse_gui.py): '{project_root_dir}' était déjà dans sys.path.")
-    
-    # print(f"  DEBUG (analyse_gui.py): sys.path actuel: {sys.path}") # Optionnel, peut être très long
-    print("DEBUG (analyse_gui.py): Ajustement de sys.path terminé.")
-
-except Exception as e_path_setup:
-    # Gérer les erreurs potentielles lors de la manipulation des chemins
-    print(f"ERREUR CRITIQUE (analyse_gui.py): Impossible d'ajuster sys.path correctement: {e_path_setup}")
-    # Afficher une boîte de dialogue d'erreur si Tkinter est déjà initialisable
-    try:
-        root_err_path = tk.Tk(); root_err_path.withdraw()
-        messagebox.showerror("Erreur Configuration Chemin", f"Erreur critique lors de la configuration des chemins Python:\n{e_path_setup}\nL'application ne peut pas continuer.")
-        root_err_path.destroy()
-    except Exception: pass
-    sys.exit(1) # Quitter car les imports suivants vont probablement échouer
-# --- FIN DE L'AJUSTEMENT SYS.PATH ---
-
-
-# === Imports Locaux (MAINTENANT APRÈS L'AJUSTEMENT DE SYS.PATH) ===
-
-# Importer ToolTip en utilisant le chemin absolu du package depuis la racine du projet
-try:
-    from seestar.gui.ui_utils import ToolTip 
-    print("DEBUG (analyse_gui.py): Import de 'seestar.gui.ui_utils.ToolTip' réussi.")
+    from seestar.gui.ui_utils import ToolTip
+    logger.debug("Imported ToolTip from ZSSS 'seestar' namespace (embedded mode).")
 except ImportError:
     # Mode autonome : le namespace top-level 'seestar' est réservé à
     # ZeSeestarStacker. ZeAnalyser embarque sa propre copie du helper.
     from zeanalyser._legacy_seestar.gui.ui_utils import ToolTip
-    print("DEBUG (analyse_gui.py): Import de 'zeanalyser._legacy_seestar.gui.ui_utils.ToolTip' réussi (mode autonome).")
+    logger.debug("Imported ToolTip from bundled legacy copy (standalone mode).")
 
 # Importe le module contenant la logique d'analyse principale
 # Cet import devrait fonctionner car analyse_logic.py est dans le même dossier 'beforehand'
