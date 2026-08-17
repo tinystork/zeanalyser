@@ -25,6 +25,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [
+    "acstools",
     "numpy",
     "astropy",
     "matplotlib",
@@ -38,7 +39,6 @@ dependencies = [
 
 [project.optional-dependencies]
 bortle = ["rasterio"]
-trails = ["acstools"]
 tools = ["drizzle"]
 
 [project.gui-scripts]
