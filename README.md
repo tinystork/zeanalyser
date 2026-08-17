@@ -8,6 +8,12 @@ Gui based Zesee Star Zenalalyser is a standalone analysis module for a lot of li
 - Les fonctions Bortle qui lisent des GeoTIFF/KMZ nécessitent l'optionnel `rasterio`. Si cette dépendance est absente, l'application affiche un message clair au lieu de planter.
 
 ## Installation / Installation
+### pip install / Installation pip
+
+**English** — Install ZeAnalyser as a standalone product and launch it through the `zeanalyser` entrypoint (Qt/PySide6 GUI): `pip install .` then `zeanalyser`. Optional extras: `[bortle]` (rasterio), `[trails]` (acstools), `[tools]` (drizzle), combinable: `pip install .[bortle,trails,tools]`.
+
+**Français** — Installez ZeAnalyser en produit autonome et lancez-le via le point d'entrée `zeanalyser` (interface Qt/PySide6) : `pip install .` puis `zeanalyser`. Extras optionnels : `[bortle]` (rasterio), `[trails]` (acstools), `[tools]` (drizzle), combinables : `pip install .[bortle,trails,tools]`.
+
 
 ### PySide6 installation / Installation de PySide6
 
