@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.3.2 – Witness bump (2026-08-18)
+
+* Incrément de version pour tests manuels (aucun changement fonctionnel)
+
 ## v3.3.1 – Standalone closure (2026-08-17)
 
 * `acstools` devient une dépendance runtime obligatoire (détection de traînées satellite)
