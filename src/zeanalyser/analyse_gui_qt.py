@@ -652,6 +652,14 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.parent_project_dir = None
         self.parent_token_file_path = None
         self.parent_token_available = False
+        # Modern communication channel: a command file supplied by the
+        # caller (constructor arg or ZEANALYSER_COMMAND_FILE) is sufficient
+        # to return REFERENCE= — it is independent of the legacy token.zsss
+        # detection.  The token only gates the historical direct-stacking
+        # workflow that really needs the old mechanism.
+        self.command_channel_available = bool(command_file_path) or bool(
+            os.environ.get("ZEANALYSER_COMMAND_FILE")
+        )
         self.analysis_results = []
         self.analysis_completed_successfully = False
         # Debt (ZA-M1-3A A2, defer M1-3B): the legacy checkout-relative probe
@@ -676,8 +684,14 @@ class ZeAnalyserMainWindow(QMainWindow):
             if self.parent_token_available:
                 print(f"DEBUG (analyse_gui_qt __init__): token.zsss found in {self.parent_project_dir}.")
             else:
-                print("WARNING (analyse_gui_qt __init__): token.zsss not found in "
-                      f"{', '.join(probe_dirs)}. Stacking/communication buttons will remain disabled.")
+                if self.command_channel_available:
+                    print("WARNING (analyse_gui_qt __init__): token.zsss not found in "
+                          f"{', '.join(probe_dirs)}. Direct-stacking workflow disabled, "
+                          "but the command-file communication channel remains available.")
+                else:
+                    print("WARNING (analyse_gui_qt __init__): token.zsss not found in "
+                          f"{', '.join(probe_dirs)}. Direct-stacking workflow and "
+                          "command-file communication are disabled.")
         except Exception as e:
             print(f"Error detecting token: {e}")
 
@@ -1935,7 +1949,11 @@ class ZeAnalyserMainWindow(QMainWindow):
             except Exception:
                 pass
 
-            # Set tooltips for token-dependent buttons if token not available
+            # Set tooltips for token-dependent buttons if the token is not
+            # available.  ``analyse_and_stack_btn`` (direct stacking) really
+            # needs the legacy token.zsss mechanism; ``send_save_ref_btn``
+            # only falls back to the token when no modern command file was
+            # provided by the caller.
             if not self.parent_token_available:
                 tooltip_text = _("token_dependency_missing_notice")
                 try:
@@ -1943,11 +1961,12 @@ class ZeAnalyserMainWindow(QMainWindow):
                         self.analyse_and_stack_btn.setToolTip(tooltip_text)
                 except Exception:
                     pass
-                try:
-                    if self.send_save_ref_btn:
-                        self.send_save_ref_btn.setToolTip(tooltip_text)
-                except Exception:
-                    pass
+                if not self.command_channel_available:
+                    try:
+                        if self.send_save_ref_btn:
+                            self.send_save_ref_btn.setToolTip(tooltip_text)
+                    except Exception:
+                        pass
         except Exception:
             # Non-fatal; tooltips are additive only
             pass
@@ -4586,10 +4605,15 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.open_log_btn.setEnabled(has_log)
             if self.create_stack_plan_btn:
                 self.create_stack_plan_btn.setEnabled(has_results)
-            # Enable reference buttons if best reference exists and token is available
+            # Enable reference buttons if best reference exists and either
+            # the modern command-file channel or the legacy token is
+            # available (REFERENCE= can be returned without token.zsss).
             best_ref = self._get_best_reference()
             if self.send_save_ref_btn:
-                self.send_save_ref_btn.setEnabled(bool(best_ref) and self.parent_token_available)
+                self.send_save_ref_btn.setEnabled(
+                    bool(best_ref)
+                    and (self.parent_token_available or self.command_channel_available)
+                )
         except Exception:
             pass
 
