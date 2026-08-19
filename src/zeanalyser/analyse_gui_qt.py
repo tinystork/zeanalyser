@@ -602,7 +602,14 @@ class ZeAnalyserMainWindow(QMainWindow):
     basic interactions (status updates, progress bar, log) can be tested.
     """
 
-    def __init__(self, parent=None, command_file_path=None, initial_lang='fr', lock_language=False):
+    def __init__(self, parent=None, command_file_path=None, initial_lang='fr',
+                 lock_language_enabled=False, **kwargs):
+        # Historical callers used ``lock_language=`` as the keyword.  That
+        # name shadows the module-level ``lock_language()`` function used
+        # below, so the parameter has been renamed ``lock_language_enabled``.
+        # Accept the legacy keyword for backward compatibility.
+        if "lock_language" in kwargs:
+            lock_language_enabled = kwargs.pop("lock_language")
         super().__init__(parent)
         self._progress_value = 0
         # use the central i18n wrapper so UI text is consistent with Tk
@@ -611,7 +618,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         # Store command file path for integration
         self.command_file_path = command_file_path
         self.initial_lang = initial_lang
-        self.language_locked_cli = lock_language
+        self.language_locked_cli = lock_language_enabled
 
         # Read persisted preferences early so language and skin are available
         self._stored_language_pref = self._read_setting_value("options/language")
@@ -7015,7 +7022,11 @@ def main(argv=None, run_for: int | None = None):
     if run_for is not None and isinstance(run_for, int):
         # schedule a quit so tests can call main() without blocking forever
         QTimer.singleShot(run_for, app.quit)
-    win = ZeAnalyserMainWindow(command_file_path=None, initial_lang=args.lang, lock_language=args.lock_lang)
+    win = ZeAnalyserMainWindow(
+        command_file_path=None,
+        initial_lang=args.lang,
+        lock_language_enabled=args.lock_lang,
+    )
     if not app_icon.isNull():
         win.setWindowIcon(app_icon)
     # Pre-fill from CLI args
