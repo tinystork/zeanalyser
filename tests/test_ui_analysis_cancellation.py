@@ -56,6 +56,7 @@ def test_ui_perform_analysis_respects_cancel(monkeypatch):
     win = mod.ZeAnalyserMainWindow()
     win.input_path_edit.setText('C:/tmp')
     win.output_path_edit.setText('C:/tmp/out.csv')
+    win.reject_delete_rb.setChecked(True)
 
     # start analysis
     win.analyse_btn.click()
@@ -67,16 +68,35 @@ def test_ui_perform_analysis_respects_cancel(monkeypatch):
     # get worker and request cancel
     worker = getattr(win, '_current_worker')
     assert worker is not None
+    finished = []
+    published_results = []
+    progress = []
+    worker.finished.connect(finished.append)
+    worker.resultsReady.connect(published_results.append)
+    worker.progressChanged.connect(progress.append)
 
-    # request cancel and ensure the perform loop detects cancellation
-    worker.request_cancel()
+    # The GUI transition is immediate, but completion is not: request_cancel
+    # only sets the cooperative token while the callable is still active.
+    win._cancel_current_worker()
+    assert worker._cancel_event.is_set()
+    assert finished == []
+    assert win.cancel_btn.isEnabled() is False
+    assert win.analyse_btn.isEnabled() is False
+    assert win.statusBar().currentMessage() == mod._("status_analysis_cancelling")
 
     ok2 = _wait_for(lambda: 'fake_perform_detect_cancel' in win.log.toPlainText(), timeout=2.0)
     assert ok2, "perform_analysis did not detect cancel via callbacks['is_cancelled']"
 
     # final finished notification must indicate cancelled True (per AnalysisWorker behavior)
     ok3 = _wait_for(lambda: 'Worker finished: cancelled=True' in win.log.toPlainText(), timeout=2.0)
+    if not ok3:
+        ok3 = _wait_for(lambda: mod._("logic_analysis_cancelled") in win.log.toPlainText(), timeout=2.0)
     assert ok3, "Worker did not finish with cancelled=True"
+    assert finished == [True]
+    assert published_results == []
+    assert 100.0 not in progress
+    assert win.progress.value() < 100
+    assert win.analyse_btn.isEnabled() is True
 
     if created_app:
         app.quit()

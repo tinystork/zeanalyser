@@ -86,6 +86,12 @@ translations = {
         'status_analysis_done_ok': "Analyse terminée avec succès.",
         'status_analysis_done_no_valid': "Analyse terminée. Aucune image traitable trouvée ou tous les dossiers ont été ignorés.", # Modifié
         'status_analysis_done_errors': "Analyse terminée avec des erreurs critiques.",
+        'status_analysis_cancelling': "Annulation en cours…",
+        'status_analysis_cancelled': "Analyse annulée.",
+        'logic_cancellation_requested': "Annulation demandée…",
+        'logic_analysis_cancelled': "Analyse annulée.",
+        'logic_reanalysis_marker_invalidated': "Ancien marqueur de complétion invalidé avant ré-analyse ({count}).",
+        'logic_marker_invalidation_error': "Impossible d'invalider le marqueur avant ré-analyse dans {dir} : {e}",
         'status_log_error': "Erreur écriture log",
         'status_dir_create_error': "Erreur création dossier: {e}",
         'status_custom': "{text}",
@@ -521,6 +527,12 @@ translations = {
         'status_analysis_done_ok': "Analysis completed successfully.",
         'status_analysis_done_no_valid': "Analysis finished. No processable images found or all folders were skipped.", # Modified
         'status_analysis_done_errors': "Analysis finished with critical errors.",
+        'status_analysis_cancelling': "Cancelling…",
+        'status_analysis_cancelled': "Analysis cancelled.",
+        'logic_cancellation_requested': "Cancellation requested…",
+        'logic_analysis_cancelled': "Analysis cancelled.",
+        'logic_reanalysis_marker_invalidated': "Previous completion marker invalidated before reanalysis ({count}).",
+        'logic_marker_invalidation_error': "Could not invalidate the marker before reanalysis in {dir}: {e}",
         'status_log_error': "Log writing error", 'status_dir_create_error': "Folder creation error: {e}",
         'status_custom': "{text}",
 

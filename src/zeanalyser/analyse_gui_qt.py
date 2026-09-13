@@ -63,6 +63,7 @@ import logging
 import locale
 import os
 import platform
+import threading
 import time
 import traceback
 from zeanalyser.platform_utils import open_path_with_default_app
@@ -2139,6 +2140,15 @@ class ZeAnalyserMainWindow(QMainWindow):
             pass
 
     def closeEvent(self, event):
+        worker = getattr(self, '_current_worker', None)
+        if worker is not None and getattr(worker, 'is_running', lambda: False)():
+            self._close_when_worker_finishes = True
+            self._cancel_current_worker()
+            try:
+                event.ignore()
+            except Exception:
+                pass
+            return None
         # save state before closing (best-effort)
         try:
             self._save_settings()
@@ -2379,17 +2389,25 @@ class ZeAnalyserMainWindow(QMainWindow):
         self._log(str(text))
 
     def _on_worker_error(self, text: str):
+        self._worker_had_error = True
         self._log(f"ERROR: {text}")
 
     def _on_worker_finished(self, cancelled: bool):
         # reset UI state
         cancelled_flag = bool(cancelled)
-        try:
-            self._progress_value = 100
-            self.progress.setValue(100)
-        except Exception:
-            pass
-        self._log(f"Worker finished: cancelled={cancelled_flag}")
+        worker_had_error = bool(getattr(self, '_worker_had_error', False))
+        if not cancelled_flag and not worker_had_error:
+            try:
+                self._progress_value = 100
+                self.progress.setValue(100)
+            except Exception:
+                pass
+        if cancelled_flag:
+            self._log(_("logic_analysis_cancelled"))
+            if hasattr(self, 'statusBar'):
+                self.statusBar().showMessage(_("status_analysis_cancelled"))
+        elif not worker_had_error:
+            self._log(f"Worker finished: cancelled={cancelled_flag}")
         if isinstance(self.analyse_btn, QPushButton):
             self.analyse_btn.setEnabled(True)
         if isinstance(self.cancel_btn, QPushButton):
@@ -2403,7 +2421,21 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.remaining_label.setText(f"{_('remaining_time_label')} {self._remaining_label_value}")
 
         # clear reference
+        worker = getattr(self, '_current_worker', None)
+        if worker is not None:
+            try:
+                worker.release_thread()
+            except Exception:
+                pass
         self._current_worker = None
+        self._worker_had_error = False
+
+        if bool(getattr(self, '_close_when_worker_finishes', False)):
+            self._close_when_worker_finishes = False
+            try:
+                QTimer.singleShot(0, self.close)
+            except Exception:
+                self.close()
 
     # ---- Results table integration ----
     def set_results(self, rows: list[dict]):
@@ -3309,6 +3341,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         # create the worker
         w = AnalysisWorker(step_ms=5)
         self._current_worker = w
+        self._worker_had_error = False
         self._connect_worker_signals(w)
 
         # log worker start
@@ -3511,12 +3544,19 @@ class ZeAnalyserMainWindow(QMainWindow):
             self._log(_("gui_stacking_script_prepare_error", e=e))
 
     def _cancel_current_worker(self):
-        if getattr(self, '_current_worker', None) is not None:
+        worker = getattr(self, '_current_worker', None)
+        if worker is not None:
             try:
-                self._current_worker.request_cancel()
+                newly_requested = worker.request_cancel()
+                if newly_requested:
+                    self._log(_("logic_cancellation_requested"))
+                    if isinstance(self.cancel_btn, QPushButton):
+                        self.cancel_btn.setEnabled(False)
+                    if hasattr(self, 'statusBar'):
+                        self.statusBar().showMessage(_("status_analysis_cancelling"))
             except Exception:
                 # QRunnable-based workers may expose signals only; best-effort
-                self._log('Cancel requested (best-effort)')
+                self._log(_("logic_cancellation_requested"))
 
     def _suggest_log_path(self, input_dir: str) -> str:
         """Return a safe marker-referenced log or the conventional project log."""
@@ -6292,6 +6332,12 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.organizer_cancel_btn.setEnabled(False)
         except Exception:
             pass
+        worker = getattr(self, '_organizer_worker', None)
+        if worker is not None:
+            try:
+                worker.release_thread()
+            except Exception:
+                pass
         self._organizer_worker = None
         self._organizer_worker_mode = None
 
@@ -6823,7 +6869,13 @@ class AnalysisWorker(QObject):
         self._progress = 0
         self._timer = None
         self._thread = None
-        self._cancelled = False
+        self._cancel_event = threading.Event()
+        self._state_lock = threading.Lock()
+        self._cancelled = False  # compatibility view for existing callers/tests
+        self._running = False
+        self._accepting_cancel = False
+        self._outcome_cancelled = False
+        self._finished_emitted = False
 
     @Slot()
     def _on_thread_started(self):
@@ -6846,6 +6898,13 @@ class AnalysisWorker(QObject):
 
         The worker will emit progress updates until it reaches 100 or is cancelled.
         """
+        with self._state_lock:
+            self._cancel_event.clear()
+            self._cancelled = False
+            self._running = True
+            self._accepting_cancel = True
+            self._outcome_cancelled = False
+            self._finished_emitted = False
         if isinstance(QThread, type):
             self._thread = QThread()
             # move this worker object to the new thread
@@ -6859,17 +6918,32 @@ class AnalysisWorker(QObject):
             else:
                 self._pending_analysis = None
             self._thread.started.connect(self._on_thread_started)
+            self._thread.finished.connect(self._on_thread_stopped, Qt.DirectConnection)
             self._thread.start()
             self.statusChanged.emit("worker_started")
         else:
             # Fallback: run inline (useful for environments without PySide6)
             self.statusChanged and self.statusChanged("worker_started_inline")
             # run inline ticks
-            while self._progress < 100 and not self._cancelled:
+            while self._progress < 100 and not self._cancel_event.is_set():
                 self._tick()
+            with self._state_lock:
+                if self._cancel_event.is_set():
+                    self._outcome_cancelled = True
+                self._accepting_cancel = False
+                self._running = False
+            self._emit_finished_once()
 
     @Slot()
     def _tick(self):
+        if self._cancel_event.is_set():
+            if isinstance(self._timer, QTimer):
+                self._timer.stop()
+            with self._state_lock:
+                self._outcome_cancelled = True
+                self._accepting_cancel = False
+            self._request_thread_stop()
+            return
         self._progress += 1
         self.progressChanged.emit(self._progress)
         if self._progress % 20 == 0:
@@ -6877,8 +6951,10 @@ class AnalysisWorker(QObject):
         if self._progress >= 100:
             if isinstance(self._timer, QTimer):
                 self._timer.stop()
-            self.finished.emit(False)
-            self._clean_thread()
+            with self._state_lock:
+                self._outcome_cancelled = self._cancel_event.is_set()
+                self._accepting_cancel = False
+            self._request_thread_stop()
 
     def _run_analysis_callable(self, analysis_callable, *args, **kwargs):
         """Run a provided analysis callable inside the worker thread.
@@ -6915,59 +6991,99 @@ class AnalysisWorker(QObject):
             # call with flexible signature and capture a result if returned
             result = analysis_callable(*args, **kwargs)
 
-            # ensure full progress delivered
-            self.progressChanged.emit(100.0)
-            # emit results if callable returned something
-            try:
-                if 'result' in locals() and result is not None:
-                    self.resultsReady.emit(result)
-            except Exception:
-                pass
-            # If the worker was requested to cancel while the analysis ran,
-            # treat the finish as cancelled so UI / callers can react.
-            try:
-                self.finished.emit(bool(self._cancelled))
-            except Exception:
-                # defensive fallback
-                self.finished.emit(False)
+            with self._state_lock:
+                self._outcome_cancelled = self._cancel_event.is_set()
+                self._accepting_cancel = False
+                publish_success = not self._outcome_cancelled
+            if publish_success:
+                self.progressChanged.emit(100.0)
+                try:
+                    if result is not None:
+                        self.resultsReady.emit(result)
+                except Exception:
+                    pass
         except Exception as e:
-            # emit an error and mark finished
-            try:
-                self.error.emit(str(e))
-            except Exception:
-                pass
-            self.finished.emit(True)
+            with self._state_lock:
+                self._outcome_cancelled = self._cancel_event.is_set()
+                self._accepting_cancel = False
+            if not self._outcome_cancelled:
+                try:
+                    self.error.emit(str(e))
+                except Exception:
+                    pass
         finally:
-            self._clean_thread()
+            self._request_thread_stop()
 
     @Slot()
     def request_cancel(self):
-        self._cancelled = True
-        if isinstance(self._timer, QTimer):
-            self._timer.stop()
-        self.finished.emit(True)
-        self._clean_thread()
+        """Request cooperative cancellation without finalizing the worker."""
 
-    def _clean_thread(self):
-        # stop and quit the thread if present
-        if isinstance(self._thread, QThread) and self._thread is not None:
-            try:
-                self._thread.quit()
-                # Give the thread a brief moment to stop to avoid Qt aborts
-                self._thread.wait(100)
-            except Exception:
-                pass
-            try:
-                self._thread.deleteLater()
-            except Exception:
-                pass
+        with self._state_lock:
+            if not self._running or not self._accepting_cancel:
+                return False
+            newly_requested = not self._cancel_event.is_set()
+            self._cancel_event.set()
+            self._cancelled = True
+            return newly_requested
+
+    def is_running(self) -> bool:
+        with self._state_lock:
+            return bool(self._running)
+
+    def release_thread(self) -> bool:
+        """Release a stopped QThread from its owner/GUI thread."""
+
+        with self._state_lock:
+            if self._running:
+                return False
+            thread = self._thread
             self._thread = None
+        if isinstance(thread, QThread):
+            try:
+                if thread.isRunning():
+                    with self._state_lock:
+                        self._thread = thread
+                    return False
+                thread.deleteLater()
+            except Exception:
+                pass
+        return True
+
+    def _request_thread_stop(self):
+        """Leave the worker event loop after active execution has unwound."""
+
+        thread = self._thread
+        if isinstance(thread, QThread):
+            try:
+                thread.quit()
+            except Exception:
+                pass
+        else:
+            self._running = False
+            self._emit_finished_once()
+
+    @Slot()
+    def _on_thread_stopped(self):
+        """Publish final state only after QThread execution has really stopped."""
+
         try:
             if isinstance(self._timer, QTimer):
                 self._timer.stop()
         except Exception:
             pass
         self._timer = None
+        with self._state_lock:
+            self._running = False
+            self._accepting_cancel = False
+        self._emit_finished_once()
+
+    def _emit_finished_once(self):
+        with self._state_lock:
+            if self._finished_emitted:
+                return
+            self._finished_emitted = True
+            outcome_cancelled = bool(self._outcome_cancelled)
+        self.finished.emit(outcome_cancelled)
 
 
 class AnalysisRunnable(QRunnable):

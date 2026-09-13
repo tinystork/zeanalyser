@@ -47,6 +47,7 @@ def test_ui_runs_real_analysis_without_freeze(monkeypatch):
     win = mod.ZeAnalyserMainWindow()
     win.input_path_edit.setText('C:/tmp')
     win.output_path_edit.setText('C:/tmp/out.csv')
+    win.reject_delete_rb.setChecked(True)
 
     # start analysis
     win.analyse_btn.click()

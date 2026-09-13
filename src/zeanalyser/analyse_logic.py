@@ -1001,6 +1001,34 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     _status = callbacks.get('status', lambda k, **kw: None)
     _progress = callbacks.get('progress', lambda v: None)
     _log = callbacks.get('log', lambda k, **kw: logger.debug("LOGIC_LOG: %s %s", k, kw))
+    _is_cancelled_cb = callbacks.get('is_cancelled', lambda: False)
+
+    bortle_dataset = None
+    cancellation_reported = False
+
+    def _is_cancelled():
+        try:
+            return bool(_is_cancelled_cb())
+        except Exception:
+            logger.warning("Cancellation callback failed", exc_info=True)
+            return False
+
+    def _cancelled_result():
+        nonlocal bortle_dataset, cancellation_reported
+        if not cancellation_reported:
+            _log("logic_analysis_cancelled")
+            _status("status_analysis_cancelled")
+            cancellation_reported = True
+        if bortle_dataset is not None:
+            try:
+                bortle_dataset.close()
+            except Exception:
+                pass
+            bortle_dataset = None
+        return []
+
+    if _is_cancelled():
+        return _cancelled_result()
 
     _status("status_analysis_prep")
     start_time = time.time()
@@ -1009,9 +1037,10 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     n_cpus = multiprocessing.cpu_count()
     n_workers = max(1, int(n_cpus * 0.75))
 
-    bortle_dataset = None
     bortle_lock = threading.Lock()
     if options.get('use_bortle') and options.get('bortle_path'):
+        if _is_cancelled():
+            return _cancelled_result()
         try:
             bortle_dataset = _load_bortle_raster(options['bortle_path'])
         except Exception as e:
@@ -1038,8 +1067,25 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     snr_reject_abs = None
     trail_reject_abs = None
 
+    # A newly admitted reanalysis must invalidate any old success
+    # certification before it mutates directories or truncates its log.
+    # Cancellation does not restore that marker because no rollback/snapshot
+    # contract exists for the prior persisted state.
+    try:
+        removed_markers = project_state.remove_markers(abs_input_dir)
+        if removed_markers:
+            _log("logic_reanalysis_marker_invalidated", count=len(removed_markers))
+    except OSError as marker_error:
+        _log("logic_marker_invalidation_error", dir=abs_input_dir, e=marker_error)
+        return []
+
+    if _is_cancelled():
+        return _cancelled_result()
+
     # Dossier de rejet SNR (même si l'action n'est pas immédiate, on a besoin du chemin pour plus tard)
     if options.get('analyze_snr') and options.get('snr_selection_mode') != 'none':
+        if _is_cancelled():
+            return _cancelled_result()
         snr_reject_rel = options.get('snr_reject_dir')
         if options.get('move_rejected', False) and not snr_reject_rel : # Vérifier si move est activé ET que le chemin est manquant
             _log("logic_snr_reject_dir_missing")
@@ -1062,6 +1108,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
 
     # Dossier de rejet Trail (logique inchangée, appliqué immédiatement)
     if options.get('detect_trails') and SATDET_AVAILABLE:
+        if _is_cancelled():
+            return _cancelled_result()
         trail_reject_rel = options.get('trail_reject_dir')
         if options.get('move_rejected', False) and not trail_reject_rel:
             _log("logic_trail_reject_dir_missing")
@@ -1083,6 +1131,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 return []
 
     # Initialiser le log
+    if _is_cancelled():
+        return _cancelled_result()
     try:
         with open(output_log, 'w', encoding='utf-8') as f:
              f.write(f"Début de l'analyse: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -1110,6 +1160,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     fits_extensions = ('.fit', '.fits', '.fts')
     try:
         for dirpath, dirnames, filenames in os.walk(abs_input_dir, topdown=True):
+            if _is_cancelled():
+                return _cancelled_result()
             current_dir_abs = os.path.abspath(dirpath)
             dirs_to_remove = [d for d in dirnames if os.path.abspath(os.path.join(current_dir_abs, d)) in reject_dirs_to_exclude_abs]
             if dirs_to_remove:
@@ -1123,6 +1175,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 continue 
             found_in_this_dir = False
             for filename in filenames:
+                if _is_cancelled():
+                    return _cancelled_result()
                 if filename.lower().endswith(fits_extensions):
                     full_path = os.path.join(current_dir_abs, filename)
                     fits_files_to_process.append(full_path)
@@ -1141,6 +1195,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         return []
 
     fits_files_to_process = sorted(list(set(fits_files_to_process)))
+    if _is_cancelled():
+        return _cancelled_result()
     total_files = len(fits_files_to_process)
     if total_files == 0:
         _log("logic_no_fits_snr"); _status("status_analysis_done_no_valid")
@@ -1154,12 +1210,25 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     all_results_list = []
     _log("logic_snr_start")
     snr_loop_errors = 0
+    if _is_cancelled():
+        return _cancelled_result()
     try:
         with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers) as ex:
 
             future_map = {ex.submit(_snr_worker, p): p for p in fits_files_to_process}
 
+            if _is_cancelled():
+                for pending_future in future_map:
+                    pending_future.cancel()
+                ex.shutdown(wait=True, cancel_futures=True)
+                return _cancelled_result()
+
             for idx, future in enumerate(concurrent.futures.as_completed(future_map)):
+                if _is_cancelled():
+                    for pending_future in future_map:
+                        pending_future.cancel()
+                    ex.shutdown(wait=True, cancel_futures=True)
+                    return _cancelled_result()
                 fits_file_path = future_map[future]
                 progress = ((idx + 1) / total_files) * 50
                 try:
@@ -1234,12 +1303,21 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     snr_loop_errors += 1
                     _log("logic_file_error", file=result_base['rel_path'], e=err_msg)
                 all_results_list.append(result_base)
+            if _is_cancelled():
+                for pending_future in future_map:
+                    pending_future.cancel()
+                ex.shutdown(wait=True, cancel_futures=True)
+                return _cancelled_result()
     except Exception as pool_e:
+        if _is_cancelled():
+            return _cancelled_result()
         _log("logic_snr_pool_fallback", e=pool_e)
         all_results_list = []
         snr_loop_errors = 0
 
         for i, fits_file_path in enumerate(fits_files_to_process):
+            if _is_cancelled():
+                return _cancelled_result()
             progress = ((i + 1) / total_files) * 50
             try:
                 rel_path_for_status = os.path.relpath(fits_file_path, abs_input_dir)
@@ -1364,6 +1442,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     if snr_loop_errors > 0:
         _log("logic_snr_loop_errors", count=snr_loop_errors)
 
+    if _is_cancelled():
+        return _cancelled_result()
 
     # --- Étape 3: Calcul Seuil SNR ---
     # ... (cette section reste identique) ...
@@ -1402,6 +1482,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     if snr_filter_active: _log("logic_snr_threshold_applied", value=f"{snr_threshold:.3f}")
     
     for r_idx, r in enumerate(all_results_list):
+        if _is_cancelled():
+            return _cancelled_result()
         progress_snr_action = 50 + ((r_idx + 1) / total_files) * 5 # Petite progression pour cette étape
         _progress(progress_snr_action)
 
@@ -1435,6 +1517,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                             if current_path and os.path.exists(current_path):
                                 process_for_trails = False # Ne pas analyser les traînées si rejeté par SNR et actionné
                                 if action_to_take == 'moved_snr':
+                                    if _is_cancelled():
+                                        return _cancelled_result()
                                     dest_path = os.path.join(snr_reject_abs, os.path.basename(current_path))
                                     try:
                                          if os.path.normpath(current_path) != os.path.normpath(dest_path): 
@@ -1447,6 +1531,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                         _log("logic_move_error", file=r['rel_path'], e=move_e)
                                         r['action_comment'] += f" Erreur déplacement SNR: {move_e}"; r['action'] = 'error_move'; r['rejected_reason'] = None; process_for_trails = True
                                 elif action_to_take == 'deleted_snr':
+                                    if _is_cancelled():
+                                        return _cancelled_result()
                                     try: 
                                         os.remove(current_path)
                                         _log("logic_snr_file_deleted", rel=r['rel_path'])
@@ -1512,6 +1598,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     trail_results = {}
     trail_errors = {}
     trail_analysis_config = None
+    if _is_cancelled():
+        return _cancelled_result()
     if options.get('detect_trails') and SATDET_AVAILABLE:
         if not TRAIL_MODULE_LOADED or not hasattr(trail_module, 'run_trail_detection'):
             _log("logic_trail_module_missing")
@@ -1529,8 +1617,18 @@ def perform_analysis(input_dir, output_log, options, callbacks):
             try:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as ex:
                     futures = {ex.submit(_trail_worker, (chunk, trail_params)): chunk for chunk in chunks if chunk}
+                    if _is_cancelled():
+                        for pending_future in futures:
+                            pending_future.cancel()
+                        ex.shutdown(wait=True, cancel_futures=True)
+                        return _cancelled_result()
                     total_chunks = len(futures)
                     for future in concurrent.futures.as_completed(futures):
+                        if _is_cancelled():
+                            for pending_future in futures:
+                                pending_future.cancel()
+                            ex.shutdown(wait=True, cancel_futures=True)
+                            return _cancelled_result()
                         res, err = future.result()
                         trail_results.update(res or {})
                         trail_errors.update(err or {})
@@ -1538,6 +1636,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                         prog = 55 + ((completed / total_chunks) * 35)
                         _progress(min(prog, 90.0))
             except Exception as trail_e:
+                if _is_cancelled():
+                    return _cancelled_result()
                 _log("logic_trail_pool_error", e=trail_e)
                 traceback.print_exc()
                 trail_errors[('FATAL_CALL_ERROR', 0)] = str(trail_e)
@@ -1552,6 +1652,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     _log("logic_trail_apply_marking")
     if options.get('detect_trails') and SATDET_AVAILABLE: # SATDET_AVAILABLE vérifié à nouveau au cas où désactivé
         for r_idx, r in enumerate(all_results_list):
+            if _is_cancelled():
+                return _cancelled_result()
             progress_trail_action = 90 + ((r_idx + 1) / total_files) * 5 # 5% pour cette étape
             _progress(progress_trail_action)
 
@@ -1602,6 +1704,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                             if action_to_take_trail != 'kept':
                                 if os.path.exists(current_path):
                                     if action_to_take_trail == 'moved_trail':
+                                        if _is_cancelled():
+                                            return _cancelled_result()
                                         dest_path_trail = os.path.join(trail_reject_abs, os.path.basename(current_path))
                                         try:
                                             if os.path.normpath(current_path) != os.path.normpath(dest_path_trail):
@@ -1618,6 +1722,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                             r['action'] = 'error_move'
                                             r['rejected_reason'] = None
                                     elif action_to_take_trail == 'deleted_trail':
+                                        if _is_cancelled():
+                                            return _cancelled_result()
                                         try:
                                             os.remove(current_path)
                                             _log("logic_trail_file_deleted", rel=r['rel_path'])
@@ -1671,7 +1777,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                          r['has_trails'] = False; r['num_trails'] = 0 # Marquer comme non-traînée si pas d'erreur spécifique
 
     # --- Tri Bortle et organisation ---
+    if _is_cancelled():
+        return _cancelled_result()
     for r in all_results_list:
+        if _is_cancelled():
+            return _cancelled_result()
         r['mount'] = 'ALTZ'
         r['bortle'] = 'Unknown'
         r['filepath_dst'] = r.get('path')
@@ -1721,6 +1831,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     
 
     # --- Étape 7: Écrire les résultats détaillés FINALS dans le log ---
+    if _is_cancelled():
+        return _cancelled_result()
     _progress(95.0)
     detailed_log_persisted = True
     try:
@@ -1736,6 +1848,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
             log_file.write(header)
 
             for r in all_results_list:
+                if _is_cancelled():
+                    return _cancelled_result()
                 log_line_parts = [
                     str(r.get('rel_path', '?')),
                     str(r.get('status', '?')),
@@ -1774,8 +1888,12 @@ def perform_analysis(input_dir, output_log, options, callbacks):
 
 
     # --- Étape 8: Persistance du résumé et finalisation des sorties ---
+    if _is_cancelled():
+        return _cancelled_result()
     end_time = time.time(); duration = end_time - start_time
     summary_persisted = write_log_summary(output_log, abs_input_dir, options, trail_analysis_config, trail_errors, all_results_list, selection_stats, skipped_marker_dirs_count)
+    if _is_cancelled():
+        return _cancelled_result()
     footer_persisted = True
     try:
         with open(output_log, 'a', encoding='utf-8') as log_file:
@@ -1785,6 +1903,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         footer_persisted = False
         _log("logic_log_finalize_error", path=output_log, e=footer_error)
 
+    if _is_cancelled():
+        return _cancelled_result()
     csv_path = os.path.join(os.path.dirname(output_log), 'telescopes_pollution.csv')
     try:
         write_telescope_pollution_csv(csv_path, all_results_list, bortle_dataset if options.get('use_bortle') else None)
@@ -1801,6 +1921,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     # --- Étape 9: Marqueur de complétion écrit EN DERNIER ---
     # Un marqueur ne doit exister que si l'état persistant requis pour rouvrir
     # le projet a été fermé avec succès.
+    if _is_cancelled():
+        return _cancelled_result()
     persisted_state_ready = bool(detailed_log_persisted and summary_persisted and footer_persisted)
     if persisted_state_ready:
         _log("logic_marker_creation_start")
@@ -1820,6 +1942,14 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     else:
         _log("logic_marker_skipped_persistence_failure", path=output_log)
 
+    if _is_cancelled():
+        # A request racing with marker creation invalidates the just-written
+        # certification before the run can report success.
+        try:
+            project_state.remove_markers(abs_input_dir)
+        except OSError as marker_error:
+            _log("logic_marker_invalidation_error", dir=abs_input_dir, e=marker_error)
+        return _cancelled_result()
     _progress(100)
     _status("status_analysis_done") # Statut final générique
     return all_results_list

@@ -74,14 +74,20 @@ def test_worker_request_cancel(monkeypatch):
     # request cancel shortly after timer started
     worker.request_cancel()
 
+    # A cancellation request is not completion. The worker owns its QThread
+    # until the next cooperative timer checkpoint has unwound it.
+    assert finished == []
+    assert worker.is_running() is True
+
     # the finished signal may be delivered via Qt's event loop; ensure the
     # worker cancellation flag is set so cancellation occurred synchronously
     ok2 = _wait_for(lambda: getattr(worker, "_cancelled", False) is True, timeout=1.0)
     assert ok2, "Worker did not set cancelled flag"
 
-    # if the finished signal was delivered, it should be True
-    if len(finished) > 0:
-        assert finished[-1] is True
+    ok3 = _wait_for(lambda: len(finished) == 1, timeout=2.0)
+    assert ok3, "Worker did not finish after observing cancellation"
+    assert finished == [True]
+    assert worker.is_running() is False
 
     if created_app:
         app.quit()
