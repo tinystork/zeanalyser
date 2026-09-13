@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=ZeAnalyser
+Comment=Analyse and filter Seestar astronomical images
+Comment[fr]=Analyser et filtrer les images astronomiques Seestar
+Exec=zeanalyser
+TryExec=zeanalyser
+Icon=io.github.tinystork.ZeAnalyser
+Terminal=false
+Categories=Science;Astronomy;Education;
+StartupNotify=true
+StartupWMClass=ZeAnalyser

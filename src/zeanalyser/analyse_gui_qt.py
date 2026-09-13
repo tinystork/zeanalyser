@@ -68,6 +68,10 @@ import traceback
 from zeanalyser.platform_utils import open_path_with_default_app
 from zeanalyser import organizer_module
 from zeanalyser import project_state
+from zeanalyser.app_identity import (
+    WINDOWS_APP_USER_MODEL_ID,
+    configure_qt_application,
+)
 from zeanalyser._version import __version__
 
 # Set Matplotlib backend for Qt before importing matplotlib
@@ -200,7 +204,7 @@ ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon")
 # upgrades, so no version number here).  Without an explicit AppUserModelID,
 # Windows groups the process under the default python.exe identity and shows
 # the Python icon in the taskbar even when the Qt window icon is correct.
-_WINDOWS_APP_USER_MODEL_ID = "ZeSoftware.ZeAnalyser"
+_WINDOWS_APP_USER_MODEL_ID = WINDOWS_APP_USER_MODEL_ID
 
 
 def _set_windows_app_user_model_id() -> bool:
@@ -230,6 +234,16 @@ def get_app_icon() -> QIcon:
         if os.path.exists(path):
             return QIcon(path)
     return QIcon()
+
+
+def _configure_application_identity_and_icon(app) -> QIcon:
+    """Configure stable Qt identity and return/apply the packaged icon."""
+
+    configure_qt_application(app)
+    app_icon = get_app_icon()
+    if not app_icon.isNull():
+        app.setWindowIcon(app_icon)
+    return app_icon
 
 # ---------------------------------------------------------------------------
 # Language helpers
@@ -7041,13 +7055,9 @@ def main(argv=None, run_for: int | None = None):
     args, remaining_argv = parser.parse_known_args(argv)
 
     app = QApplication.instance() or QApplication(remaining_argv)
-    # Set organization and application name for QSettings persistence
-    app.setOrganizationName("ZeSeestarStacker")
-    app.setApplicationName("ZeAnalyser")
-
-    app_icon = get_app_icon()
-    if not app_icon.isNull():
-        app.setWindowIcon(app_icon)
+    # Declare the stable common/Linux identity and packaged icon before
+    # creating the first window. Windows already has its process supplement.
+    app_icon = _configure_application_identity_and_icon(app)
 
     # For tests / CI it is useful to optionally auto-quit the event loop
     # after a small delay (milliseconds). Pass run_for to do this.

@@ -54,4 +54,4 @@ version = { attr = "zeanalyser._version.__version__" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-zeanalyser = ["icon/*", "*.json"]
+zeanalyser = ["icon/*", "resources/*.desktop", "*.json"]
