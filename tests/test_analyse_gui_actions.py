@@ -18,14 +18,12 @@ def test_phase3d_widgets_and_sort(monkeypatch):
     win = mod.ZeAnalyserMainWindow()
 
     # check action buttons exist
-    assert hasattr(win, 'analyse_and_stack_btn')
     assert hasattr(win, 'open_log_btn')
     assert hasattr(win, 'create_stack_plan_btn')
     # buttons present (visual stubs) for future features
     assert hasattr(win, 'manage_markers_btn')
     assert hasattr(win, 'visualise_results_btn')
     assert hasattr(win, 'apply_recos_btn')
-    assert hasattr(win, 'send_save_ref_btn')
     assert hasattr(win, 'quit_btn')
     assert hasattr(win, 'sort_by_snr_cb')
     assert hasattr(win, 'elapsed_label') and hasattr(win, 'remaining_label')
@@ -48,7 +46,6 @@ def test_phase3d_widgets_and_sort(monkeypatch):
         assert win.manage_markers_btn.isEnabled() is False
         assert win.visualise_results_btn.isEnabled() is False
         assert win.apply_recos_btn.isEnabled() is False
-        assert win.send_save_ref_btn.isEnabled() is False
     except Exception:
         # best-effort, don't fail the test if widget types don't match
         pass

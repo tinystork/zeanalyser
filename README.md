@@ -139,13 +139,11 @@ python -m zeanalyser
   - **Input folder / Dossier d'entrée**: choose the directory containing your lights.
   - **Log file**: pick the corresponding log; when a folder is selected, the log path is auto-suggested.
   - **Analyse**: runs the standard analysis workflow.
-  - **Analyse + Stack**: runs analysis and stacking when `token.zsss` is present.
 
 - **Français**
   - **Dossier d'entrée** : choisissez le répertoire contenant vos images.
   - **Fichier log** : sélectionnez le log associé ; après choix du dossier, le chemin est auto-complété.
   - **Analyser** : lance le flux d'analyse standard.
-  - **Analyser + Empiler** : lance l'analyse et l'empilement si `token.zsss` est présent.
 
 ## Interface language / Langue de l’interface
 

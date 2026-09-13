@@ -1452,31 +1452,27 @@ class ZeAnalyserMainWindow(QMainWindow):
 
             # action buttons
             self.analyse_images_btn = QPushButton(_("analyse_button"))
-            self.analyse_and_stack_btn = QPushButton(_("analyse_stack_button"))
             self.open_log_btn = QPushButton(_("open_log_button"))
             self.create_stack_plan_btn = QPushButton(_("create_stack_plan_button"))
             self.manage_markers_btn = QPushButton(_("manage_markers_button"))
             self.visualise_results_btn = QPushButton(_("visualize_button"))
             self.apply_recos_btn = QPushButton(_("apply_reco_button"))
-            self.send_save_ref_btn = QPushButton(_("use_best_reference_button"))
             self.quit_btn = QPushButton(_("quit_button"))
 
             # allow some to be visually present but disabled initially
-            for btn in (self.manage_markers_btn, self.visualise_results_btn, self.apply_recos_btn, self.send_save_ref_btn):
+            for btn in (self.manage_markers_btn, self.visualise_results_btn, self.apply_recos_btn):
                 try:
                     btn.setEnabled(False)
                 except Exception:
                     pass
 
             bot_layout.addWidget(self.analyse_images_btn)
-            bot_layout.addWidget(self.analyse_and_stack_btn)
             bot_layout.addWidget(self.open_log_btn)
             bot_layout.addWidget(self.create_stack_plan_btn)
             self.manage_markers_btn.setEnabled(False)
             bot_layout.addWidget(self.manage_markers_btn)
             bot_layout.addWidget(self.visualise_results_btn)
             bot_layout.addWidget(self.apply_recos_btn)
-            bot_layout.addWidget(self.send_save_ref_btn)
             bot_layout.addWidget(self.quit_btn)
 
             # elapsed / remaining labels
@@ -1491,13 +1487,11 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             # ensure attributes exist even in non-Qt environments
             self.sort_by_snr_cb = getattr(self, 'sort_by_snr_cb', None)
-            self.analyse_and_stack_btn = getattr(self, 'analyse_and_stack_btn', None)
             self.open_log_btn = getattr(self, 'open_log_btn', None)
             self.create_stack_plan_btn = getattr(self, 'create_stack_plan_btn', None)
             self.manage_markers_btn = getattr(self, 'manage_markers_btn', None)
             self.visualise_results_btn = getattr(self, 'visualise_results_btn', None)
             self.apply_recos_btn = getattr(self, 'apply_reco_btn', None)
-            self.send_save_ref_btn = getattr(self, 'send_save_ref_btn', None)
             self.quit_btn = getattr(self, 'quit_btn', None)
             self.elapsed_label = getattr(self, 'elapsed_label', None)
             self.remaining_label = getattr(self, 'remaining_label', None)
@@ -1770,8 +1764,6 @@ class ZeAnalyserMainWindow(QMainWindow):
         try:
             if isinstance(self.analyse_images_btn, QPushButton):
                 self.analyse_images_btn.clicked.connect(self._start_analysis)
-            if isinstance(self.analyse_and_stack_btn, QPushButton):
-                self.analyse_and_stack_btn.clicked.connect(self._start_analysis_and_stack)
             if isinstance(self.open_log_btn, QPushButton):
                 self.open_log_btn.clicked.connect(self._open_log_file)
             if isinstance(self.create_stack_plan_btn, QPushButton):
@@ -1805,8 +1797,6 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.visualise_results_btn.clicked.connect(self._visualise_results)
             if isinstance(self.apply_recos_btn, QPushButton):
                 self.apply_recos_btn.clicked.connect(self._apply_current_recommendations)
-            if isinstance(self.send_save_ref_btn, QPushButton):
-                self.send_save_ref_btn.clicked.connect(self.send_reference_to_main)
             if isinstance(self.organize_btn, QPushButton):
                 self.organize_btn.clicked.connect(self._organize_files)
             # preview stretch apply (if present)
@@ -1926,12 +1916,6 @@ class ZeAnalyserMainWindow(QMainWindow):
                 pass
 
             try:
-                if getattr(self, 'analyse_and_stack_btn', None) is not None:
-                    self.analyse_and_stack_btn.setToolTip(_('Run analysis and then start the stacking workflow'))
-            except Exception:
-                pass
-
-            try:
                 if getattr(self, 'open_log_btn', None) is not None:
                     self.open_log_btn.setToolTip(_('Open the analysis log file for inspection'))
             except Exception:
@@ -1949,24 +1933,6 @@ class ZeAnalyserMainWindow(QMainWindow):
             except Exception:
                 pass
 
-            # Set tooltips for token-dependent buttons if the token is not
-            # available.  ``analyse_and_stack_btn`` (direct stacking) really
-            # needs the legacy token.zsss mechanism; ``send_save_ref_btn``
-            # only falls back to the token when no modern command file was
-            # provided by the caller.
-            if not self.parent_token_available:
-                tooltip_text = _("token_dependency_missing_notice")
-                try:
-                    if self.analyse_and_stack_btn:
-                        self.analyse_and_stack_btn.setToolTip(tooltip_text)
-                except Exception:
-                    pass
-                if not self.command_channel_available:
-                    try:
-                        if self.send_save_ref_btn:
-                            self.send_save_ref_btn.setToolTip(tooltip_text)
-                    except Exception:
-                        pass
         except Exception:
             # Non-fatal; tooltips are additive only
             pass
@@ -2412,15 +2378,6 @@ class ZeAnalyserMainWindow(QMainWindow):
         if hasattr(self, 'remaining_label') and self.remaining_label is not None:
             self._remaining_label_value = "00:00"
             self.remaining_label.setText(f"{_('remaining_time_label')} {self._remaining_label_value}")
-
-        # If analysis completed successfully and stacking was requested, trigger stacking
-        if not cancelled and getattr(self, '_stack_after_analysis', False):
-            self._stack_after_analysis = False  # reset flag
-            self._log("Analysis completed, starting stacking workflow...")
-            try:
-                self._start_stacking_after_analysis()
-            except Exception as e:
-                self._log(f"Error starting stacking: {e}")
 
         # clear reference
         self._current_worker = None
@@ -3336,31 +3293,6 @@ class ZeAnalyserMainWindow(QMainWindow):
         # start simulation-fallback
         w.start()
 
-    def _start_stacking_after_analysis(self):
-        """Called after analysis completes to start the stacking workflow."""
-        self._log("Starting stacking workflow after analysis...")
-        try:
-            # Detection step: check if stacking is available
-            if not self.parent_token_available:
-                self._log("Stacking not available - token.zsss not found")
-                return
-
-            # Apply recommendations automatically
-            self._apply_current_recommendations(auto=True)
-            # Organize files automatically
-            self._organize_files_auto()
-            # Send reference to main
-            try:
-                self.send_reference_to_main()
-            except Exception:
-                pass
-            # Create a simple stack plan
-            self._create_simple_stack_plan()
-            # Then attempt to run the stacking script
-            self._run_stacking_script()
-        except Exception as e:
-            self._log(f"Error in stacking workflow: {e}")
-
     def _create_simple_stack_plan(self):
         """Create a simple stack plan from current results."""
         try:
@@ -3435,12 +3367,6 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self._log("No stacking script generated")
         except Exception as e:
             self._log(f"Error preparing stacking script: {e}")
-
-    def _start_analysis_and_stack(self):
-        """Start analysis and trigger stacking afterwards."""
-        # Set a lightweight flag to represent stacking after analysis
-        self._stack_after_analysis = True
-        self._start_analysis()
 
     def _cancel_current_worker(self):
         if getattr(self, '_current_worker', None) is not None:
@@ -4471,8 +4397,6 @@ class ZeAnalyserMainWindow(QMainWindow):
             # Footer/bottom buttons
             if getattr(self, 'analyse_images_btn', None) is not None:
                 self.analyse_images_btn.setText(zone._("analyse_button"))
-            if getattr(self, 'analyse_and_stack_btn', None) is not None:
-                self.analyse_and_stack_btn.setText(zone._("analyse_stack_button"))
             if getattr(self, 'open_log_btn', None) is not None:
                 self.open_log_btn.setText(zone._("open_log_button"))
             if getattr(self, 'create_stack_plan_btn', None) is not None:
@@ -4483,8 +4407,6 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.visualise_results_btn.setText(zone._("visualize_button"))
             if getattr(self, 'apply_recos_btn', None) is not None:
                 self.apply_recos_btn.setText(zone._("apply_reco_button"))
-            if getattr(self, 'send_save_ref_btn', None) is not None:
-                self.send_save_ref_btn.setText(zone._("use_best_reference_button"))
             if getattr(self, 'quit_btn', None) is not None:
                 self.quit_btn.setText(zone._("quit_button"))
 
@@ -4605,15 +4527,6 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.open_log_btn.setEnabled(has_log)
             if self.create_stack_plan_btn:
                 self.create_stack_plan_btn.setEnabled(has_results)
-            # Enable reference buttons if best reference exists and either
-            # the modern command-file channel or the legacy token is
-            # available (REFERENCE= can be returned without token.zsss).
-            best_ref = self._get_best_reference()
-            if self.send_save_ref_btn:
-                self.send_save_ref_btn.setEnabled(
-                    bool(best_ref)
-                    and (self.parent_token_available or self.command_channel_available)
-                )
         except Exception:
             pass
 

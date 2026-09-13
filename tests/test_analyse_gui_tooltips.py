@@ -38,7 +38,6 @@ def test_key_widgets_have_tooltips(monkeypatch):
         'output_path_edit',
         'include_subfolders_cb',
         'analyse_btn',
-        'analyse_and_stack_btn',
         'open_log_btn',
         'create_stack_plan_btn',
         'sort_by_snr_cb',
