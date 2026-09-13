@@ -395,10 +395,10 @@ def _translate(key, **kwargs):
     try:
         return text.format(**kwargs)
     except KeyError as e:
-        print(f"WARN: Erreur formatage clé '{key}' langue '{lang}'. Clé manquante: {e}")
+        logger.warning("Format error for key '%s' language '%s'. Missing: %s", key, lang, e)
         return text
     except Exception as e:
-        print(f"WARN: Erreur formatage clé '{key}' langue '{lang}': {e}")
+        logger.warning("Format error for key '%s' language '%s': %s", key, lang, e)
         return text
 
 

@@ -82,7 +82,10 @@ import zipfile
 import xml.etree.ElementTree as ET
 import csv
 import importlib.util
+import logging
 from astroalign import find_transform
+
+logger = logging.getLogger(__name__)
 
 _rasterio_spec = importlib.util.find_spec("rasterio")
 if _rasterio_spec:
@@ -170,19 +173,19 @@ def _load_bortle_raster(path):
 try:
     from zeanalyser import starcount_module
 except ImportError:
-    print("AVERTISSEMENT (analyse_logic): starcount_module.py introuvable. Le comptage d'etoiles sera désactivé.")
+    logger.warning("starcount_module.py not found. Star counting will be disabled.")
     starcount_module = None
 
 try:
     from zeanalyser import ecc_module
 except ImportError:
-    print("AVERTISSEMENT (analyse_logic): ecc_module.py introuvable. FWHM/Ecc ne seront pas calculés.")
+    logger.warning("ecc_module.py not found. FWHM/Ecc will not be computed.")
     ecc_module = None
 
 try:
     from zeanalyser import snr_module
 except ImportError:
-    print("ERREUR CRITIQUE (analyse_logic): snr_module.py introuvable.")
+    logger.error("snr_module.py not found.")
     raise ImportError("Module SNR manquant.")
 
 TRAIL_MODULE_LOADED = False
@@ -196,11 +199,11 @@ try:
     SATDET_AVAILABLE = getattr(trail_module, 'SATDET_AVAILABLE', False)
     SATDET_USES_SEARCHPATTERN = getattr(trail_module, 'SATDET_USES_SEARCHPATTERN', False)
     SATDET_ACCEPTS_LIST = getattr(trail_module, 'SATDET_ACCEPTS_LIST', False)
-    print(f"INFO (analyse_logic): trail_module chargé. SATDET_AVAILABLE={SATDET_AVAILABLE}, SATDET_ACCEPTS_LIST={SATDET_ACCEPTS_LIST}")
+    logger.info("trail_module loaded. SATDET_AVAILABLE=%s, SATDET_ACCEPTS_LIST=%s", SATDET_AVAILABLE, SATDET_ACCEPTS_LIST)
 except ImportError:
-    print("AVERTISSEMENT (analyse_logic): trail_module.py introuvable. La détection de traînées sera désactivée.")
+    logger.warning("trail_module.py not found. Trail detection will be disabled.")
 except Exception as e:
-    print(f"ERREUR (analyse_logic): Erreur lors de l'import ou de la lecture de trail_module: {e}")
+    logger.error("Error importing or reading trail_module: %s", e)
 
 
 def sanitize_for_json(obj):
@@ -314,11 +317,11 @@ def write_log_summary(log_file_path, input_dir, options,
                 log_file.write("\n--- END VISUALIZATION DATA ---\n")
 
     except Exception as e:
-        print(f"ERREUR CRITIQUE lors de l'écriture du résumé du log ({log_file_path}): {e}"); traceback.print_exc()
+        logger.error("Critical error while writing log summary (%s): %s", log_file_path, e, exc_info=True)
         # Essayer d'écrire l'erreur dans le log lui-même si la section principale a échoué
         try:
             with open(log_file_path, 'a', encoding='utf-8') as log_file_err: # 'a' pour ne pas écraser
-                 log_file_err.write(f"\nERREUR CRITIQUE lors de l'écriture de ce résumé: {e}\n{traceback.format_exc()}");
+                 log_file_err.write(f"\nCRITICAL ERROR while writing this summary: {e}\n{traceback.format_exc()}");
         except Exception: 
             pass # Si même ça échoue, on ne peut plus rien faire ici
 
@@ -342,19 +345,19 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
         return actions_count
 
     # S'assurer que les callbacks sont utilisables
-    _log = log_callback if callable(log_callback) else lambda k, **kw: print(f"LOGIC_APPLY_SNR_LOG: {k} {kw}")
-    _status = status_callback if callable(status_callback) else lambda k, **kw: print(f"LOGIC_APPLY_SNR_STATUS: {k} {kw}")
-    _progress = progress_callback if callable(progress_callback) else lambda v: print(f"LOGIC_APPLY_SNR_PROGRESS: {v}")
+    _log = log_callback if callable(log_callback) else lambda k, **kw: logger.debug("LOGIC_APPLY_SNR_LOG: %s %s", k, kw)
+    _status = status_callback if callable(status_callback) else lambda k, **kw: logger.debug("LOGIC_APPLY_SNR_STATUS: %s %s", k, kw)
+    _progress = progress_callback if callable(progress_callback) else lambda v: logger.debug("LOGIC_APPLY_SNR_PROGRESS: %s", v)
 
 
     files_to_process_action = [r for r in results_list if r.get('rejected_reason') == 'low_snr_pending_action' and r.get('status') == 'ok']
     total_pending_files = len(files_to_process_action)
     
     if total_pending_files == 0:
-        _log("logic_info_prefix", text="Aucune action SNR en attente à appliquer.")
+        _log("logic_snr_pending_none")
         return 0
 
-    _status("status_custom", text=f"Application des actions SNR différées sur {total_pending_files} fichiers...")
+    _status("logic_snr_apply_start", total=total_pending_files)
     _progress(0) # Démarrer la progression pour cette action
 
     for i, r in enumerate(files_to_process_action):
@@ -368,7 +371,7 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
         except ValueError: # Peut arriver si les chemins sont sur des lecteurs différents
             rel_path = r.get('file', 'Fichier inconnu')
 
-        _status("status_custom", text=f"Action SNR sur {rel_path} ({i+1}/{total_pending_files})")
+        _status("logic_snr_apply_item", rel=rel_path, i=i+1, total=total_pending_files)
 
         current_path = r.get('path')
         if not current_path or not os.path.exists(current_path):
@@ -384,7 +387,7 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
         if delete_rejected_flag:
             try:
                 os.remove(current_path)
-                _log("logic_info_prefix", text=f"Fichier supprimé (SNR différé): {rel_path}")
+                _log("logic_snr_deferred_deleted", rel=rel_path)
                 r['path'] = None # Marquer le chemin comme nul
                 r['action'] = 'deleted_snr'
                 r['rejected_reason'] = 'low_snr' # Finaliser la raison
@@ -392,7 +395,7 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
                 actions_count += 1
                 action_taken_this_file = True
             except Exception as del_e:
-                _log("logic_error_prefix", text=f"Erreur suppression SNR différé {rel_path}: {del_e}")
+                _log("logic_snr_deferred_delete_error", rel=rel_path, e=del_e)
                 r['action_comment'] += f" Erreur suppression différée: {del_e}"
                 r['action'] = 'error_delete'
                 r['rejected_reason'] = original_rejected_reason # Restaurer
@@ -444,8 +447,8 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
             # On ne compte pas cela comme une "action" de déplacement/suppression.
     
     _progress(100) # Fin de la progression pour cette tâche
-    _status("status_custom", text=f"{actions_count} actions SNR différées appliquées.")
-    _log("logic_info_prefix", text=f"{actions_count} actions SNR différées appliquées.")
+    _status("logic_snr_apply_done", count=actions_count)
+    _log("logic_snr_apply_done", count=actions_count)
     return actions_count
 
 
@@ -465,10 +468,10 @@ def apply_pending_trail_actions(results_list, trail_reject_abs_path,
     to_process = [r for r in results_list if r.get('rejected_reason') == 'trail_pending_action' and r.get('status') == 'ok']
     total = len(to_process)
     if total == 0:
-        _log('logic_info_prefix', text='Aucune action Traînées en attente.')
+        _log('logic_trail_pending_none')
         return 0
 
-    _status('status_custom', text=f'Application des actions Traînées différées sur {total} fichiers...')
+    _status('logic_trail_apply_start', total=total)
     _progress(0)
 
     for i, r in enumerate(to_process):
@@ -478,7 +481,7 @@ def apply_pending_trail_actions(results_list, trail_reject_abs_path,
         except ValueError:
             rel_path = r.get('file', 'N/A')
 
-        _status('status_custom', text=f'Action Traînées sur {rel_path} ({i+1}/{total})')
+        _status('logic_trail_apply_item', rel=rel_path, i=i+1, total=total)
 
         current_path = r.get('path')
         if not current_path or not os.path.exists(current_path):
@@ -494,7 +497,7 @@ def apply_pending_trail_actions(results_list, trail_reject_abs_path,
         if delete_rejected_flag:
             try:
                 os.remove(current_path)
-                _log('logic_info_prefix', text=f'Fichier supprimé (Traînées différé): {rel_path}')
+                _log('logic_trail_deferred_deleted', rel=rel_path)
                 r['path'] = None
                 r['action'] = 'deleted_trail'
                 r['rejected_reason'] = 'trail'
@@ -502,7 +505,7 @@ def apply_pending_trail_actions(results_list, trail_reject_abs_path,
                 actions_count += 1
                 action_done = True
             except Exception as del_e:
-                _log('logic_error_prefix', text=f'Erreur suppression Traînées différé {rel_path}: {del_e}')
+                _log('logic_trail_deferred_delete_error', rel=rel_path, e=del_e)
                 r['action_comment'] = r.get('action_comment', '') + f' Erreur suppression différée: {del_e}'
                 r['action'] = 'error_delete'
                 r['rejected_reason'] = original_reason
@@ -548,8 +551,8 @@ def apply_pending_trail_actions(results_list, trail_reject_abs_path,
             r['action_comment'] = r.get('action_comment', '') + ' Action Traînées différée mais aucune opération configurée.'
 
     _progress(100)
-    _status('status_custom', text=f'{actions_count} actions Traînées différées appliquées.')
-    _log('logic_info_prefix', text=f'{actions_count} actions Traînées différées appliquées.')
+    _status('logic_trail_apply_done', count=actions_count)
+    _log('logic_trail_apply_done', count=actions_count)
     return actions_count
 
 
@@ -569,10 +572,10 @@ def apply_pending_reco_actions(results_list, reject_abs_path,
     to_process = [r for r in results_list if r.get('rejected_reason') == 'not_in_recommendation' and r.get('action') == 'pending_reco_action' and r.get('status') == 'ok']
     total = len(to_process)
     if total == 0:
-        _log('logic_info_prefix', text="Aucune action recommandation en attente.")
+        _log('logic_reco_pending_none')
         return 0
 
-    _status('status_custom', text=f'Application des actions recommandation sur {total} fichiers...')
+    _status('logic_reco_apply_start', total=total)
     _progress(0)
 
     for i, r in enumerate(to_process):
@@ -582,7 +585,7 @@ def apply_pending_reco_actions(results_list, reject_abs_path,
         except ValueError:
             rel_path = r.get('file', 'N/A')
 
-        _status('status_custom', text=f'Action reco sur {rel_path} ({i+1}/{total})')
+        _status('logic_reco_apply_item', rel=rel_path, i=i+1, total=total)
 
         current_path = r.get('path')
         if not current_path or not os.path.exists(current_path):
@@ -597,7 +600,7 @@ def apply_pending_reco_actions(results_list, reject_abs_path,
         if delete_rejected_flag:
             try:
                 os.remove(current_path)
-                _log('logic_info_prefix', text=f'Fichier supprimé (reco): {rel_path}')
+                _log('logic_reco_deferred_deleted', rel=rel_path)
                 r['path'] = None
                 r['action'] = 'deleted_reco'
                 r['rejected_reason'] = 'not_in_recommendation'
@@ -605,7 +608,7 @@ def apply_pending_reco_actions(results_list, reject_abs_path,
                 actions_count += 1
                 action_done = True
             except Exception as del_e:
-                _log('logic_error_prefix', text=f'Erreur suppression reco {rel_path}: {del_e}')
+                _log('logic_reco_deferred_delete_error', rel=rel_path, e=del_e)
                 r['action_comment'] = r.get('action_comment', '') + f' Erreur suppression différée: {del_e}'
                 r['action'] = 'error_delete'
                 r['rejected_reason'] = original_reason
@@ -651,8 +654,8 @@ def apply_pending_reco_actions(results_list, reject_abs_path,
             r['action_comment'] = r.get('action_comment', '') + ' Action recommandation différée mais aucune opération configurée.'
 
     _progress(100)
-    _status('status_custom', text=f'{actions_count} actions recommandation appliquées.')
-    _log('logic_info_prefix', text=f'{actions_count} actions recommandation appliquées.')
+    _status('logic_reco_apply_done', count=actions_count)
+    _log('logic_reco_apply_done', count=actions_count)
     return actions_count
 
 
@@ -785,7 +788,7 @@ def debug_counts(results):
     starcount = sum(r.get('rejected_reason') == 'starcount_out' for r in results)
     ecc = sum(r.get('rejected_reason') == 'high_eccentricity' for r in results)
     pending = sum(str(r.get('action', '')).startswith('pending') for r in results)
-    print(f"total={total} | snr={low_snr} | fwhm={high_fwhm} | stars={starcount} | e={ecc} | pending={pending}")
+    logger.debug("total=%s | snr=%s | fwhm=%s | stars=%s | e=%s | pending=%s", total, low_snr, high_fwhm, starcount, ecc, pending)
 
 
 def write_telescope_pollution_csv(csv_path, results_list, bortle_dataset=None):
@@ -855,10 +858,10 @@ def apply_pending_organization(results_list, log_callback=None,
     ]
     total = len(to_process)
     if total == 0:
-        _log('logic_info_prefix', text='Aucun fichier à organiser.')
+        _log('logic_org_none')
         return 0
 
-    _status('status_custom', text=f'Organisation de {total} fichiers...')
+    _status('logic_org_start', total=total)
     for i, r in enumerate(to_process):
         _progress(((i + 1) / total) * 100)
         current_path = r.get('path')
@@ -879,8 +882,8 @@ def apply_pending_organization(results_list, log_callback=None,
         except Exception as e:
             _log('logic_move_error', file=rel_path, e=e)
     _progress(100)
-    _status('status_custom', text=f'{actions_count} fichiers organisés.')
-    _log('logic_info_prefix', text=f'{actions_count} fichiers organisés.')
+    _status('logic_org_done', count=actions_count)
+    _log('logic_org_done', count=actions_count)
     return actions_count
 
 
@@ -992,7 +995,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     """
     _status = callbacks.get('status', lambda k, **kw: None)
     _progress = callbacks.get('progress', lambda v: None)
-    _log = callbacks.get('log', lambda k, **kw: print(f"LOGIC_LOG: {k} {kw}"))
+    _log = callbacks.get('log', lambda k, **kw: logger.debug("LOGIC_LOG: %s %s", k, kw))
 
     _status("status_analysis_prep")
     start_time = time.time()
@@ -1007,7 +1010,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         try:
             bortle_dataset = _load_bortle_raster(options['bortle_path'])
         except Exception as e:
-            _log('logic_warn_prefix', text=f'Bortle raster load error: {e}')
+            _log('logic_bortle_load_error', e=e)
 
     # --- NOUVEAU : Extraire les options pour l'application immédiate des actions ---
     apply_snr_action_immediately = options.get('apply_snr_action_immediately', True)
@@ -1016,11 +1019,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
 
     # --- Validation chemins & Création dossiers ---
     if not input_dir or not os.path.isdir(input_dir): 
-        _log("logic_error_prefix", clear=True, text=f"Dossier d'entrée invalide: {input_dir}")
+        _log("logic_input_dir_invalid", dir=input_dir)
         _status("status_dir_create_error", e=f"Input folder invalid: {input_dir}")
         return []
     if not output_log: 
-        _log("logic_error_prefix", clear=True, text="Fichier log non spécifié.")
+        _log("logic_log_file_unspecified")
         _status("msg_log_file_missing")
         return []
     
@@ -1034,7 +1037,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     if options.get('analyze_snr') and options.get('snr_selection_mode') != 'none':
         snr_reject_rel = options.get('snr_reject_dir')
         if options.get('move_rejected', False) and not snr_reject_rel : # Vérifier si move est activé ET que le chemin est manquant
-            _log("logic_error_prefix", clear=True, text="Chemin dossier rejet SNR non spécifié mais déplacement activé.")
+            _log("logic_snr_reject_dir_missing")
             return []
         if snr_reject_rel: # Si un chemin est fourni (même si move_rejected est False, on le prépare)
             snr_reject_abs = os.path.abspath(snr_reject_rel)
@@ -1048,7 +1051,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     _status("status_dir_create_error", e=e)
                     return []
             elif not os.path.isdir(snr_reject_abs): 
-                _log("logic_error_prefix", text=f"Chemin rejet SNR n'est pas un dossier: {snr_reject_abs}")
+                _log("logic_snr_reject_not_dir", path=snr_reject_abs)
                 _status("status_dir_create_error", e="SNR Reject path is not a directory")
                 return []
 
@@ -1056,7 +1059,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     if options.get('detect_trails') and SATDET_AVAILABLE:
         trail_reject_rel = options.get('trail_reject_dir')
         if options.get('move_rejected', False) and not trail_reject_rel:
-            _log("logic_error_prefix", clear=True, text="Chemin dossier rejet Trail non spécifié mais déplacement activé.")
+            _log("logic_trail_reject_dir_missing")
             return []
         if trail_reject_rel:
             trail_reject_abs = os.path.abspath(trail_reject_rel)
@@ -1070,7 +1073,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     _status("status_dir_create_error", e=e)
                     return []
             elif not os.path.isdir(trail_reject_abs): 
-                _log("logic_error_prefix", text=f"Chemin rejet Trail n'est pas un dossier: {trail_reject_abs}")
+                _log("logic_trail_reject_not_dir", path=trail_reject_abs)
                 _status("status_dir_create_error", e="Trail Reject path is not a directory")
                 return []
 
@@ -1108,11 +1111,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
             dirs_to_remove = [d for d in dirnames if os.path.abspath(os.path.join(current_dir_abs, d)) in reject_dirs_to_exclude_abs]
             if dirs_to_remove:
                 for dname in dirs_to_remove:
-                    _log("logic_info_prefix", text=f"Exclusion du sous-dossier de rejet: {os.path.relpath(os.path.join(current_dir_abs, dname), abs_input_dir)}")
+                    _log("logic_subdir_excluded", path=os.path.relpath(os.path.join(current_dir_abs, dname), abs_input_dir))
                     dirnames.remove(dname)
             marker_file_path = os.path.join(current_dir_abs, marker_filename)
             if os.path.exists(marker_file_path):
-                _log("logic_info_prefix", text=f"Ignoré (marqueur trouvé): {os.path.relpath(current_dir_abs, abs_input_dir)}")
+                _log("logic_marker_dir_skipped", path=os.path.relpath(current_dir_abs, abs_input_dir))
                 skipped_marker_dirs_count += 1
                 dirnames[:] = [] 
                 continue 
@@ -1127,7 +1130,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
             if not include_subfolders and dirpath == abs_input_dir: 
                 dirnames[:] = []
     except OSError as e: 
-        _log("logic_error_prefix", text=f"Erreur lors du parcours du dossier {abs_input_dir}: {e}")
+        _log("logic_walk_dir_error", dir=abs_input_dir, e=e)
         _status("status_dir_create_error", e=f"Error walking directory: {e}")
 
         write_log_summary(output_log, abs_input_dir, options, None, None, [], None, skipped_marker_dirs_count)
@@ -1149,11 +1152,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                      with open(marker_file_path_empty, 'w', encoding='utf-8') as mf:
                          mf.write(f"Analyse Astro Analyzer terminée pour ce dossier le: {analysis_datetime}\n")
                          mf.write(f"  (Aucun fichier FITS traitable trouvé lors de cette analyse)\n")
-                     _log("logic_info_prefix", text=f"Marqueur créé (aucun FITS): {os.path.relpath(marker_file_path_empty, abs_input_dir)}")
+                     _log("logic_marker_created_no_fits", path=os.path.relpath(marker_file_path_empty, abs_input_dir))
                  except IOError as e_marker:
-                     _log("logic_error_prefix", text=f"Impossible de créer le fichier marqueur (aucun FITS) dans {directory_to_mark}: {e_marker}")
+                     _log("logic_marker_create_error_no_fits", dir=directory_to_mark, e=e_marker)
         return []
-    _log("logic_info_prefix", text=f"{total_files} fichiers FITS trouvés pour analyse (hors dossiers ignorés).")
+    _log("logic_fits_found", count=total_files)
 
 
     # --- Étape 2: Boucle Analyse SNR ---
@@ -1242,7 +1245,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     _log("logic_file_error", file=result_base['rel_path'], e=err_msg)
                 all_results_list.append(result_base)
     except Exception as pool_e:
-        _log("logic_warn_prefix", text=f"Echec pool SNR ({pool_e}), fallback séquentiel")
+        _log("logic_snr_pool_fallback", e=pool_e)
         all_results_list = []
         snr_loop_errors = 0
 
@@ -1355,7 +1358,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                 try:
                                     hdul.close()
                                 except Exception as e_close:
-                                    print(f"WARN: Erreur fermeture FITS {result['rel_path']}: {e_close}")
+                                    logger.warning("Error closing FITS %s: %s", result['rel_path'], e_close)
                 else:
                     if result['status'] == 'pending':
                         result['status'] = 'ok'
@@ -1365,13 +1368,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 result['error_message'] = err_msg
                 snr_loop_errors += 1
                 _log("logic_file_error", file=result['rel_path'], e=err_msg)
-                print(f"\n--- Traceback Erreur Fichier (Logic) {result['rel_path']} ---")
-                traceback.print_exc()
-                print("---------------------------------------------------\n")
+                logger.error("--- Traceback File Error (Logic) %s ---", result['rel_path'], exc_info=True)
             finally:
                 all_results_list.append(result)
     if snr_loop_errors > 0:
-        _log("logic_warn_prefix", text=f"{snr_loop_errors} erreur(s) rencontrée(s) pendant l'analyse SNR initiale.")
+        _log("logic_snr_loop_errors", count=snr_loop_errors)
 
 
     # --- Étape 3: Calcul Seuil SNR ---
@@ -1393,22 +1394,22 @@ def perform_analysis(input_dir, output_log, options, callbacks):
             eligible_snrs = [res[0] for res in eligible_snr_results]; local_snr_threshold = -np.inf
             if mode == 'threshold':
                 try: local_snr_threshold = float(value_str); selection_stats['threshold'] = local_snr_threshold
-                except (ValueError, TypeError): _log("logic_warn_prefix", text=f"Seuil SNR invalide: '{value_str}'.")
+                except (ValueError, TypeError): _log("logic_snr_threshold_invalid", value=value_str)
             elif mode == 'percent':
                 try:
                     percentile_to_keep = float(value_str); assert 0 < percentile_to_keep <= 100
                     percentile_val = 100.0 - percentile_to_keep; local_snr_threshold = np.nanpercentile(eligible_snrs, percentile_val); selection_stats['threshold'] = local_snr_threshold
-                except Exception as e: _log("logic_warn_prefix", text=f"Valeur pourcentage invalide: '{value_str}' ({e}).")
+                except Exception as e: _log("logic_snr_percent_invalid", value=value_str, e=e)
             elif mode == 'none': selection_stats['threshold'] = None 
             snr_threshold = local_snr_threshold
 
 
     # --- Étape 4: Rejet SNR et Actions Associées ---
-    _log("logic_info_prefix", text="Application du marquage/rejet SNR et actions...")
+    _log("logic_snr_apply_marking")
     kept_by_snr_initial = 0; rejected_by_snr_initial = 0; files_kept_for_trails = []
     snr_filter_active = options.get('analyze_snr') and options.get('snr_selection_mode') != 'none' and np.isfinite(snr_threshold) and snr_threshold > -np.inf
     
-    if snr_filter_active: _log("logic_info_prefix", text=f"Seuil SNR appliqué: {snr_threshold:.3f}")
+    if snr_filter_active: _log("logic_snr_threshold_applied", value=f"{snr_threshold:.3f}")
     
     for r_idx, r in enumerate(all_results_list):
         progress_snr_action = 50 + ((r_idx + 1) / total_files) * 5 # Petite progression pour cette étape
@@ -1421,11 +1422,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     # --- MODIFIÉ : Logique pour action immédiate ou différée ---
                     if apply_snr_action_immediately:
                         r['rejected_reason'] = 'low_snr' # Action immédiate
-                        _log("logic_info_prefix", text=f"SNR Rejet (immédiat): {r['rel_path']} (SNR: {r['snr']:.2f} < {snr_threshold:.2f})")
+                        _log("logic_snr_reject_immediate", rel=r['rel_path'], snr=f"{r['snr']:.2f}", threshold=f"{snr_threshold:.2f}")
                     else:
                         r['rejected_reason'] = 'low_snr_pending_action' # Marquer pour action différée
                         r['action'] = 'pending_snr_action' # Statut d'action en attente
-                        _log("logic_info_prefix", text=f"SNR Marqué pour rejet (différé): {r['rel_path']} (SNR: {r['snr']:.2f} < {snr_threshold:.2f})")
+                        _log("logic_snr_mark_deferred", rel=r['rel_path'], snr=f"{r['snr']:.2f}", threshold=f"{snr_threshold:.2f}")
                     # --- FIN MODIFICATION ---
                     rejected_by_snr_initial += 1
                     
@@ -1458,10 +1459,10 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                 elif action_to_take == 'deleted_snr':
                                     try: 
                                         os.remove(current_path)
-                                        _log("logic_info_prefix", text=f"Fichier supprimé (SNR): {r['rel_path']}")
+                                        _log("logic_snr_file_deleted", rel=r['rel_path'])
                                         r['path'] = None; r['action'] = 'deleted_snr'
                                     except Exception as del_e: 
-                                        _log("logic_error_prefix", text=f"Erreur suppression SNR {r['rel_path']}: {del_e}")
+                                        _log("logic_snr_delete_error", rel=r['rel_path'], e=del_e)
                                         r['action_comment'] += f" Erreur suppression SNR: {del_e}"; r['action'] = 'error_delete'; r['rejected_reason'] = None; process_for_trails = True
                             else: 
                                 _log("logic_move_skipped", file=r['rel_path'], e="Fichier source non trouvé pour action SNR.")
@@ -1523,17 +1524,17 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     trail_analysis_config = None
     if options.get('detect_trails') and SATDET_AVAILABLE:
         if not TRAIL_MODULE_LOADED or not hasattr(trail_module, 'run_trail_detection'):
-            _log("logic_error_prefix", text="Erreur: trail_module n'est pas chargé ou manque run_trail_detection.")
+            _log("logic_trail_module_missing")
             options['detect_trails'] = False
         elif not files_kept_for_trails:
-            _log("logic_info_prefix", text="Aucun fichier éligible pour la détection de traînées après filtre SNR.")
+            _log("logic_trail_no_eligible")
         else:
             input_for_trail_module = files_kept_for_trails
             trail_params = options.get('trail_params', {})
             trail_analysis_config = trail_params.copy()
             chunks = [input_for_trail_module[i::n_workers] for i in range(n_workers)]
             _progress('indeterminate')
-            _status("status_custom", text="Lancement détection traînées...")
+            _status("logic_trail_detection_start")
             completed = 0
             try:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as ex:
@@ -1547,7 +1548,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                         prog = 55 + ((completed / total_chunks) * 35)
                         _progress(min(prog, 90.0))
             except Exception as trail_e:
-                _log("logic_error_prefix", text=f"Erreur pool trail: {trail_e}")
+                _log("logic_trail_pool_error", e=trail_e)
                 traceback.print_exc()
                 trail_errors[('FATAL_CALL_ERROR', 0)] = str(trail_e)
             _progress(90.0)
@@ -1558,7 +1559,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     # --- Étape 6: Rejet Traînées et Actions Associées ---
     # ... (cette section reste identique, elle modifie les items dans all_results_list) ...
     #      Progression de 90% à 95%
-    _log("logic_info_prefix", text="Application du rejet Traînées et actions...")
+    _log("logic_trail_apply_marking")
     if options.get('detect_trails') and SATDET_AVAILABLE: # SATDET_AVAILABLE vérifié à nouveau au cas où désactivé
         for r_idx, r in enumerate(all_results_list):
             progress_trail_action = 90 + ((r_idx + 1) / total_files) * 5 # 5% pour cette étape
@@ -1597,7 +1598,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     if isinstance(trail_segments, (list, np.ndarray)) and len(trail_segments) > 0:
                         r['has_trails'] = True
                         r['num_trails'] = len(trail_segments)
-                        _log("logic_info_prefix", text=f"Trail Rejet: {r['rel_path']} ({len(trail_segments)} segments)")
+                        _log("logic_trail_reject", rel=r['rel_path'], count=len(trail_segments))
 
                         if apply_trail_action_immediately:
                             r['rejected_reason'] = 'trail'
@@ -1629,11 +1630,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                     elif action_to_take_trail == 'deleted_trail':
                                         try:
                                             os.remove(current_path)
-                                            _log("logic_info_prefix", text=f"Fichier supprimé (Trail): {r['rel_path']}")
+                                            _log("logic_trail_file_deleted", rel=r['rel_path'])
                                             r['path'] = None
                                             r['action'] = 'deleted_trail'
                                         except Exception as del_e_tr:
-                                            _log("logic_error_prefix", text=f"Erreur suppression Trail {r['rel_path']}: {del_e_tr}")
+                                            _log("logic_trail_delete_error", rel=r['rel_path'], e=del_e_tr)
                                             r['action_comment'] += f" Erreur suppression Trail: {del_e_tr}"
                                             r['action'] = 'error_delete'
                                             r['rejected_reason'] = None
@@ -1733,7 +1734,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     # ... (cette section reste identique) ...
     #      Progression de 95% à 98%
     _progress(95.0) # Avant de commencer les marqueurs
-    _log("logic_info_prefix", text="Création des fichiers marqueurs...")
+    _log("logic_marker_creation_start")
     analysis_datetime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     num_processed_dirs = len(processed_directories)
     for dir_idx, directory in enumerate(processed_directories):
@@ -1743,9 +1744,9 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         try:
             with open(marker_file_path, 'w', encoding='utf-8') as mf:
                 mf.write(f"Analyse Astro Analyzer terminée pour ce dossier le: {analysis_datetime}\n")
-            _log("logic_info_prefix", text=f"Marqueur créé: {os.path.relpath(marker_file_path, abs_input_dir)}")
+            _log("logic_marker_created", path=os.path.relpath(marker_file_path, abs_input_dir))
         except IOError as e_marker:
-            _log("logic_error_prefix", text=f"Impossible de créer le fichier marqueur dans {directory}: {e_marker}")
+            _log("logic_marker_create_error", dir=directory, e=e_marker)
     _progress(98.0) # Après les marqueurs
 
 
@@ -1811,9 +1812,9 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     csv_path = os.path.join(os.path.dirname(output_log), 'telescopes_pollution.csv')
     try:
         write_telescope_pollution_csv(csv_path, all_results_list, bortle_dataset if options.get('use_bortle') else None)
-        _log('logic_info_prefix', text=f"CSV pollution écrit: {os.path.basename(csv_path)}")
+        _log('logic_csv_pollution_written', name=os.path.basename(csv_path))
     except Exception as csv_e:
-        _log('logic_error_prefix', text=f"Erreur écriture CSV pollution: {csv_e}")
+        _log('logic_csv_pollution_error', e=csv_e)
 
     if bortle_dataset:
         try:
