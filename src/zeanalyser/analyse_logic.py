@@ -375,7 +375,7 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
 
         current_path = r.get('path')
         if not current_path or not os.path.exists(current_path):
-            _log("logic_move_skipped", file=rel_path, e="Fichier source non trouvé pour action SNR différée.")
+            _log("logic_move_skipped", file=rel_path)
             r['action_comment'] += " Source non trouvée pour action différée."
             r['action'] = 'error_action_deferred'
             r['status'] = 'error' # Marquer comme erreur si le fichier a disparu
@@ -485,7 +485,7 @@ def apply_pending_trail_actions(results_list, trail_reject_abs_path,
 
         current_path = r.get('path')
         if not current_path or not os.path.exists(current_path):
-            _log('logic_move_skipped', file=rel_path, e='Fichier source introuvable pour action Traînées différée.')
+            _log('logic_move_skipped', file=rel_path)
             r['action_comment'] = r.get('action_comment', '') + ' Source non trouvée pour action différée.'
             r['action'] = 'error_action_deferred'
             r['status'] = 'error'
@@ -589,7 +589,7 @@ def apply_pending_reco_actions(results_list, reject_abs_path,
 
         current_path = r.get('path')
         if not current_path or not os.path.exists(current_path):
-            _log('logic_move_skipped', file=rel_path, e='Fichier source introuvable pour action recommandation.')
+            _log('logic_move_skipped', file=rel_path)
             r['action_comment'] = r.get('action_comment', '') + ' Source non trouvée pour action différée.'
             r['action'] = 'error_action_deferred'
             r['status'] = 'error'
@@ -968,7 +968,7 @@ def _snr_worker(path):
                         result['ecc'] = np.nan
                         result['n_star_ecc'] = 0
             else:
-                result['error'] = 'Pas de données image valides dans HDU 0.'
+                result['error'] = 'No valid image data in HDU 0.'
     except Exception as e:
         result['error'] = str(e)
     finally:
@@ -1238,7 +1238,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                         if result_base['status'] == 'pending':
                             result_base['status'] = 'ok'
                 except Exception as snr_e:
-                    err_msg = f"Erreur analyse SNR/FITS: {snr_e}"
+                    err_msg = f"SNR/FITS analysis error: {snr_e}"
                     result_base['status'] = 'error'
                     result_base['error_message'] = err_msg
                     snr_loop_errors += 1
@@ -1344,11 +1344,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                     result['status'] = 'ok'
                                     _log("logic_snr_info", file=result['rel_path'], snr=snr, bg=sky_bg)
                                 else:
-                                    raise ValueError("Calcul SNR a retourné des valeurs non finies.")
+                                    raise ValueError("SNR calculation returned non-finite values.")
                             else:
-                                raise ValueError("Pas de données image valides dans HDU 0.")
+                                raise ValueError("No valid image data in HDU 0.")
                         except Exception as snr_e:
-                            err_msg = f"Erreur analyse SNR/FITS: {snr_e}"
+                            err_msg = f"SNR/FITS analysis error: {snr_e}"
                             result['status'] = 'error'
                             result['error_message'] = err_msg
                             snr_loop_errors += 1
@@ -1363,7 +1363,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     if result['status'] == 'pending':
                         result['status'] = 'ok'
             except Exception as file_e:
-                err_msg = f"Erreur traitement général: {file_e}"
+                err_msg = f"General processing error: {file_e}"
                 result['status'] = 'error'
                 result['error_message'] = err_msg
                 snr_loop_errors += 1
@@ -1465,7 +1465,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                         _log("logic_snr_delete_error", rel=r['rel_path'], e=del_e)
                                         r['action_comment'] += f" Erreur suppression SNR: {del_e}"; r['action'] = 'error_delete'; r['rejected_reason'] = None; process_for_trails = True
                             else: 
-                                _log("logic_move_skipped", file=r['rel_path'], e="Fichier source non trouvé pour action SNR.")
+                                _log("logic_move_skipped", file=r['rel_path'])
                                 r['action_comment'] += " Ignoré action SNR (source non trouvée)."; r['action'] = 'error_action'; r['rejected_reason'] = None; process_for_trails = True
                         else: # action_to_take == 'kept' (donc ni delete ni move activé pour SNR)
                             r['action'] = 'kept' # Même si raison rejet = low_snr
@@ -1639,7 +1639,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                             r['action'] = 'error_delete'
                                             r['rejected_reason'] = None
                                 else:
-                                    _log("logic_move_skipped", file=r['rel_path'], e="Fichier source non trouvé pour action Trail.")
+                                    _log("logic_move_skipped", file=r['rel_path'])
                                     r['action_comment'] += " Ignoré action Trail (source non trouvée)."
                                     r['action'] = 'error_action'
                                     r['rejected_reason'] = None

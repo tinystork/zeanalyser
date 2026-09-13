@@ -857,7 +857,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     )
             except Exception:
                 if not auto:
-                    self._log("No recommended images to apply")
+                    self._log(_("gui_no_recommended_images_to_apply"))
             return
 
         try:
@@ -2963,7 +2963,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 pass
         except Exception as e:
             try:
-                self._log(f"Failed to autoload stack plan: {e}")
+                self._log(_("gui_stack_plan_autoload_failed", e=e))
             except Exception:
                 pass
 
@@ -3158,11 +3158,11 @@ class ZeAnalyserMainWindow(QMainWindow):
                 except Exception:
                     pass
             except Exception:
-                self._log("Missing output path — cannot start analysis")
+                self._log(_("gui_missing_output_path"))
                 return
 
         # Log the paths being used
-        self._log(f"Using input dir: {input_path}, log file: {output_path}")
+        self._log(_("gui_using_input_dir_and_log", input=input_path, log=output_path))
 
         # create the worker
         w = AnalysisWorker(step_ms=5)
@@ -3264,7 +3264,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     pass
                 # if trail detection is enabled, require trail_reject_dir
                 if (options.get('detect_trails') or (getattr(self, 'detect_trails_cb', None) is not None and self.detect_trails_cb.isChecked())) and options.get('trail_reject_dir', '') == '':
-                    self._log("ERROR: trail reject directory required when moving rejected trail images")
+                    self._log(_("gui_trail_reject_dir_required"))
                     try:
                         self._current_worker = None
                     except Exception:
@@ -3272,7 +3272,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     return
                 # if analyze_snr is enabled and snr selection isn't 'all', require snr_reject_dir
                 if (options.get('analyze_snr') or (getattr(self, 'analyze_snr_cb', None) is not None and self.analyze_snr_cb.isChecked())) and options.get('snr_selection_mode', 'all') != 'all' and options.get('snr_reject_dir', '') == '':
-                    self._log("ERROR: snr reject directory required when moving rejected SNR images")
+                    self._log(_("gui_snr_reject_dir_required"))
                     try:
                         self._current_worker = None
                     except Exception:
@@ -3304,14 +3304,14 @@ class ZeAnalyserMainWindow(QMainWindow):
                 rows = list(self._results_rows)
 
             if not rows:
-                self._log("No results available for stack plan")
+                self._log(_("gui_no_results_stack_plan"))
                 return
 
             # Filter for 'ok' status and 'kept' action
             kept_results = [r for r in rows if r.get('status') == 'ok' and r.get('action') == 'kept']
 
             if not kept_results:
-                self._log("No images kept for stacking")
+                self._log(_("gui_no_images_kept_for_stacking"))
                 return
 
             # Import stack_plan module
@@ -3338,7 +3338,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     log_dir = os.path.dirname(self.log_path_edit.text().strip() or '')
                     csv_path = os.path.join(log_dir, 'stack_plan.csv') if log_dir else 'stack_plan.csv'
                 stack_plan.write_stacking_plan_csv(csv_path, stack_plan_rows)
-                self._log(f"Stack plan created: {csv_path} with {len(stack_plan_rows)} batches")
+                self._log(_("gui_stack_plan_created_with_batches", path=csv_path, count=len(stack_plan_rows)))
 
                 # Store in the Stack Plan tab
                 self.set_stack_plan_rows(csv_path)
@@ -3349,10 +3349,10 @@ class ZeAnalyserMainWindow(QMainWindow):
                     pass
                 self._last_stack_plan_path = csv_path
             else:
-                self._log("Stack plan generation returned no results")
+                self._log(_("gui_stack_plan_no_results"))
 
         except Exception as e:
-            self._log(f"Error creating stack plan: {e}")
+            self._log(_("gui_stack_plan_create_error", e=e))
 
     def _run_stacking_script(self):
         """Run the stacking script after creating the plan."""
@@ -3360,13 +3360,13 @@ class ZeAnalyserMainWindow(QMainWindow):
             # For now, just prepare a script preview
             script_content = self._prepare_stacking_script()
             if script_content:
-                self._log("Stacking script prepared (preview mode)")
+                self._log(_("gui_stacking_script_prepared_preview"))
                 # In a full implementation, this would launch main_stacking_script.py
                 # with appropriate arguments
             else:
-                self._log("No stacking script generated")
+                self._log(_("gui_no_stacking_script_generated"))
         except Exception as e:
-            self._log(f"Error preparing stacking script: {e}")
+            self._log(_("gui_stacking_script_prepare_error", e=e))
 
     def _cancel_current_worker(self):
         if getattr(self, '_current_worker', None) is not None:
@@ -3434,13 +3434,13 @@ class ZeAnalyserMainWindow(QMainWindow):
         try:
             path = self.log_path_edit.text().strip() if getattr(self, 'log_path_edit', None) is not None else ''
             if not path:
-                self._log("No log file selected to open")
+                self._log(_("gui_no_log_file_selected"))
                 return
             open_path_with_default_app(path)
         except FileNotFoundError:
-            self._log("Log file does not exist")
+            self._log(_("gui_log_file_not_found"))
         except Exception as e:
-            self._log(f"Open log failed: {e}")
+            self._log(_("gui_open_log_failed", e=e))
 
     def _create_stack_plan(self) -> str | None:
         """Create a stack plan from current analysis results."""
@@ -3488,7 +3488,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
             stack_plan.write_stacking_plan_csv(csv_path, stack_plan_rows)
             self._last_stack_plan_path = csv_path
-            self._log(f"Stack plan created: {csv_path} with {len(stack_plan_rows)} batches")
+            self._log(_("gui_stack_plan_created_with_batches", path=csv_path, count=len(stack_plan_rows)))
             # Store in the Stack Plan tab
             self.set_stack_plan_rows(csv_path)
             try:
@@ -3499,7 +3499,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             return csv_path
 
         except Exception as e:
-            self._log(f"Error creating stack plan: {e}")
+            self._log(_("gui_stack_plan_create_error", e=e))
             return None
 
     def open_stack_plan_window(self):
@@ -3669,7 +3669,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     stack_plan.write_stacking_plan_csv(csv_path, plan_rows)
                     created_path = csv_path
                     self._last_stack_plan_path = csv_path
-                    self._log(f"Stack plan created: {csv_path} with {len(plan_rows)} batches")
+                    self._log(_("gui_stack_plan_created_with_batches", path=csv_path, count=len(plan_rows)))
                     self.set_stack_plan_rows(csv_path)
                     try:
                         self._stack_plan_loaded_path = csv_path
@@ -3697,7 +3697,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             return created_path
 
         except Exception as e:
-            self._log(f"Error opening stack plan window: {e}")
+            self._log(_("gui_stack_plan_window_open_error", e=e))
             return None
 
     def _export_stack_plan_csv(self, dest_path: str = None) -> str:
@@ -3742,7 +3742,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 try:
                     self._log(_("stack_plan_export_failed", e=e))
                 except Exception:
-                    self._log(f"Failed to export stack plan: {e}")
+                    self._log(_("gui_stack_plan_export_failed", e=e))
 
         # expose for tests / introspection
         self._last_stack_plan_export = content
@@ -3810,7 +3810,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 try:
                     self._log(_("stack_plan_script_failed", e=e))
                 except Exception:
-                    self._log(f"Failed to write stacking script: {e}")
+                    self._log(_("gui_stacking_script_write_failed", e=e))
 
         self._last_stack_plan_script = script
         try:
@@ -3848,7 +3848,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 pass
         except Exception as e:
             try:
-                self._log(f"Failed to export stack plan: {e}")
+                self._log(_("gui_stack_plan_export_failed", e=e))
             except Exception:
                 pass
 
@@ -3911,7 +3911,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 pass
         except Exception as e:
             try:
-                self._log(f"Failed to prepare stacking script: {e}")
+                self._log(_("gui_stacking_script_prepare_failed", e=e))
             except Exception:
                 pass
 
@@ -4029,12 +4029,12 @@ class ZeAnalyserMainWindow(QMainWindow):
     def _on_visual_apply_snr(self) -> None:
         """Apply SNR filter from visualization dialog."""
         # For now, just log that this would apply the current slider range
-        self._log("Apply SNR filter from visualization (not yet implemented)")
+        self._log(_("gui_apply_snr_filter_not_implemented"))
 
     def _on_visual_apply_fwhm(self) -> None:
         """Apply FWHM filter from visualization dialog."""
         # For now, just log that this would apply the current slider range
-        self._log("Apply FWHM filter from visualization (not yet implemented)")
+        self._log(_("gui_apply_fwhm_filter_not_implemented"))
 
     def _on_apply_trail_rejection(self) -> None:
         """Mirror of Tk: flag rows for trail pending action and call logic."""
@@ -4619,14 +4619,14 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         except json.JSONDecodeError as e_json_dec:
             try:
-                self._log(f"ERREUR: Échec du décodage JSON depuis {log_path}: {e_json_dec}")
+                self._log(_("gui_visualization_json_decode_error", path=log_path, e=e_json_dec))
             except Exception:
                 pass
             self.analysis_completed_successfully = False
             return False
         except Exception as e:
             try:
-                self._log(f"ERREUR: Échec du chargement des données de visualisation depuis {log_path}: {e}")
+                self._log(_("gui_visualization_data_load_error", path=log_path, e=e))
             except Exception:
                 pass
             try:
@@ -4861,7 +4861,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             dialog.exec()
 
         except Exception as e:
-            self._log(f"Error managing markers: {e}")
+            self._log(_("gui_marker_manage_error", e=e))
 
     def _delete_selected_markers(self, dialog, list_widget, rel_to_abs_map, marker_filename, abs_input_dir, reject_dirs_to_exclude_abs):
         """Delete markers for selected directories."""
@@ -5005,7 +5005,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                         rows = list(self._get_analysis_results_rows())
 
             if not rows:
-                self._log("No results to visualise")
+                self._log(_("gui_no_results_to_visualise"))
                 return
 
             if not matplotlib or not plt or not FigureCanvas or not np:
@@ -5737,7 +5737,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         except ImportError as ie:
             self._log(f"Qt visualization not available: {ie}")
         except Exception as e:
-            self._log(f"Error visualising results: {e}")
+            self._log(_("gui_results_visualise_error", e=e))
             import traceback
             traceback.print_exc()
 
@@ -5800,7 +5800,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         try:
             rows = self._get_analysis_results_rows()
             if not rows:
-                self._log("No results available to apply recommendations")
+                self._log(_("gui_apply_reco_no_results"))
                 return
 
             # Determine recommended set
@@ -5816,7 +5816,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 if r.get('file')
             }
             if not recommended_files:
-                self._log("No recommended file paths available")
+                self._log(_("gui_apply_reco_no_paths"))
                 return
 
             # Flag non-recommended images for reco actions
@@ -5904,7 +5904,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     )
 
             except Exception as e:
-                self._log(f"Error applying recommendations: {e}")
+                self._log(_("gui_apply_reco_error", e=e))
 
             # Refresh model if present
             try:
@@ -5942,7 +5942,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 pass
 
         except Exception as e:
-            self._log(f"Error in apply recommendations: {e}")
+            self._log(_("gui_apply_reco_inner_error", e=e))
 
     def _mark_good_images(self, rows):
         """Mark all images with status 'ok'."""
@@ -5951,7 +5951,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             if r.get('status') == 'ok':
                 r['marked'] = True
                 marked += 1
-        self._log(f"Marked {marked} good images")
+        self._log(_("gui_marked_good_images", count=marked))
 
     def _unmark_all_images(self, rows):
         """Unmark all images."""
@@ -5960,7 +5960,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             if r.get('marked', False):
                 r['marked'] = False
                 unmarked += 1
-        self._log(f"Unmarked {unmarked} images")
+        self._log(_("gui_unmarked_images", count=unmarked))
 
     def _sync_organizer_paths_from_project(self):
         """Keep organizer source/destination aligned with Project input."""
@@ -6091,7 +6091,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
     def _on_organizer_apply(self):
         if not getattr(self, '_organizer_plan_entries', None):
-            self._log("Organizer: no plan to apply. Run a scan first.")
+            self._log(_("gui_organizer_no_plan"))
             return
 
         move_files = True
@@ -6174,7 +6174,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         self._log(str(text))
 
     def _on_organizer_error(self, text: str):
-        self._log(f"Organizer error: {text}")
+        self._log(_("gui_organizer_error", text=text))
 
     def _on_organizer_finished(self, cancelled: bool):
         self._set_organizer_busy(False)
@@ -6395,7 +6395,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             )
 
         except Exception as e:
-            self._log(f"Error in auto organize: {e}")
+            self._log(_("gui_auto_organize_error", e=e))
 
         finally:
             try:
@@ -6635,7 +6635,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             )
             return actions_done
         except Exception as e:
-            self._log(f"Error applying {action_type} actions: {e}")
+            self._log(_("gui_apply_actions_error", action_type=action_type, e=e))
             return 0
 
     def _refresh_results_display(self):
