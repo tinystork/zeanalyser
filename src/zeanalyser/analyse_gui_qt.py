@@ -67,6 +67,7 @@ import time
 import traceback
 from zeanalyser.platform_utils import open_path_with_default_app
 from zeanalyser import organizer_module
+from zeanalyser import project_state
 
 # Set Matplotlib backend for Qt before importing matplotlib
 _env_backend = os.environ.get("MPLBACKEND")
@@ -662,6 +663,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         )
         self.analysis_results = []
         self.analysis_completed_successfully = False
+        self._loading_settings = False
         # Debt (ZA-M1-3A A2, defer M1-3B): the legacy checkout-relative probe
         # (project root derived from __file__) is meaningless once installed.
         # Until the token.zsss contract is modernized, we probe documented
@@ -719,9 +721,12 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         # Try to restore saved UI state (QSettings) if available.
         try:
+            self._loading_settings = True
             self._load_settings()
         except Exception:
             pass
+        finally:
+            self._loading_settings = False
 
         # Ensure the flag exists even when _build_ui/tooltip setup failed
         try:
@@ -752,6 +757,9 @@ class ZeAnalyserMainWindow(QMainWindow):
         self.reco_starcount_pct_min = 25.0
 
         try:
+            project_dir_abs = self._get_project_dir_abs()
+            if project_dir_abs:
+                self._sync_reject_paths_for_project(project_dir_abs)
             self._update_log_and_vis_buttons_state()
         except Exception:
             pass
@@ -2884,21 +2892,140 @@ class ZeAnalyserMainWindow(QMainWindow):
             return ""
 
     def _on_project_dir_changed(self, *_args, **_kwargs) -> None:
-        """Trigger stack plan autoload when project path changes while on the Stack tab."""
+        """Transactionally clear and reopen persisted state for a new project."""
         try:
-            stack_idx = getattr(self, '_stack_tab_index', None)
-            if stack_idx is None or getattr(self, '_main_tabs', None) is None:
-                return
-            current_idx = self._main_tabs.currentIndex()
-            if not isinstance(current_idx, int) or current_idx != stack_idx:
+            if getattr(self, '_loading_settings', False):
                 return
             project_dir_abs = self._get_project_dir_abs()
+            self._clear_persisted_project_state()
+            generation = int(getattr(self, '_project_restore_generation', 0)) + 1
+            self._project_restore_generation = generation
+
+            def restore_if_current(dir_path=project_dir_abs, token=generation):
+                if token != getattr(self, '_project_restore_generation', None):
+                    return
+                if dir_path != self._get_project_dir_abs():
+                    return
+                self._restore_project_state(dir_path, emit_diagnostic=True)
+
             if hasattr(QTimer, "singleShot"):
-                QTimer.singleShot(0, lambda dir_path=project_dir_abs: self._maybe_autoload_stack_plan(dir_path))
+                QTimer.singleShot(0, restore_if_current)
             else:
-                self._maybe_autoload_stack_plan(project_dir_abs)
+                restore_if_current()
         except Exception:
             pass
+
+    def _clear_persisted_result_state(self) -> None:
+        """Remove persisted result and recommendation state."""
+        self.analysis_results = []
+        self.analysis_completed_successfully = False
+        self.recommended_images = []
+        self.reco_snr_min = None
+        self.reco_fwhm_max = None
+        self.reco_ecc_max = None
+        self.reco_starcount_min = None
+        self._last_loaded_log_path = None
+        try:
+            self.set_results([])
+        except Exception:
+            self._results_rows = []
+        for name in ('visualise_results_btn', 'create_stack_plan_btn', 'apply_recos_btn'):
+            try:
+                button = getattr(self, name, None)
+                if button is not None:
+                    button.setEnabled(False)
+            except Exception:
+                pass
+
+    def _clear_persisted_project_state(self) -> None:
+        """Remove all result/recommendation/Stack-Plan state from the prior project."""
+
+        self._clear_persisted_result_state()
+        try:
+            self.set_stack_plan_rows([])
+        except Exception:
+            self._stack_rows = []
+        self._stack_plan_loaded_path = None
+        self._stack_plan_loaded_mtime = None
+        self._last_stack_plan_path = None
+
+    @staticmethod
+    def _path_is_within(path: str, directory: str) -> bool:
+        try:
+            return os.path.commonpath((os.path.abspath(path), os.path.abspath(directory))) == os.path.abspath(directory)
+        except (OSError, ValueError):
+            return False
+
+    def _sync_reject_paths_for_project(self, project_dir_abs: str) -> None:
+        """Supply project-local reject defaults without replacing external custom paths."""
+
+        previous_project = getattr(self, '_active_project_dir', None)
+        for widget_name, folder_name in (
+            ('snr_reject_dir_edit', 'rejected_low_snr'),
+            ('trail_reject_dir_edit', 'rejected_satellite_trails'),
+        ):
+            try:
+                widget = getattr(self, widget_name, None)
+                if widget is None:
+                    continue
+                current = widget.text().strip()
+                uses_previous_default = bool(
+                    current
+                    and previous_project
+                    and self._path_is_within(current, previous_project)
+                )
+                if not current or uses_previous_default:
+                    widget.setText(os.path.join(project_dir_abs, folder_name))
+            except Exception:
+                pass
+        self._active_project_dir = project_dir_abs
+
+    def _restore_project_state(self, project_dir_abs: str, *, emit_diagnostic: bool) -> bool:
+        """Discover and restore one project's persisted state without starting analysis."""
+
+        if not project_dir_abs or not os.path.isdir(project_dir_abs):
+            self._clear_persisted_project_state()
+            try:
+                if getattr(self, 'open_log_btn', None) is not None:
+                    self.open_log_btn.setEnabled(False)
+            except Exception:
+                pass
+            self._update_marker_button_state()
+            return False
+
+        try:
+            self._sync_reject_paths_for_project(project_dir_abs)
+            log_path = self._suggest_log_path(project_dir_abs)
+            if getattr(self, 'log_path_edit', None) is not None and self.log_path_edit.text().strip() != log_path:
+                self.log_path_edit.setText(log_path)
+
+            if project_state.marker_metadata_invalid(project_dir_abs):
+                try:
+                    self._log(_("gui_project_marker_invalid", path=project_dir_abs))
+                except Exception:
+                    pass
+
+            restored = self._update_log_and_vis_buttons_state(emit_diagnostic=emit_diagnostic)
+            self._update_marker_button_state()
+
+            stack_idx = getattr(self, '_stack_tab_index', None)
+            tabs = getattr(self, '_main_tabs', None)
+            if stack_idx is not None and tabs is not None and tabs.currentIndex() == stack_idx:
+                self._maybe_autoload_stack_plan(project_dir_abs)
+
+            if restored:
+                try:
+                    self._log(_("gui_project_restored", path=project_dir_abs, count=len(self.analysis_results)))
+                except Exception:
+                    pass
+            return restored
+        except Exception as error:
+            self._clear_persisted_project_state()
+            try:
+                self._log(_("gui_project_restore_failed", path=project_dir_abs, e=error))
+            except Exception:
+                pass
+            return False
 
     def _maybe_autoload_stack_plan(self, project_dir_abs: str) -> None:
         """Load Project/stack_plan.csv into the Stack tab when present."""
@@ -3377,9 +3504,14 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self._log('Cancel requested (best-effort)')
 
     def _suggest_log_path(self, input_dir: str) -> str:
-        """Suggest a default log file path inside the input directory, matching Tk behavior."""
-        import os
-        return os.path.join(input_dir, 'analyse_resultats.log')
+        """Return a safe marker-referenced log or the conventional project log."""
+        if os.path.isdir(input_dir):
+            project_dir = os.path.abspath(input_dir)
+            marker_log = project_state.resolve_marker_log_path(project_dir)
+            if marker_log is not None and marker_log.is_file():
+                return str(marker_log)
+            return os.path.join(project_dir, project_state.DEFAULT_LOG_FILENAME)
+        return os.path.join(input_dir, project_state.DEFAULT_LOG_FILENAME)
 
     def _choose_input_folder(self) -> None:
         if QFileDialog is object:
@@ -3411,7 +3543,10 @@ class ZeAnalyserMainWindow(QMainWindow):
             except Exception:
                 pass
 
-            self._update_marker_button_state()
+            # Supersede the deferred textChanged callback and restore once now
+            # that both project and log fields are coherent.
+            self._project_restore_generation = int(getattr(self, '_project_restore_generation', 0)) + 1
+            self._restore_project_state(folder, emit_diagnostic=True)
 
     def _choose_output_file(self) -> None:
         if QFileDialog is object:
@@ -3428,6 +3563,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 settings.setValue('paths/log', filename)
             except Exception:
                 pass
+            self._update_log_and_vis_buttons_state(emit_diagnostic=True)
 
     def _open_log_file(self) -> None:
         """Open the log file with the system default application (best-effort)."""
@@ -4463,12 +4599,10 @@ class ZeAnalyserMainWindow(QMainWindow):
             pass
 
     def _has_markers_in_input_dir(self) -> bool:
-        import os
         input_dir = self.input_path_edit.text().strip() if hasattr(self, 'input_path_edit') else ''
         if not input_dir or not os.path.isdir(input_dir):
             return False
 
-        marker_filename = ".astro_analyzer_run_complete"
         abs_input_dir = os.path.abspath(input_dir)
 
         # Exclude reject directories like in _manage_markers
@@ -4485,18 +4619,16 @@ class ZeAnalyserMainWindow(QMainWindow):
             pass
 
         try:
-            for dirpath, dirnames, filenames in os.walk(abs_input_dir, topdown=True):
-                current_dir_abs = os.path.abspath(dirpath)
-                # Exclude reject directories from traversal
-                dirs_to_remove = [d for d in dirnames if os.path.abspath(os.path.join(current_dir_abs, d)) in reject_dirs_to_exclude_abs]
-                for dname in dirs_to_remove:
-                    dirnames.remove(dname)
-                if marker_filename in filenames:
-                    return True
+            return next(
+                project_state.iter_marked_directories(
+                    abs_input_dir,
+                    excluded_dirs=reject_dirs_to_exclude_abs,
+                    include_invalid_new=True,
+                ),
+                None,
+            ) is not None
         except OSError:
             return False
-
-        return False
 
     def _update_marker_button_state(self):
         has_markers = self._has_markers_in_input_dir()
@@ -4510,7 +4642,8 @@ class ZeAnalyserMainWindow(QMainWindow):
         """Enable/disable buttons after analysis completes."""
         rows = self._get_analysis_results_rows()
         has_results = bool(rows)
-        has_log = bool(getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip())
+        log_path = getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip()
+        has_log = bool(log_path and os.path.isfile(log_path))
         has_recos = bool(getattr(self, 'recommended_images', None))
         if not has_recos and getattr(self, '_results_rows', None):
             has_recos = any(r.get('recommended') for r in self._results_rows)
@@ -4531,99 +4664,54 @@ class ZeAnalyserMainWindow(QMainWindow):
             pass
 
     def _get_analysis_results_rows(self):
-        """Retrieve the list of analysis result dicts from the current model or fallback."""
-        if getattr(self, '_results_model', None) is not None and hasattr(self._results_model, '_rows'):
-            return list(self._results_model._rows)
-        if getattr(self, 'analysis_results', None):
+        """Retrieve authoritative analysis rows, with legacy model fallbacks."""
+        if hasattr(self, 'analysis_results'):
             try:
                 return list(self.analysis_results)
             except Exception:
                 pass
-        elif getattr(self, '_results_rows', None) is not None:
+        if getattr(self, '_results_model', None) is not None and hasattr(self._results_model, '_rows'):
+            return list(self._results_model._rows)
+        if getattr(self, '_results_rows', None) is not None:
             return list(self._results_rows)
         return []
 
     def _load_visualisation_from_log_path(self, log_path: str) -> bool:
-        """Load visualization JSON block from a log file, mirroring Tk logic."""
-        self.analysis_results = []
+        """Stream and install the last complete, valid visualization dataset."""
+        self._clear_persisted_result_state()
         if not log_path or not os.path.isfile(log_path):
             return False
 
         try:
-            with open(log_path, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-
-            temp_end_indices = [i for i, line in enumerate(lines) if line.strip() == "--- END VISUALIZATION DATA ---"]
-            if not temp_end_indices:
+            loaded_data = project_state.load_latest_valid_visualization_block(log_path)
+            if not loaded_data:
                 return False
-            end_index = temp_end_indices[-1]
 
-            temp_start_indices = [i for i, line in enumerate(lines[:end_index]) if line.strip() == "--- BEGIN VISUALIZATION DATA ---"]
-            if not temp_start_indices:
-                return False
-            start_index = temp_start_indices[-1]
+            self.analysis_results = list(loaded_data)
+            self.analysis_completed_successfully = True
+            self._last_loaded_log_path = log_path
+            self.set_results(self.analysis_results)
 
-            if start_index != -1 and start_index < end_index:
-                json_lines = lines[start_index + 1 : end_index]
-                json_str = "".join(json_lines)
-                if not json_str.strip():
-                    self.analysis_completed_successfully = False
-                    return False
-
-                loaded_data = json.loads(json_str)
-                if isinstance(loaded_data, list):
-                    self.analysis_results = loaded_data
-                    self.analysis_completed_successfully = True
-                    try:
-                        object.__setattr__(self, '_last_loaded_log_path', log_path)
-                    except Exception:
-                        self._last_loaded_log_path = log_path
-                    from zeanalyser import analyse_logic
-                    try:
-                        (
-                            self.recommended_images,
-                            self.reco_snr_min,
-                            self.reco_fwhm_max,
-                            self.reco_ecc_max,
-                        ) = analyse_logic.build_recommended_images(self.analysis_results)
-                    except Exception:
-                        self.recommended_images = []
-                        self.reco_snr_min = self.reco_fwhm_max = self.reco_ecc_max = None
-
-                    try:
-                        self.set_results(self.analysis_results)
-                    except Exception:
-                        try:
-                            self._results_rows = list(self.analysis_results)
-                        except Exception:
-                            pass
-
-                    try:
-                        self._compute_recommended_subset()
-                    except Exception:
-                        pass
-
-                    try:
-                        self._update_buttons_after_analysis()
-                        self._update_marker_button_state()
-                    except Exception:
-                        pass
-
-                    return True
-                else:
-                    self.analysis_completed_successfully = False
-                    return False
-
-            self.analysis_completed_successfully = False
-            return False
-
-        except json.JSONDecodeError as e_json_dec:
+            from zeanalyser import analyse_logic
             try:
-                self._log(_("gui_visualization_json_decode_error", path=log_path, e=e_json_dec))
+                (
+                    self.recommended_images,
+                    self.reco_snr_min,
+                    self.reco_fwhm_max,
+                    self.reco_ecc_max,
+                ) = analyse_logic.build_recommended_images(self.analysis_results)
+            except Exception:
+                self.recommended_images = []
+                self.reco_snr_min = self.reco_fwhm_max = self.reco_ecc_max = None
+
+            try:
+                self._compute_recommended_subset()
             except Exception:
                 pass
-            self.analysis_completed_successfully = False
-            return False
+
+            self._update_buttons_after_analysis()
+            self._update_marker_button_state()
+            return True
         except Exception as e:
             try:
                 self._log(_("gui_visualization_data_load_error", path=log_path, e=e))
@@ -4636,7 +4724,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.analysis_completed_successfully = False
             return False
 
-    def _update_log_and_vis_buttons_state(self):
+    def _update_log_and_vis_buttons_state(self, *, emit_diagnostic: bool = False) -> bool:
         """Enable/disable log and visualisation buttons based on log availability."""
         log_path = ''
         try:
@@ -4660,8 +4748,12 @@ class ZeAnalyserMainWindow(QMainWindow):
                 can_visualize = bool(self.analysis_results)
 
         if not can_visualize:
-            self.analysis_results = []
-            self.analysis_completed_successfully = False
+            self._clear_persisted_result_state()
+            if log_exists and emit_diagnostic:
+                try:
+                    self._log(_("gui_project_log_no_reusable_results", path=log_path))
+                except Exception:
+                    pass
 
         try:
             if getattr(self, 'visualise_results_btn', None):
@@ -4674,6 +4766,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.create_stack_plan_btn.setEnabled(can_visualize)
         except Exception:
             pass
+        return can_visualize
 
     def _get_best_reference(self):
         """Get the best reference image path from results."""
@@ -4772,7 +4865,6 @@ class ZeAnalyserMainWindow(QMainWindow):
                 QMessageBox.warning(self, _("msg_warning"), _("msg_input_dir_invalid"))
                 return
 
-            marker_filename = ".astro_analyzer_run_complete"
             marked_dirs_rel = []
             marked_dirs_abs = []
             abs_input_dir = os.path.abspath(input_dir)
@@ -4792,22 +4884,17 @@ class ZeAnalyserMainWindow(QMainWindow):
 
             # Scan directories for markers
             try:
-                for dirpath, dirnames, filenames in os.walk(abs_input_dir, topdown=True):
-                    current_dir_abs = os.path.abspath(dirpath)
-
-                    # Exclude reject directories from traversal
-                    dirs_to_remove = [d for d in dirnames if os.path.abspath(os.path.join(current_dir_abs, d)) in reject_dirs_to_exclude_abs]
-                    for dname in dirs_to_remove:
-                        dirnames.remove(dname)
-
-                    # Check for marker presence
-                    marker_path = os.path.join(current_dir_abs, marker_filename)
-                    if os.path.exists(marker_path):
-                        rel_path = os.path.relpath(current_dir_abs, abs_input_dir)
-                        marked_dirs_rel.append('.' if rel_path == '.' else rel_path)
-                        marked_dirs_abs.append(current_dir_abs)
+                for marked_dir in project_state.iter_marked_directories(
+                    abs_input_dir,
+                    excluded_dirs=reject_dirs_to_exclude_abs,
+                    include_invalid_new=True,
+                ):
+                    current_dir_abs = str(marked_dir)
+                    rel_path = os.path.relpath(current_dir_abs, abs_input_dir)
+                    marked_dirs_rel.append('.' if rel_path == '.' else rel_path)
+                    marked_dirs_abs.append(current_dir_abs)
             except OSError as e:
-                QMessageBox.critical(self, _("msg_error"), f"Error scanning directories:\n{e}")
+                QMessageBox.critical(self, _("msg_error"), _("marker_scan_error", e=e))
                 return
 
             # Create dialog
@@ -4828,8 +4915,13 @@ class ZeAnalyserMainWindow(QMainWindow):
             # Fill list and create mapping
             rel_to_abs_map = {}
             for rel, abs_p in zip(marked_dirs_rel, marked_dirs_abs):
-                rel_to_abs_map[rel] = abs_p
-                item = QListWidgetItem(rel)
+                display_name = _("marker_project_root_label") if rel == '.' else rel
+                rel_to_abs_map[display_name] = abs_p
+                item = QListWidgetItem(display_name)
+                try:
+                    item.setData(Qt.UserRole, abs_p)
+                except Exception:
+                    pass
                 list_widget.addItem(item)
 
             if not marked_dirs_rel:
@@ -4840,11 +4932,11 @@ class ZeAnalyserMainWindow(QMainWindow):
             button_layout = QHBoxLayout()
 
             delete_selected_btn = QPushButton(_("marker_delete_selected_button", default="Delete Selected"))
-            delete_selected_btn.clicked.connect(lambda: self._delete_selected_markers(dialog, list_widget, rel_to_abs_map, marker_filename, abs_input_dir, reject_dirs_to_exclude_abs))
+            delete_selected_btn.clicked.connect(lambda: self._delete_selected_markers(dialog, list_widget, rel_to_abs_map, abs_input_dir, reject_dirs_to_exclude_abs))
             button_layout.addWidget(delete_selected_btn)
 
             delete_all_btn = QPushButton(_("marker_delete_all_button", default="Delete All"))
-            delete_all_btn.clicked.connect(lambda: self._delete_all_markers(dialog, list_widget, rel_to_abs_map, marker_filename))
+            delete_all_btn.clicked.connect(lambda: self._delete_all_markers(dialog, list_widget, rel_to_abs_map))
             button_layout.addWidget(delete_all_btn)
 
             close_btn = QPushButton(_("close_button"))
@@ -4863,7 +4955,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception as e:
             self._log(_("gui_marker_manage_error", e=e))
 
-    def _delete_selected_markers(self, dialog, list_widget, rel_to_abs_map, marker_filename, abs_input_dir, reject_dirs_to_exclude_abs):
+    def _delete_selected_markers(self, dialog, list_widget, rel_to_abs_map, abs_input_dir, reject_dirs_to_exclude_abs):
         """Delete markers for selected directories."""
         from PySide6.QtWidgets import QMessageBox
 
@@ -4882,22 +4974,22 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         for item in selected_items:
             rel_path = item.text()
-            abs_path = rel_to_abs_map.get(rel_path)
+            try:
+                abs_path = item.data(Qt.UserRole)
+            except Exception:
+                abs_path = None
+            abs_path = abs_path or rel_to_abs_map.get(rel_path)
             if not abs_path:
                 errors.append(f"{rel_path}: Absolute path not found")
                 continue
-            marker_path = os.path.join(abs_path, marker_filename)
             try:
-                if os.path.exists(marker_path):
-                    os.remove(marker_path)
-                    deleted_count += 1
-                else:
-                    deleted_count += 1  # Count as success if already gone
+                project_state.remove_markers(abs_path)
+                deleted_count += 1
             except Exception as e:
                 errors.append(f"{rel_path}: {e}")
 
         # Refresh list
-        self._refresh_marker_list(list_widget, rel_to_abs_map, marker_filename, abs_input_dir, reject_dirs_to_exclude_abs)
+        self._refresh_marker_list(list_widget, rel_to_abs_map, abs_input_dir, reject_dirs_to_exclude_abs)
 
         self._update_marker_button_state()
 
@@ -4906,7 +4998,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         elif deleted_count > 0:
             QMessageBox.information(dialog, _("msg_info"), _("marker_delete_selected_success", default="{count} marker(s) deleted.").format(count=deleted_count))
 
-    def _delete_all_markers(self, dialog, list_widget, rel_to_abs_map, marker_filename):
+    def _delete_all_markers(self, dialog, list_widget, rel_to_abs_map):
         """Delete all markers."""
         from PySide6.QtWidgets import QMessageBox
 
@@ -4925,10 +5017,8 @@ class ZeAnalyserMainWindow(QMainWindow):
         errors = []
 
         for abs_path in abs_paths:
-            marker_path = os.path.join(abs_path, marker_filename)
             try:
-                if os.path.exists(marker_path):
-                    os.remove(marker_path)
+                if project_state.remove_markers(abs_path):
                     deleted_count += 1
             except Exception as e:
                 errors.append(f"{os.path.relpath(abs_path, os.path.dirname(abs_path))}: {e}")
@@ -4946,7 +5036,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         elif deleted_count > 0:
             QMessageBox.information(dialog, _("msg_info"), _("marker_delete_all_success", default="All {count} marker(s) deleted.").format(count=deleted_count))
 
-    def _refresh_marker_list(self, list_widget, rel_to_abs_map, marker_filename, abs_input_dir, reject_dirs_to_exclude_abs):
+    def _refresh_marker_list(self, list_widget, rel_to_abs_map, abs_input_dir, reject_dirs_to_exclude_abs):
         """Refresh the marker list after deletions."""
         list_widget.clear()
         rel_to_abs_map.clear()
@@ -4955,24 +5045,28 @@ class ZeAnalyserMainWindow(QMainWindow):
         marked_dirs_abs = []
 
         try:
-            for dirpath, dirnames, filenames in os.walk(abs_input_dir, topdown=True):
-                current_dir_abs = os.path.abspath(dirpath)
-                dirs_to_remove = [d for d in dirnames if os.path.abspath(os.path.join(current_dir_abs, d)) in reject_dirs_to_exclude_abs]
-                for dname in dirs_to_remove:
-                    dirnames.remove(dname)
-                marker_path = os.path.join(current_dir_abs, marker_filename)
-                if os.path.exists(marker_path):
-                    rel_path = os.path.relpath(current_dir_abs, abs_input_dir)
-                    marked_dirs_rel.append('.' if rel_path == '.' else rel_path)
-                    marked_dirs_abs.append(current_dir_abs)
+            for marked_dir in project_state.iter_marked_directories(
+                abs_input_dir,
+                excluded_dirs=reject_dirs_to_exclude_abs,
+                include_invalid_new=True,
+            ):
+                current_dir_abs = str(marked_dir)
+                rel_path = os.path.relpath(current_dir_abs, abs_input_dir)
+                marked_dirs_rel.append('.' if rel_path == '.' else rel_path)
+                marked_dirs_abs.append(current_dir_abs)
         except Exception:
-            list_widget.addItem("Error re-scanning")
+            list_widget.addItem(_("marker_rescan_error"))
             list_widget.setEnabled(False)
             return
 
         for rel, abs_p in zip(marked_dirs_rel, marked_dirs_abs):
-            rel_to_abs_map[rel] = abs_p
-            item = QListWidgetItem(rel)
+            display_name = _("marker_project_root_label") if rel == '.' else rel
+            rel_to_abs_map[display_name] = abs_p
+            item = QListWidgetItem(display_name)
+            try:
+                item.setData(Qt.UserRole, abs_p)
+            except Exception:
+                pass
             list_widget.addItem(item)
 
         if not marked_dirs_rel:

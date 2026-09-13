@@ -72,6 +72,7 @@ import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, scrolledtext, messagebox
 from pathlib import Path
+from zeanalyser import project_state
 import matplotlib
 _env_backend = os.environ.get("MPLBACKEND")
 if _env_backend:
@@ -2097,7 +2098,6 @@ class AstroImageAnalyzerGUI:
             messagebox.showerror(self._("msg_error"), self._("msg_input_dir_invalid"), parent=self.root)
             return
 
-        marker_filename = ".astro_analyzer_run_complete" # Nom du fichier marqueur
         marked_dirs_rel = [] # Liste chemins relatifs marqués
         marked_dirs_abs = [] # Liste chemins absolus marqués
         abs_input_dir = os.path.abspath(input_dir)
@@ -2112,26 +2112,15 @@ class AstroImageAnalyzerGUI:
 
         # Scanner les dossiers pour trouver les marqueurs
         try:
-            print(f"Scan pour marqueur '{marker_filename}' dans {abs_input_dir}...")
-            for dirpath, dirnames, filenames in os.walk(abs_input_dir, topdown=True):
-                current_dir_abs = os.path.abspath(dirpath)
-
-                # Exclure les dossiers de rejet du parcours récursif
-                dirs_to_remove = [d for d in dirnames if os.path.abspath(os.path.join(current_dir_abs, d)) in reject_dirs_to_exclude_abs]
-                if dirs_to_remove:
-                    for dname in dirs_to_remove: dirnames.remove(dname)
-
-                # Vérifier présence marqueur
-                marker_path = os.path.join(current_dir_abs, marker_filename)
-                if os.path.exists(marker_path):
-                    # Obtenir chemin relatif par rapport au dossier d'entrée
-                    rel_path = os.path.relpath(current_dir_abs, abs_input_dir)
-                    # Utiliser '.' pour le dossier racine lui-même
-                    marked_dirs_rel.append('.' if rel_path == '.' else rel_path)
-                    marked_dirs_abs.append(current_dir_abs) # Stocker chemin absolu
-
-
-
+            for marked_dir in project_state.iter_marked_directories(
+                abs_input_dir,
+                excluded_dirs=reject_dirs_to_exclude_abs,
+                include_invalid_new=True,
+            ):
+                current_dir_abs = str(marked_dir)
+                rel_path = os.path.relpath(current_dir_abs, abs_input_dir)
+                marked_dirs_rel.append(self._("marker_project_root_label") if rel_path == '.' else rel_path)
+                marked_dirs_abs.append(current_dir_abs)
         except OSError as e:
             messagebox.showerror(self._("msg_error"), f"Erreur parcours dossiers:\n{e}", parent=self.root)
             return
@@ -2157,24 +2146,23 @@ class AstroImageAnalyzerGUI:
                 for rel_path in paths_to_delete_rel:
                     abs_path_to_clear = rel_to_abs_map.get(rel_path)
                     if not abs_path_to_clear: errors.append(f"{rel_path}: Chemin absolu non trouvé"); continue
-                    marker_to_delete = os.path.join(abs_path_to_clear, marker_filename)
                     try:
-                        if os.path.exists(marker_to_delete): os.remove(marker_to_delete); deleted_count += 1
-                        else: deleted_count += 1 # Compter comme succès si déjà absent
+                        project_state.remove_markers(abs_path_to_clear); deleted_count += 1
                     except Exception as e: errors.append(f"{rel_path}: {e}")
 
                 # Rafraîchir la liste après suppression (re-scanner est plus sûr)
                 listbox.config(state=tk.NORMAL); listbox.delete(0, tk.END)
                 marked_dirs_rel.clear(); marked_dirs_abs.clear(); rel_to_abs_map.clear()
                 try: # Re-scan
-                    for dp, dn, fn in os.walk(abs_input_dir, topdown=True):
-                        ca = os.path.abspath(dp)
-                        dtr = [d for d in dn if os.path.abspath(os.path.join(ca, d)) in reject_dirs_to_exclude_abs]
-                        for dname in dtr: dn.remove(dname)
-                        mp = os.path.join(ca, marker_filename)
-                        if os.path.exists(mp):
-                            rp = os.path.relpath(ca, abs_input_dir); rp = '.' if rp == '.' else rp
-                            marked_dirs_rel.append(rp); marked_dirs_abs.append(ca); rel_to_abs_map[rp] = ca
+                    for marked_dir in project_state.iter_marked_directories(
+                        abs_input_dir,
+                        excluded_dirs=reject_dirs_to_exclude_abs,
+                        include_invalid_new=True,
+                    ):
+                        ca = str(marked_dir)
+                        rp = os.path.relpath(ca, abs_input_dir)
+                        rp = self._("marker_project_root_label") if rp == '.' else rp
+                        marked_dirs_rel.append(rp); marked_dirs_abs.append(ca); rel_to_abs_map[rp] = ca
                 except Exception as e_scan: listbox.insert(tk.END, "Erreur re-scan"); listbox.config(state=tk.DISABLED)
 
                 # Re-remplir listbox
@@ -2221,9 +2209,8 @@ class AstroImageAnalyzerGUI:
                 deleted_count = 0; errors = []
                 # Supprimer tous les marqueurs
                 for abs_path in abs_paths_to_clear:
-                    marker_to_delete = os.path.join(abs_path, marker_filename)
                     try:
-                        if os.path.exists(marker_to_delete): os.remove(marker_to_delete); deleted_count += 1
+                        if project_state.remove_markers(abs_path): deleted_count += 1
                     except Exception as e: errors.append(f"{os.path.relpath(abs_path, abs_input_dir)}: {e}")
 
                 # Mettre à jour listbox (vider)

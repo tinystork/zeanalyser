@@ -422,6 +422,8 @@ translations = {
         'logic_marker_creation_start': 'Création des fichiers marqueurs...',
         'logic_marker_created': 'Marqueur créé: {path}',
         'logic_marker_create_error': 'Impossible de créer le fichier marqueur dans {dir}: {e}',
+        'logic_marker_skipped_persistence_failure': "Marqueur non créé : l'état persistant final n'a pas pu être enregistré dans {path}.",
+        'logic_log_finalize_error': 'Impossible de finaliser le fichier log {path}: {e}',
         'logic_csv_pollution_written': 'CSV pollution écrit: {name}',
         'logic_csv_pollution_error': 'Erreur écriture CSV pollution: {e}',
         # Messages relatifs au plan d'empilement (stack plan)
@@ -433,8 +435,9 @@ translations = {
 
         # --- Textes pour la gestion des marqueurs ---
         'marker_window_title': "Gérer les Marqueurs d'Analyse",
-        'marker_info_label': "Dossiers marqués comme analysés (contiennent le fichier '.astro_analyzer_run_complete'):",
+        'marker_info_label': "Dossiers marqués comme analysés :",
         'marker_none_found': "Aucun dossier marqué trouvé.",
+        'marker_project_root_label': "Racine du projet",
         'marker_select_none': "Veuillez sélectionner un ou plusieurs dossiers dans la liste.",
         'marker_confirm_delete_selected': "Supprimer les marqueurs pour les {count} dossiers sélectionnés ?\nCela forcera leur ré-analyse au prochain lancement.",
         'marker_confirm_delete_all': "Supprimer TOUS les marqueurs ({count}) dans le dossier '{folder}' et ses sous-dossiers analysables ?\nCela forcera une ré-analyse complète.",
@@ -443,6 +446,12 @@ translations = {
         'marker_delete_errors': "Erreurs lors de la suppression de certains marqueurs:\n",
         'marker_delete_selected_success': "{count} marqueur(s) supprimé(s).",
         'marker_delete_all_success': "Tous les {count} marqueur(s) trouvés ont été supprimés.",
+        'marker_scan_error': "Erreur lors du parcours des dossiers :\n{e}",
+        'marker_rescan_error': "Erreur lors du nouveau parcours des dossiers",
+        'gui_project_restored': "Projet existant restauré : {path} ({count} résultat(s)).",
+        'gui_project_log_no_reusable_results': "Le fichier log existe mais ne contient aucun résultat réutilisable : {path}",
+        'gui_project_marker_invalid': "Les métadonnées du marqueur de projet sont invalides : {path}",
+        'gui_project_restore_failed': "Impossible de restaurer l'état du projet {path} : {e}",
         
         #--- texte actions SNR
         'Aucune action SNR en attente à appliquer.': "Aucune action SNR en attente à appliquer.",
@@ -795,6 +804,8 @@ translations = {
         'logic_marker_creation_start': 'Creating marker files...',
         'logic_marker_created': 'Marker created: {path}',
         'logic_marker_create_error': 'Failed to create marker file in {dir}: {e}',
+        'logic_marker_skipped_persistence_failure': 'Marker not created because final persisted state could not be written to {path}.',
+        'logic_log_finalize_error': 'Failed to finalize log file {path}: {e}',
         'logic_csv_pollution_written': 'Pollution CSV written: {name}',
         'logic_csv_pollution_error': 'Pollution CSV write error: {e}',
         # Stacking plan related messages
@@ -806,8 +817,9 @@ translations = {
 
         # --- Marker Management Texts ---
         'marker_window_title': "Manage Analysis Markers",
-        'marker_info_label': "Folders marked as analyzed (contain the '.astro_analyzer_run_complete' marker file):",
+        'marker_info_label': "Folders marked as analyzed:",
         'marker_none_found': "No marked folders found.",
+        'marker_project_root_label': "Project root",
         'marker_select_none': "Please select one or more folders from the list.",
         'marker_confirm_delete_selected': "Delete markers for the {count} selected folder(s)?\nThis will force re-analysis on the next run.",
         'marker_confirm_delete_all': "Delete ALL markers ({count}) in folder '{folder}' and its analyzable subfolders?\nThis will force a complete re-analysis.",
@@ -816,6 +828,12 @@ translations = {
         'marker_delete_errors': "Errors occurred while deleting some markers:\n",
         'marker_delete_selected_success': "{count} marker(s) deleted.",
         'marker_delete_all_success': "All {count} found marker(s) deleted.",
+        'marker_scan_error': "Error scanning folders:\n{e}",
+        'marker_rescan_error': "Error re-scanning folders",
+        'gui_project_restored': "Existing project restored: {path} ({count} result(s)).",
+        'gui_project_log_no_reusable_results': "The log file exists but contains no reusable results: {path}",
+        'gui_project_marker_invalid': "Project marker metadata is invalid: {path}",
+        'gui_project_restore_failed': "Could not restore project state for {path}: {e}",
         'apply_starcount_rejection': "Apply Starcount Rejection",
         'organize_files_button': "Organize Files",
         'apply_reco_button': "Apply Recommendations",

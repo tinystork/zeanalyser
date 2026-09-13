@@ -78,6 +78,8 @@ import warnings
 import json
 import concurrent.futures
 import threading
+from zeanalyser import project_state
+from zeanalyser._version import __version__
 import zipfile
 import xml.etree.ElementTree as ET
 import csv
@@ -229,7 +231,7 @@ def write_log_summary(log_file_path, input_dir, options,
                       sat_errors=None, results_list=None,
                       selection_stats=None,
                       skipped_marker_dirs_count=0):
-    """Écrit le résumé ET LES DONNÉES DE VISUALISATION dans le fichier log."""
+    """Écrit le résumé et les données de visualisation; retourne le succès."""
     try:
         with open(log_file_path, 'a', encoding='utf-8') as log_file:
             log_file.write("\n" + "="*80 + "\n")
@@ -316,6 +318,8 @@ def write_log_summary(log_file_path, input_dir, options,
                 json.dump(sanitize_for_json(results_list), log_file, indent=4)
                 log_file.write("\n--- END VISUALIZATION DATA ---\n")
 
+        return True
+
     except Exception as e:
         logger.error("Critical error while writing log summary (%s): %s", log_file_path, e, exc_info=True)
         # Essayer d'écrire l'erreur dans le log lui-même si la section principale a échoué
@@ -324,6 +328,7 @@ def write_log_summary(log_file_path, input_dir, options,
                  log_file_err.write(f"\nCRITICAL ERROR while writing this summary: {e}\n{traceback.format_exc()}");
         except Exception: 
             pass # Si même ça échoue, on ne peut plus rien faire ici
+        return False
 
 
 
@@ -990,7 +995,7 @@ def _trail_worker(args):
 def perform_analysis(input_dir, output_log, options, callbacks):
     """
     Fonction principale d'orchestration de l'analyse.
-    ORDRE: Découverte Fichiers (avec skip marqueur) -> SNR -> SNR Rejection/Action -> Trail Detection -> Trail Rejection/Action -> Création Marqueur -> Logging
+    ORDRE: Découverte Fichiers (avec skip marqueur) -> SNR -> SNR Rejection/Action -> Trail Detection -> Trail Rejection/Action -> Logging -> Marqueur
     Gère la récursion et l'exclusion des dossiers de rejet.
     """
     _status = callbacks.get('status', lambda k, **kw: None)
@@ -1103,8 +1108,6 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     skipped_marker_dirs_count = 0 # Correctement initialisé ici
     include_subfolders = options.get('include_subfolders', False)
     fits_extensions = ('.fit', '.fits', '.fts')
-    marker_filename = ".astro_analyzer_run_complete" 
-
     try:
         for dirpath, dirnames, filenames in os.walk(abs_input_dir, topdown=True):
             current_dir_abs = os.path.abspath(dirpath)
@@ -1113,8 +1116,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 for dname in dirs_to_remove:
                     _log("logic_subdir_excluded", path=os.path.relpath(os.path.join(current_dir_abs, dname), abs_input_dir))
                     dirnames.remove(dname)
-            marker_file_path = os.path.join(current_dir_abs, marker_filename)
-            if os.path.exists(marker_file_path):
+            if project_state.has_analysis_marker(current_dir_abs):
                 _log("logic_marker_dir_skipped", path=os.path.relpath(current_dir_abs, abs_input_dir))
                 skipped_marker_dirs_count += 1
                 dirnames[:] = [] 
@@ -1143,18 +1145,6 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     if total_files == 0:
         _log("logic_no_fits_snr"); _status("status_analysis_done_no_valid")
         write_log_summary(output_log, abs_input_dir, options, None, None, [], None, skipped_marker_dirs_count)
-        # Création marqueur même si pas de fichiers, car le dossier a été "visité"
-        analysis_datetime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        for directory_to_mark in processed_directories: # processed_directories sera vide si aucun FITS, mais on garde la logique
-            if not os.path.exists(os.path.join(directory_to_mark, marker_filename)): # Vérifier avant de marquer
-                 marker_file_path_empty = os.path.join(directory_to_mark, marker_filename)
-                 try:
-                     with open(marker_file_path_empty, 'w', encoding='utf-8') as mf:
-                         mf.write(f"Analyse Astro Analyzer terminée pour ce dossier le: {analysis_datetime}\n")
-                         mf.write(f"  (Aucun fichier FITS traitable trouvé lors de cette analyse)\n")
-                     _log("logic_marker_created_no_fits", path=os.path.relpath(marker_file_path_empty, abs_input_dir))
-                 except IOError as e_marker:
-                     _log("logic_marker_create_error_no_fits", dir=directory_to_mark, e=e_marker)
         return []
     _log("logic_fits_found", count=total_files)
 
@@ -1730,27 +1720,9 @@ def perform_analysis(input_dir, output_log, options, callbacks):
             r['filepath_dst'] = dest_path
     
 
-    # --- Étape 7: Création des fichiers marqueurs ---
-    # ... (cette section reste identique) ...
-    #      Progression de 95% à 98%
-    _progress(95.0) # Avant de commencer les marqueurs
-    _log("logic_marker_creation_start")
-    analysis_datetime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    num_processed_dirs = len(processed_directories)
-    for dir_idx, directory in enumerate(processed_directories):
-        marker_progress = 95 + ((dir_idx + 1) / num_processed_dirs if num_processed_dirs > 0 else 1) * 3 # 3% pour les marqueurs
-        _progress(marker_progress)
-        marker_file_path = os.path.join(directory, marker_filename)
-        try:
-            with open(marker_file_path, 'w', encoding='utf-8') as mf:
-                mf.write(f"Analyse Astro Analyzer terminée pour ce dossier le: {analysis_datetime}\n")
-            _log("logic_marker_created", path=os.path.relpath(marker_file_path, abs_input_dir))
-        except IOError as e_marker:
-            _log("logic_marker_create_error", dir=directory, e=e_marker)
-    _progress(98.0) # Après les marqueurs
-
-
-    # --- Étape 8: Écrire les résultats détaillés FINALS dans le log ---
+    # --- Étape 7: Écrire les résultats détaillés FINALS dans le log ---
+    _progress(95.0)
+    detailed_log_persisted = True
     try:
         with open(output_log, 'a', encoding='utf-8') as log_file:  # Mode 'a' pour ajouter au log existant
             log_file.write("\n--- Analyse individuelle des fichiers (État final après actions) ---\n")
@@ -1793,21 +1765,25 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 log_line = "\t".join(log_line_parts) + "\n"
                 log_file.write(log_line.replace('\tnan', '\tN/A').replace('\tN/A', '\t-'))
 
-    except IOError as e: 
+    except IOError as e:
+        detailed_log_persisted = False
         # Utiliser le callback _log s'il est disponible, sinon print
         _log_func = _log if callable(_log) else print
         _log_func("logic_log_init_error", path=output_log, e=e) # Ou une clé d'erreur plus générique pour le log
-    _progress(99.0)
+    _progress(97.0)
 
 
-    # --- Étape 9: Écriture du Résumé Final et Retour ---
-    _progress(100); end_time = time.time(); duration = end_time - start_time
-    write_log_summary(output_log, abs_input_dir, options, trail_analysis_config, trail_errors, all_results_list, selection_stats, skipped_marker_dirs_count)
+    # --- Étape 8: Persistance du résumé et finalisation des sorties ---
+    end_time = time.time(); duration = end_time - start_time
+    summary_persisted = write_log_summary(output_log, abs_input_dir, options, trail_analysis_config, trail_errors, all_results_list, selection_stats, skipped_marker_dirs_count)
+    footer_persisted = True
     try:
         with open(output_log, 'a', encoding='utf-8') as log_file:
             log_file.write(f"\nDurée totale de l'analyse: {duration:.2f} secondes\n")
             log_file.write("="*80 + "\nFin du log.\n")
-    except IOError: pass # Ignorer si erreur ici, le principal est déjà écrit
+    except IOError as footer_error:
+        footer_persisted = False
+        _log("logic_log_finalize_error", path=output_log, e=footer_error)
 
     csv_path = os.path.join(os.path.dirname(output_log), 'telescopes_pollution.csv')
     try:
@@ -1822,6 +1798,29 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         except Exception:
             pass
 
+    # --- Étape 9: Marqueur de complétion écrit EN DERNIER ---
+    # Un marqueur ne doit exister que si l'état persistant requis pour rouvrir
+    # le projet a été fermé avec succès.
+    persisted_state_ready = bool(detailed_log_persisted and summary_persisted and footer_persisted)
+    if persisted_state_ready:
+        _log("logic_marker_creation_start")
+        output_log_abs = os.path.abspath(output_log)
+        try:
+            relative_log = os.path.relpath(output_log_abs, abs_input_dir)
+            if relative_log == os.pardir or relative_log.startswith(os.pardir + os.sep):
+                raise ValueError("analysis log is outside the project directory")
+            marker_path = project_state.write_marker_atomic(
+                abs_input_dir,
+                relative_log,
+                product_version=__version__,
+            )
+            _log("logic_marker_created", path=os.path.relpath(marker_path, abs_input_dir))
+        except (OSError, ValueError) as marker_error:
+            _log("logic_marker_create_error", dir=abs_input_dir, e=marker_error)
+    else:
+        _log("logic_marker_skipped_persistence_failure", path=output_log)
+
+    _progress(100)
     _status("status_analysis_done") # Statut final générique
     return all_results_list
 

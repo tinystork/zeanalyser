@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.4.0 – Project reopen and marker contract (2026-09-13)
+
+* Restauration automatique des résultats persistés à l'ouverture d'un projet analysé, sans relancer l'analyse scientifique
+* Nouveau marqueur atomique versionné `ZeAnalyser.marker.json`, écrit après finalisation de l'état réouvrable
+* Compatibilité passive conservée avec `.astro_analyzer_run_complete` et gestion conjointe des deux générations
+* Lecture en flux du dernier bloc de visualisation complet et valide, avec récupération après une fin de log corrompue
+
 ## v3.3.2 – Witness bump (2026-08-18)
 
 * Incrément de version pour tests manuels (aucun changement fonctionnel)
