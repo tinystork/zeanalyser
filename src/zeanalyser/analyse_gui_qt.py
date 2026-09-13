@@ -68,6 +68,7 @@ import traceback
 from zeanalyser.platform_utils import open_path_with_default_app
 from zeanalyser import organizer_module
 from zeanalyser import project_state
+from zeanalyser._version import __version__
 
 # Set Matplotlib backend for Qt before importing matplotlib
 _env_backend = os.environ.get("MPLBACKEND")
@@ -614,7 +615,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         super().__init__(parent)
         self._progress_value = 0
         # use the central i18n wrapper so UI text is consistent with Tk
-        self.setWindowTitle(_("window_title"))
+        self.setWindowTitle(_("window_title", version=__version__))
         self.resize(900, 600)
         # Store command file path for integration
         self.command_file_path = command_file_path
@@ -2208,7 +2209,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         """
         about_text = (
             "ZeAnalyser Qt (BETA)\n"
-            "Version: unknown\n"
+            f"Version: {__version__}\n"
             "https://github.com/tinystork/zeanalyser"
         )
         # Always keep the last text for tests, even if QMessageBox fails
@@ -4361,7 +4362,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         """Update UI texts when language changes."""
         try:
             # Window + tabs
-            self.setWindowTitle(zone._("window_title"))
+            self.setWindowTitle(zone._("window_title", version=__version__))
             if getattr(self, 'central_tabs', None) is not None:
                 try:
                     self.central_tabs.setTabText(self.project_tab_index, _tr('project_tab_title', 'Project'))

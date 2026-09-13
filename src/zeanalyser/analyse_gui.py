@@ -66,6 +66,7 @@
 
 # === Imports Standard ===
 import logging
+from zeanalyser._version import __version__
 import os
 import sys
 import threading
@@ -2829,7 +2830,7 @@ class AstroImageAnalyzerGUI:
     def change_language(self, *args):
         """Met à jour tous les textes de l'interface selon la langue sélectionnée."""
         lang = self.current_lang.get()
-        self.root.title(self._("window_title")) # Mettre à jour titre fenêtre
+        self.root.title(self._("window_title", version=__version__)) # Mettre à jour titre fenêtre
         # Mettre à jour statut si pas en cours d'analyse
         if not self.analysis_running:
             self.status_text.set(self._("status_ready"))

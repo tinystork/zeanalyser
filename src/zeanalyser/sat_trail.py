@@ -69,6 +69,7 @@ import glob
 import shutil
 import threading
 import tkinter as tk
+from zeanalyser._version import __version__
 from tkinter import ttk, filedialog, scrolledtext, messagebox
 from astropy.io import fits
 import numpy as np
@@ -116,7 +117,7 @@ except Exception as e:
 class AstroImageAnalyzerGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("ZeAnalyser V3.3 Analyseur d'Images Astronomiques")
+        self.root.title(f"ZeAnalyser {__version__} — Analyseur d'Images Astronomiques")
         self.root.geometry("900x730") # Ajusté la hauteur
         self.root.minsize(900, 730)
 
