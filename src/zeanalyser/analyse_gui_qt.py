@@ -222,9 +222,32 @@ def _set_windows_app_user_model_id() -> bool:
         import ctypes
 
         shell32 = ctypes.windll.shell32  # type: ignore[attr-defined]
-        shell32.SetCurrentProcessExplicitAppUserModelID(_WINDOWS_APP_USER_MODEL_ID)
-        return True
-    except Exception:
+        func = shell32.SetCurrentProcessExplicitAppUserModelID
+        # Declare the ABI *before* the call: a wide-char C string is passed to
+        # a Win32 API that returns an HRESULT (LONG).  Without an explicit
+        # restype ctypes assumes c_int and the native status is not usable as
+        # a success/failure signal.  Test doubles may not expose settable
+        # attributes, so the declarations are best-effort only.
+        try:
+            func.argtypes = [ctypes.c_wchar_p]
+            func.restype = ctypes.c_long
+        except (AttributeError, TypeError):
+            pass
+        hr = func(_WINDOWS_APP_USER_MODEL_ID)
+        if hr == 0:  # S_OK
+            return True
+        logger.warning(
+            "SetCurrentProcessExplicitAppUserModelID failed: HRESULT 0x%08X",
+            hr & 0xFFFFFFFF,
+        )
+        return False
+    except Exception as exc:
+        # Bounded diagnostic: one line, no traceback flood, never fatal.
+        logger.warning(
+            "SetCurrentProcessExplicitAppUserModelID unavailable (%s: %s)",
+            type(exc).__name__,
+            exc,
+        )
         return False
 
 
@@ -7191,7 +7214,14 @@ def main(argv=None, run_for: int | None = None):
 
     # Windows: declare the product identity BEFORE any Qt window exists so the
     # taskbar shows the ZeAnalyser icon instead of the generic Python one.
-    _set_windows_app_user_model_id()
+    _aumid_applied = _set_windows_app_user_model_id()
+    if platform.system() == "Windows" and _aumid_applied is False:
+        # Best-effort only: never raise, never block startup, never open a
+        # dialog.  The app still runs, but the taskbar identity is degraded.
+        logger.warning(
+            "Windows taskbar identity could not be applied; the taskbar may "
+            "show the default Python icon"
+        )
 
     # Parse command line arguments similar to Tk version
     import argparse
