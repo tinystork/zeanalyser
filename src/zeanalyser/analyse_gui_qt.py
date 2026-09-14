@@ -251,6 +251,190 @@ def _set_windows_app_user_model_id() -> bool:
         return False
 
 
+# --- Windows window Shell identity (System.AppUserModel.*) -----------------
+# The process-level AppUserModelID above is not enough for the taskbar: the
+# *window* also needs a Shell identity, otherwise Shell falls back to the
+# backing executable icon (pythonw.exe).  These are the PROPERTYKEY pids of
+# the System.AppUserModel property schema:
+#   2 = RelaunchCommand  (deliberately NOT set: a Python deployment has no
+#        stable launch path; pointing at runtime\slots\rt-<hash>\... would
+#        reference a replaceable deployment artifact)
+#   3 = RelaunchIconResource
+#   4 = RelaunchDisplayNameResource  (deliberately NOT set)
+#   5 = AppUserModel.ID
+_WINDOWS_APPUSERMODEL_FMTID = "{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}"
+_IID_IPROPERTYSTORE = "{886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99}"
+_PKEY_APPUSERMODEL_RELAUNCH_ICON_RESOURCE = 3
+_PKEY_APPUSERMODEL_ID = 5
+_VT_LPWSTR = 31
+_WINDOWS_RELAUNCH_ICON_FILENAME = "zeanalyz.ico"
+_WINDOWS_RELAUNCH_ICON_INDEX = 0
+
+
+def _windows_relaunch_icon_resource() -> str:
+    """Packaged icon path with its resource index, e.g. ``.../zeanalyz.ico,0``."""
+    return os.path.join(ICON_DIR, _WINDOWS_RELAUNCH_ICON_FILENAME) + (
+        ",%d" % _WINDOWS_RELAUNCH_ICON_INDEX
+    )
+
+
+def _windows_window_identity_properties() -> list[tuple[int, str]]:
+    """(PROPERTYKEY pid, value) pairs in the order Shell wants them written."""
+    return [
+        (_PKEY_APPUSERMODEL_RELAUNCH_ICON_RESOURCE, _windows_relaunch_icon_resource()),
+        (_PKEY_APPUSERMODEL_ID, _WINDOWS_APP_USER_MODEL_ID),
+    ]
+
+
+def _write_window_identity(store) -> None:
+    """Write the Shell window identity through an ``IPropertyStore`` adapter.
+
+    ``System.AppUserModel.ID`` is written LAST: Microsoft documents that
+    setting the ID notifies the taskbar to refresh its cached window info, so
+    the complementary properties must already be present.  ``Commit()`` is
+    required for the changes to take effect.
+    """
+    for pid, value in _windows_window_identity_properties():
+        store.set_lpwstr(pid, value)
+    store.commit()
+
+
+class _CtypesWindowPropertyStore:
+    """Minimal ``IPropertyStore`` adapter bound to one window HWND.
+
+    ``SHGetPropertyStoreForWindow`` returns an ``IPropertyStore`` pointer whose
+    vtable is laid out as: 0-2 IUnknown, 3 GetCount, 4 GetAt, 5 GetValue,
+    6 SetValue, 7 Commit.  Only ``SetValue``/``Commit`` are used here.
+    """
+
+    def __init__(self, hwnd: int, ctypes_module):
+        ctypes = ctypes_module
+        import uuid
+
+        class _GUID(ctypes.Structure):
+            _fields_ = [
+                ("Data1", ctypes.c_ulong),
+                ("Data2", ctypes.c_ushort),
+                ("Data3", ctypes.c_ushort),
+                ("Data4", ctypes.c_ubyte * 8),
+            ]
+
+        class _PROPERTYKEY(ctypes.Structure):
+            _fields_ = [("fmtid", _GUID), ("pid", ctypes.c_ulong)]
+
+        class _PROPVARIANT(ctypes.Structure):
+            # On 64-bit the union starts at byte offset 8; for VT_LPWSTR this
+            # is exactly a wide-string pointer at that offset.
+            _fields_ = [
+                ("vt", ctypes.c_ushort),
+                ("wReserved1", ctypes.c_ushort),
+                ("wReserved2", ctypes.c_ushort),
+                ("wReserved3", ctypes.c_ushort),
+                ("pwszVal", ctypes.c_wchar_p),
+            ]
+
+        def _guid(text):
+            u = uuid.UUID(text)
+            return _GUID(
+                u.time_low,
+                u.time_mid,
+                u.time_hi_version,
+                (ctypes.c_ubyte * 8)(*u.bytes[8:]),
+            )
+
+        self._ctypes = ctypes
+        self._propertykey = _PROPERTYKEY
+        self._propvariant = _PROPVARIANT
+        self._fmtid = _guid(_WINDOWS_APPUSERMODEL_FMTID)
+        self._iid = _guid(_IID_IPROPERTYSTORE)
+        # WINFUNCTYPE is Windows-only; CFUNCTYPE keeps the module importable
+        # (and the layout testable) on other platforms.
+        calltype = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
+        self._setvalue_proto = calltype(
+            ctypes.c_long,
+            ctypes.c_void_p,
+            ctypes.POINTER(_PROPERTYKEY),
+            ctypes.POINTER(_PROPVARIANT),
+        )
+        self._commit_proto = calltype(ctypes.c_long, ctypes.c_void_p)
+
+        shell32 = ctypes.windll.shell32  # type: ignore[attr-defined]
+        get_store = shell32.SHGetPropertyStoreForWindow
+        get_store.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(_GUID),
+            ctypes.POINTER(ctypes.c_void_p),
+        ]
+        get_store.restype = ctypes.c_long
+        ptr = ctypes.c_void_p()
+        hr = get_store(ctypes.c_void_p(int(hwnd)), ctypes.byref(self._iid), ctypes.byref(ptr))
+        if hr != 0:
+            raise OSError(
+                "SHGetPropertyStoreForWindow failed: HRESULT 0x%08X" % (hr & 0xFFFFFFFF)
+            )
+        if not ptr.value:
+            raise OSError("SHGetPropertyStoreForWindow returned a null store")
+        self._ptr = ptr
+
+    def _vtable_entry(self, index):
+        ctypes = self._ctypes
+        vtable = ctypes.cast(
+            self._ptr, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))
+        ).contents
+        return vtable[index]
+
+    def set_lpwstr(self, pid: int, value: str) -> None:
+        """Set one ``VT_LPWSTR`` property; raises OSError on a failed HRESULT."""
+        ctypes = self._ctypes
+        key = self._propertykey(self._fmtid, pid)
+        variant = self._propvariant()
+        variant.vt = _VT_LPWSTR
+        variant.pwszVal = value
+        set_value = self._setvalue_proto(self._vtable_entry(6))
+        hr = set_value(self._ptr, ctypes.byref(key), ctypes.byref(variant))
+        if hr != 0:
+            raise OSError("IPropertyStore::SetValue failed: HRESULT 0x%08X" % (hr & 0xFFFFFFFF))
+
+    def commit(self) -> None:
+        """Commit the pending property writes; raises OSError on failure."""
+        ctypes = self._ctypes
+        commit = self._commit_proto(self._vtable_entry(7))
+        hr = commit(self._ptr)
+        if hr != 0:
+            raise OSError("IPropertyStore::Commit failed: HRESULT 0x%08X" % (hr & 0xFFFFFFFF))
+
+
+def _set_windows_window_identity(hwnd: int) -> bool:
+    """Attach the Windows Shell window identity (best-effort POC).
+
+    Windows-only.  The process-level AppUserModelID
+    (``_set_windows_app_user_model_id``) is not sufficient for the taskbar:
+    the *window* also needs a Shell ``System.AppUserModel.ID`` plus a
+    ``RelaunchIconResource``, otherwise Shell falls back to the backing
+    executable icon (``pythonw.exe``).
+
+    Returns True when the window property store committed.  Any failure
+    degrades to a single bounded warning and False: this is a best-effort
+    identity hint and must never raise, block startup, or open a dialog.
+    """
+    if platform.system() != "Windows":
+        return False
+    try:
+        import ctypes
+
+        store = _CtypesWindowPropertyStore(int(hwnd), ctypes)
+        _write_window_identity(store)
+        return True
+    except Exception as exc:
+        # Bounded diagnostic: one line, no traceback flood, never fatal.
+        logger.warning(
+            "Windows window Shell identity could not be applied (%s: %s)",
+            type(exc).__name__,
+            exc,
+        )
+        return False
+
+
 def get_app_icon() -> QIcon:
     """Return the best available application icon from the icon/ folder."""
     for name in ("zeanalyz_icon.png", "zeanalyz_64x64.png", "zeanalyz.ico"):
@@ -7250,6 +7434,12 @@ def main(argv=None, run_for: int | None = None):
     )
     if not app_icon.isNull():
         win.setWindowIcon(app_icon)
+    # Windows POC: attach the Shell window identity (AppUserModel.ID +
+    # relaunch icon) to the native HWND before the window is shown.  This is
+    # the window-level counterpart of the process AUMID set above; it is
+    # best-effort and never blocks startup.  winId() forces HWND creation.
+    if platform.system() == "Windows":
+        _set_windows_window_identity(int(win.winId()))
     # Pre-fill from CLI args
     if args.input_dir:
         win.input_path_edit.setText(args.input_dir)

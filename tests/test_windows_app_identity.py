@@ -10,6 +10,7 @@ the call, and failures must degrade to a bounded warning instead of a silent
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import types
 
@@ -250,3 +251,186 @@ def test_main_does_not_warn_on_non_windows(monkeypatch, caplog):
 
     assert rc == 0
     assert "taskbar identity" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# ZA-APP-IDENTITY-P1.8 r1 — Windows *window* Shell identity POC
+# ---------------------------------------------------------------------------
+
+
+class SpyPropertyStore:
+    """IPropertyStore double recording the property-write order."""
+
+    def __init__(self, events, fail_on=None):
+        self.events = events
+        self.fail_on = fail_on
+
+    def set_lpwstr(self, pid, value):
+        if self.fail_on == ("set", pid):
+            raise OSError("IPropertyStore::SetValue failed: HRESULT 0x80004005")
+        self.events.append(("set", pid, value))
+
+    def commit(self):
+        if self.fail_on == "commit":
+            raise OSError("IPropertyStore::Commit failed: HRESULT 0x80004005")
+        self.events.append(("commit",))
+
+
+def test_window_identity_schema_constants():
+    """Guard the documented System.AppUserModel property-schema constants."""
+    assert mod._PKEY_APPUSERMODEL_RELAUNCH_ICON_RESOURCE == 3
+    assert mod._PKEY_APPUSERMODEL_ID == 5
+    assert mod._VT_LPWSTR == 31  # VT_LPWSTR
+    assert mod._WINDOWS_APPUSERMODEL_FMTID == "{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}"
+    assert mod._IID_IPROPERTYSTORE == "{886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99}"
+    assert mod._WINDOWS_RELAUNCH_ICON_INDEX == 0
+
+
+def test_relaunch_icon_resource_is_built_from_icon_dir(monkeypatch):
+    """The icon resource must be the packaged .ico + ',0' (no hardcoded path)."""
+    monkeypatch.setattr(mod, "ICON_DIR", os.path.join("SENTINEL", "icon"))
+    value = mod._windows_relaunch_icon_resource()
+    assert value == os.path.join("SENTINEL", "icon", "zeanalyz.ico") + ",0"
+    assert value.endswith("zeanalyz.ico,0")
+
+
+def test_window_identity_properties_order_and_values():
+    """Icon (pid 3) strictly before ID (pid 5); nothing else is written."""
+    pairs = mod._windows_window_identity_properties()
+    assert [pid for pid, _ in pairs] == [3, 5]
+    assert pairs[0][1] == os.path.join(mod.ICON_DIR, "zeanalyz.ico") + ",0"
+    assert pairs[1][1] == "ZeSoftware.ZeAnalyser"
+    assert pairs[1][1] == mod.WINDOWS_APP_USER_MODEL_ID
+    # RelaunchCommand (2) and RelaunchDisplayNameResource (4) are NOT set.
+    assert 2 not in [pid for pid, _ in pairs]
+    assert 4 not in [pid for pid, _ in pairs]
+
+
+def test_write_window_identity_commits_after_both_sets():
+    """Commit must come after both SetValue calls."""
+    events = []
+    mod._write_window_identity(SpyPropertyStore(events))
+    assert [e[0] for e in events] == ["set", "set", "commit"]
+    assert events[0] == ("set", 3, mod._windows_relaunch_icon_resource())
+    assert events[1] == ("set", 5, mod.WINDOWS_APP_USER_MODEL_ID)
+
+
+def test_window_helper_is_noop_on_non_windows(monkeypatch):
+    """Off Windows the helper must not touch ctypes at all."""
+    monkeypatch.setattr(mod.platform, "system", lambda: "Linux")
+
+    class ExplodingCtypes(types.ModuleType):
+        def __getattr__(self, name):  # pragma: no cover - must never run
+            raise AssertionError(f"ctypes.{name} touched on non-Windows")
+
+    monkeypatch.setitem(sys.modules, "ctypes", ExplodingCtypes("ctypes"))
+    assert mod._set_windows_window_identity(1234) is False
+
+
+def test_set_windows_window_identity_sets_icon_then_id(monkeypatch):
+    """Windows path: property store opened for the HWND, icon then ID, commit."""
+    monkeypatch.setattr(mod.platform, "system", lambda: "Windows")
+    events: list = []
+    opened: list = []
+
+    def fake_store_factory(hwnd, ctypes_module):
+        opened.append(hwnd)
+        return SpyPropertyStore(events)
+
+    monkeypatch.setattr(mod, "_CtypesWindowPropertyStore", fake_store_factory)
+
+    assert mod._set_windows_window_identity(4242) is True
+    assert opened == [4242]
+    pids = [e[1] for e in events if e[0] == "set"]
+    assert pids == [3, 5]
+    assert events[0][2] == os.path.join(mod.ICON_DIR, "zeanalyz.ico") + ",0"
+    assert events[1][2] == "ZeSoftware.ZeAnalyser"
+    assert events[-1] == ("commit",)
+
+
+def test_set_windows_window_identity_failure_warns_once(monkeypatch, caplog):
+    """A failing store must degrade to False + exactly one warning."""
+    monkeypatch.setattr(mod.platform, "system", lambda: "Windows")
+
+    def failing_factory(hwnd, ctypes_module):
+        raise OSError("SHGetPropertyStoreForWindow failed: HRESULT 0x80004005")
+
+    monkeypatch.setattr(mod, "_CtypesWindowPropertyStore", failing_factory)
+
+    with caplog.at_level(logging.WARNING, logger=mod.__name__):
+        assert mod._set_windows_window_identity(7) is False
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "0x80004005" in caplog.text
+
+
+def test_set_windows_window_identity_setvalue_failure_warns_once(monkeypatch, caplog):
+    """A failing SetValue/Commit is still a bounded False, never a raise."""
+    monkeypatch.setattr(mod.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        mod,
+        "_CtypesWindowPropertyStore",
+        lambda hwnd, ctypes_module: SpyPropertyStore([], fail_on=("set", 5)),
+    )
+
+    with caplog.at_level(logging.WARNING, logger=mod.__name__):
+        assert mod._set_windows_window_identity(9) is False
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+
+
+def test_main_applies_window_identity_only_on_windows(monkeypatch):
+    """main() must not invoke the window helper on non-Windows platforms."""
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setattr(mod.platform, "system", lambda: "Linux")
+    calls: list = []
+    monkeypatch.setattr(
+        mod, "_set_windows_window_identity", lambda hwnd: calls.append(hwnd) or True
+    )
+
+    assert mod.main(run_for=50) == 0
+    assert calls == []
+
+
+def test_main_applies_window_identity_on_windows(monkeypatch):
+    """On Windows main() must apply the window identity before showing it."""
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setattr(mod.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(mod, "_set_windows_app_user_model_id", lambda: True)
+    calls: list = []
+
+    def record(hwnd):
+        calls.append(hwnd)
+        return True
+
+    monkeypatch.setattr(mod, "_set_windows_window_identity", record)
+
+    assert mod.main(run_for=50) == 0
+    assert len(calls) == 1
+    assert isinstance(calls[0], int)
+
+
+def test_main_window_identity_is_before_show(monkeypatch):
+    """Ordering: window identity is applied BEFORE _show_window_safely()."""
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setattr(mod.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(mod, "_set_windows_app_user_model_id", lambda: True)
+    events: list = []
+    monkeypatch.setattr(
+        mod, "_set_windows_window_identity", lambda hwnd: events.append("identity") or True
+    )
+
+    real_window = mod.ZeAnalyserMainWindow
+
+    class RecordingWindow(real_window):
+        def _show_window_safely(self):
+            events.append("show")
+            return super()._show_window_safely()
+
+    monkeypatch.setattr(mod, "ZeAnalyserMainWindow", RecordingWindow)
+
+    assert mod.main(run_for=50) == 0
+    assert events[0] == "identity"
+    assert "show" in events
