@@ -1,6 +1,7 @@
 import pytest
 
 import zeanalyser.analyse_gui_qt as mod
+from zeanalyser.zone import _
 pytestmark = pytest.mark.skipif(
     mod.QApplication is object, reason="PySide6 not installed in this environment"
 )
@@ -21,7 +22,8 @@ def test_move_rejected_requires_dirs(monkeypatch):
     win.input_path_edit.setText("C:/data/input")
     win.output_path_edit.setText("C:/data/output.log")
 
-    # Simulate selecting move for reject actions (default is move)
+    # Explicitly select the mutating action; the fresh default is now none.
+    win.reject_move_rb.setChecked(True)
     if win.detect_trails_cb is not None:
         win.detect_trails_cb.setChecked(True)
     # ensure trail_reject_dir is empty
@@ -32,7 +34,7 @@ def test_move_rejected_requires_dirs(monkeypatch):
     win.analyse_btn.click()
 
     assert getattr(win, '_current_worker', None) is None
-    assert "trail reject directory" in win.log.toPlainText().lower()
+    assert _("gui_trail_reject_dir_required") in win.log.toPlainText()
 
     if created_app:
         app.quit()

@@ -8,10 +8,15 @@ from __future__ import annotations
 
 import os
 import shutil
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Iterable, Tuple
 
+from zeanalyser.path_safety import resolved_normcase, source_is_within_root
+from zeanalyser.zone import _
+
 FIT_EXTS = (".fit", ".fits")
+logger = logging.getLogger(__name__)
 
 
 def _normalize_callbacks(callbacks):
@@ -192,6 +197,28 @@ def build_plan(
             if _should_skip(src_abs):
                 summary["skipped_existing"] += 1
                 continue
+            if not source_is_within_root(src_abs, input_dir_abs):
+                logger.warning(
+                    "SOURCE_BOUNDARY_SKIP source=%r resolved_source=%r "
+                    "project_root=%r resolved_root=%r",
+                    src_abs,
+                    resolved_normcase(src_abs),
+                    input_dir_abs,
+                    resolved_normcase(input_dir_abs),
+                )
+                if log_cb:
+                    try:
+                        log_cb(_(
+                            "logic_source_outside_project",
+                            source=src_abs,
+                            root=input_dir_abs,
+                        ))
+                    except Exception:
+                        log_cb(
+                            f"[organizer] SOURCE_BOUNDARY_SKIP source={src_abs!r} "
+                            f"project_root={input_dir_abs!r}"
+                        )
+                continue
 
             err = tags.get("error")
             if err:
@@ -245,7 +272,13 @@ def build_plan(
     return entries, summary
 
 
-def apply_plan(entries: list[dict], move_files: bool, dry_run: bool, callbacks=None) -> dict:
+def apply_plan(
+    entries: list[dict],
+    move_files: bool,
+    dry_run: bool,
+    callbacks=None,
+    source_root_abs=None,
+) -> dict:
     """Apply the move/copy plan to disk."""
     status_cb, progress_cb, log_cb, is_cancelled = _normalize_callbacks(callbacks)
     summary = {
@@ -275,6 +308,32 @@ def apply_plan(entries: list[dict], move_files: bool, dry_run: bool, callbacks=N
         dst_abs = entry.get("dst_abs")
         if not src_abs or not dst_abs:
             summary["errors"] += 1
+            continue
+
+        if not source_is_within_root(src_abs, source_root_abs):
+            summary["skipped"] += 1
+            entry["status"] = "skipped_outside_project"
+            logger.warning(
+                "SOURCE_BOUNDARY_SKIP source=%r resolved_source=%r "
+                "project_root=%r resolved_root=%r",
+                src_abs,
+                resolved_normcase(src_abs),
+                source_root_abs,
+                resolved_normcase(source_root_abs),
+            )
+            if log_cb:
+                try:
+                    log_cb(_(
+                        "logic_source_outside_project",
+                        source=str(src_abs),
+                        root=str(source_root_abs or ""),
+                    ))
+                except Exception:
+                    log_cb(
+                        f"[organizer] SOURCE_BOUNDARY_SKIP source={src_abs!r} "
+                        f"resolved_source={resolved_normcase(src_abs)!r} "
+                        f"project_root={source_root_abs!r}"
+                    )
             continue
 
         final_dst = _resolve_collision_path(dst_abs)

@@ -1331,8 +1331,8 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.reject_move_rb = QRadioButton(_("action_mode_move"))
             self.reject_delete_rb = QRadioButton(_("action_mode_delete"))
             self.reject_none_rb = QRadioButton(_("action_mode_none"))
-            # default to move (common default in Tk)
-            self.reject_move_rb.setChecked(True)
+            # A fresh configuration must not mutate source files implicitly.
+            self.reject_none_rb.setChecked(True)
             action_layout.addWidget(self.reject_move_rb)
             action_layout.addWidget(self.reject_delete_rb)
             action_layout.addWidget(self.reject_none_rb)
@@ -1922,7 +1922,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
             try:
                 if getattr(self, 'include_subfolders_cb', None) is not None:
-                    self.include_subfolders_cb.setToolTip(_('Search subfolders when discovering input images'))
+                    self.include_subfolders_cb.setToolTip(_('include_subfolders_tooltip'))
             except Exception:
                 pass
 
@@ -2047,6 +2047,16 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.use_bortle_cb.setChecked(_truthy(settings.value('options/use_bortle', False)))
             if getattr(self, 'analyze_snr_cb', None) is not None:
                 self.analyze_snr_cb.setChecked(_truthy(settings.value('options/analyze_snr', False)))
+            if all(getattr(self, name, None) is not None for name in (
+                'reject_none_rb', 'reject_move_rb', 'reject_delete_rb'
+            )):
+                reject_action = settings.value('options/reject_action', None)
+                if reject_action == 'move':
+                    self.reject_move_rb.setChecked(True)
+                elif reject_action == 'delete':
+                    self.reject_delete_rb.setChecked(True)
+                elif reject_action == 'none':
+                    self.reject_none_rb.setChecked(True)
             if getattr(self, 'organizer_include_subfolders_cb', None) is not None:
                 self.organizer_include_subfolders_cb.setChecked(
                     _truthy(settings.value('organizer/include_subfolders', False))
@@ -2122,6 +2132,12 @@ class ZeAnalyserMainWindow(QMainWindow):
                 settings.setValue('options/use_bortle', bool(self.use_bortle_cb.isChecked()))
             if getattr(self, 'analyze_snr_cb', None) is not None:
                 settings.setValue('options/analyze_snr', bool(self.analyze_snr_cb.isChecked()))
+            if getattr(self, 'reject_move_rb', None) is not None and self.reject_move_rb.isChecked():
+                settings.setValue('options/reject_action', 'move')
+            elif getattr(self, 'reject_delete_rb', None) is not None and self.reject_delete_rb.isChecked():
+                settings.setValue('options/reject_action', 'delete')
+            elif getattr(self, 'reject_none_rb', None) is not None:
+                settings.setValue('options/reject_action', 'none')
             if getattr(self, 'organizer_include_subfolders_cb', None) is not None:
                 settings.setValue('organizer/include_subfolders', bool(self.organizer_include_subfolders_cb.isChecked()))
             if getattr(self, 'organizer_skip_organized_cb', None) is not None:
@@ -4443,6 +4459,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self.log_path_edit.setPlaceholderText(_tr('project_log_placeholder', 'No log file chosen'))
             if getattr(self, 'include_subfolders_cb', None) is not None:
                 self.include_subfolders_cb.setText(zone._("include_subfolders_label"))
+                self.include_subfolders_cb.setToolTip(zone._("include_subfolders_tooltip"))
             if getattr(self, 'bortle_path_edit', None) is not None:
                 self.bortle_path_edit.setPlaceholderText(_tr('bortle_path_placeholder', zone._('bortle_file_label')))
             if getattr(self, 'bortle_browse_btn', None) is not None:
@@ -6259,7 +6276,14 @@ class ZeAnalyserMainWindow(QMainWindow):
         self._organizer_worker = w
         self._connect_organizer_worker_signals(w, self._on_organizer_apply_ready)
 
-        w.start(self._organizer_apply_callable, self._organizer_plan_entries, move_files, dry_run)
+        source_root = self.organizer_source_edit.text().strip()
+        w.start(
+            self._organizer_apply_callable,
+            self._organizer_plan_entries,
+            move_files,
+            dry_run,
+            source_root,
+        )
 
     def _on_organizer_cancel(self):
         if getattr(self, '_organizer_worker', None) is not None:
@@ -6448,8 +6472,14 @@ class ZeAnalyserMainWindow(QMainWindow):
         )
         return entries, summary
 
-    def _organizer_apply_callable(self, entries, move_files, dry_run, callbacks):
-        return organizer_module.apply_plan(entries, move_files=move_files, dry_run=dry_run, callbacks=callbacks)
+    def _organizer_apply_callable(self, entries, move_files, dry_run, source_root, callbacks):
+        return organizer_module.apply_plan(
+            entries,
+            move_files=move_files,
+            dry_run=dry_run,
+            callbacks=callbacks,
+            source_root_abs=source_root,
+        )
 
     def _organize_files_auto(self):
         """Applique les actions différées sur les fichiers automatiquement (sans UI)."""

@@ -162,6 +162,7 @@ translations = {
         'input_dir_label': "Dossier d'entrée:",
         'output_log_label': "Fichier log:",
         'include_subfolders_label': "Inclure les sous-dossiers",
+        'include_subfolders_tooltip': "Analyse le dossier sélectionné ainsi que ses sous-dossiers.",
         'organizer_source_label': "Dossier source (lecture seule):",
         'organizer_dest_label': "Dossier destination:",
         'organizer_include_subfolders': "Inclure les sous-dossiers",
@@ -371,6 +372,7 @@ translations = {
         'logic_no_fits_satdet': "Aucun fichier FITS trouvé dans {path} pour détection.", 'logic_no_fits_snr': "Aucun fichier FITS (.fit, .fits) trouvé pour l'analyse SNR.",
         'logic_snr_start': "Démarrage de l'analyse individuelle...", 'logic_fits_no_data': "{file} - Pas de données image dans HDU 0.", 'logic_snr_info': "  {file}: SNR={snr:.2f}, Fond={bg:.2f}", 'logic_trail_info': "    Traînées (segments): {status} ({count})", 'logic_trail_yes': "Oui", 'logic_trail_no': "Non",
         'logic_moved_info': "-> Déplacé vers {folder}", 'logic_move_skipped': "    Info: {file} n'existait plus à l'emplacement source pour action.", 'logic_move_error': "    Erreur déplacement {file}: {e}", 'logic_file_error': "Erreur analyse fichier {file}: {e}",
+        'logic_source_outside_project': "Action ignorée : le fichier source se trouve hors du dossier du projet. Source : {source} — Projet : {root}",
         'logic_log_summary_error': "Erreur lors de l'écriture du résumé du log ({path}): {e}", 'logic_final_snr': "SNR moyen global: {mean:.2f}", 'logic_final_trails': "Images avec traînées détectées: {count} ({percent:.1f}%)", 'logic_final_no_success': "Aucune image n'a pu être traitée avec succès.",
         # i18n P0.5: dedicated keys for migrated analyse_logic user-facing messages (FR)
         'logic_snr_pending_none': 'Aucune action SNR en attente à appliquer.',
@@ -550,7 +552,8 @@ translations = {
 
         # --- Labels & Fields ---
         'input_dir_label': "Input Folder:", 'output_log_label': "Log File:",
-        'include_subfolders_label': "Include Subfolders", # <-- NEW
+        'include_subfolders_label': "Include subfolders", # <-- NEW
+        'include_subfolders_tooltip': "Analyze the selected folder and its subfolders.",
         'organizer_source_label': "Source folder (read-only):",
         'organizer_dest_label': "Destination folder:",
         'organizer_include_subfolders': "Include subfolders",
@@ -759,6 +762,7 @@ translations = {
         'logic_no_fits_satdet': "No FITS files found in {path} for detection.", 'logic_no_fits_snr': "No FITS files (.fit, .fits) found for SNR analysis.",
         'logic_snr_start': "Starting individual file analysis...", 'logic_fits_no_data': "{file} - No image data in HDU 0.", 'logic_snr_info': "  {file}: SNR={snr:.2f}, Background={bg:.2f}", 'logic_trail_info': "    Trails (segments): {status} ({count})", 'logic_trail_yes': "Yes", 'logic_trail_no': "No",
         'logic_moved_info': "-> Moved to {folder}", 'logic_move_skipped': "    Info: {file} no longer existed at source location for action.", 'logic_move_error': "    Error moving {file}: {e}", 'logic_file_error': "Error analyzing file {file}: {e}",
+        'logic_source_outside_project': "Action skipped: source file is outside the project directory. Source: {source} — Project: {root}",
         'logic_log_summary_error': "Error writing log summary ({path}): {e}", 'logic_final_snr': "Overall average SNR: {mean:.2f}", 'logic_final_trails': "Images with detected trails: {count} ({percent:.1f}%)", 'logic_final_no_success': "No images could be processed successfully.",
         # i18n P0.5: dedicated keys for migrated analyse_logic user-facing messages (EN)
         'logic_snr_pending_none': 'No pending SNR action to apply.',

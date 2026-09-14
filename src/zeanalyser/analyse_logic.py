@@ -80,6 +80,7 @@ import concurrent.futures
 import threading
 from zeanalyser import project_state
 from zeanalyser._version import __version__
+from zeanalyser.path_safety import resolved_normcase, source_is_within_root
 import zipfile
 import xml.etree.ElementTree as ET
 import csv
@@ -88,6 +89,47 @@ import logging
 from astroalign import find_transform
 
 logger = logging.getLogger(__name__)
+
+
+def source_action_allowed(row, source_path, input_dir_abs, log_callback=None):
+    """Guard a source before an analysis-driven move/delete/organization.
+
+    Destinations are intentionally not constrained here: a user-configured
+    reject directory may legitimately be outside the selected project.  The
+    source is resolved through symlinks and must remain inside the resolved
+    selected root.
+    """
+
+    if source_is_within_root(source_path, input_dir_abs):
+        return True
+
+    resolved_source = resolved_normcase(source_path)
+    resolved_root = resolved_normcase(input_dir_abs)
+    logger.warning(
+        "SOURCE_BOUNDARY_SKIP source=%r resolved_source=%r "
+        "project_root=%r resolved_root=%r",
+        source_path,
+        resolved_source,
+        input_dir_abs,
+        resolved_root,
+    )
+    if callable(log_callback):
+        try:
+            log_callback(
+                "logic_source_outside_project",
+                source=str(source_path or ""),
+                root=str(input_dir_abs or ""),
+            )
+        except Exception:
+            pass
+    if isinstance(row, dict):
+        row["action"] = "skipped_outside_project"
+        row["status"] = "error"
+        row["action_comment"] = (
+            str(row.get("action_comment") or "")
+            + " Source action skipped: outside project directory."
+        ).strip()
+    return False
 
 _rasterio_spec = importlib.util.find_spec("rasterio")
 if _rasterio_spec:
@@ -385,6 +427,8 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
             r['action'] = 'error_action_deferred'
             r['status'] = 'error' # Marquer comme erreur si le fichier a disparu
             continue
+        if not source_action_allowed(r, current_path, input_dir_abs, _log):
+            continue
 
         action_taken_this_file = False
         original_rejected_reason = r['rejected_reason'] # Sauvegarder au cas où
@@ -495,6 +539,8 @@ def apply_pending_trail_actions(results_list, trail_reject_abs_path,
             r['action'] = 'error_action_deferred'
             r['status'] = 'error'
             continue
+        if not source_action_allowed(r, current_path, input_dir_abs, _log):
+            continue
 
         action_done = False
         original_reason = r['rejected_reason']
@@ -598,6 +644,8 @@ def apply_pending_reco_actions(results_list, reject_abs_path,
             r['action_comment'] = r.get('action_comment', '') + ' Source non trouvée pour action différée.'
             r['action'] = 'error_action_deferred'
             r['status'] = 'error'
+            continue
+        if not source_action_allowed(r, current_path, input_dir_abs, _log):
             continue
 
         action_done = False
@@ -876,6 +924,8 @@ def apply_pending_organization(results_list, log_callback=None,
         except ValueError:
             rel_path = os.path.basename(current_path)
 
+        if not source_action_allowed(r, current_path, input_dir_abs, _log):
+            continue
         if not dest_path or os.path.normpath(current_path) == os.path.normpath(dest_path):
             continue
         try:
@@ -1516,6 +1566,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                             current_path = r['path']
                             if current_path and os.path.exists(current_path):
                                 process_for_trails = False # Ne pas analyser les traînées si rejeté par SNR et actionné
+                                if not source_action_allowed(r, current_path, abs_input_dir, _log):
+                                    continue
                                 if action_to_take == 'moved_snr':
                                     if _is_cancelled():
                                         return _cancelled_result()
@@ -1703,6 +1755,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
 
                             if action_to_take_trail != 'kept':
                                 if os.path.exists(current_path):
+                                    if not source_action_allowed(r, current_path, abs_input_dir, _log):
+                                        continue
                                     if action_to_take_trail == 'moved_trail':
                                         if _is_cancelled():
                                             return _cancelled_result()

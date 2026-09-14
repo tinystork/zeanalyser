@@ -33,6 +33,7 @@ def test_snr_ui_and_options(monkeypatch):
     win.snr_mode_threshold_rb.setChecked(True)
     win.snr_value_spin.setValue(3.5)
     win.snr_reject_dir_edit.setText("C:/tmp/reject_snr")
+    win.reject_move_rb.setChecked(True)
     win.snr_apply_immediately_cb.setChecked(True)
 
     opts = win._build_options_from_ui()
@@ -155,6 +156,7 @@ def test_apply_snr_calls_logic(monkeypatch):
     win.snr_mode_threshold_rb.setChecked(True)
     win.snr_value_spin.setValue(5.0)
     win.snr_reject_dir_edit.setText("C:/tmp/reject")
+    win.reject_move_rb.setChecked(True)
 
     called = {}
 

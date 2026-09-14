@@ -87,6 +87,7 @@ import inspect # Pour vérifier les arguments si besoin
 import warnings # Ajoutez cette ligne au début de votre fichier .py
 import time
 from zeanalyser.platform_utils import open_path_with_default_app
+from zeanalyser.path_safety import source_is_within_root
 # Importer acstools si disponible
 try:
     from acstools import satdet
@@ -786,6 +787,18 @@ class AstroImageAnalyzerGUI:
                                 dest_path = os.path.join(sat_trail_dir, file_name)
                                 # S'assurer que la source existe toujours avant de déplacer
                                 if os.path.exists(fits_file_path):
+                                     if not source_is_within_root(fits_file_path, input_dir):
+                                         skip_info = (
+                                             "    Action ignorée : le fichier source se trouve "
+                                             f"hors du dossier du projet. Source : {fits_file_path} "
+                                             f"— Projet : {input_dir}"
+                                         )
+                                         self.root.after(0, self.update_results_text, skip_info)
+                                         log_file.write(
+                                             "SOURCE_BOUNDARY_SKIP\t"
+                                             f"{fits_file_path}\t{input_dir}\n"
+                                         )
+                                         continue
                                      shutil.move(fits_file_path, dest_path)
                                      move_info = f"    -> Déplacé vers {sat_trail_dir}"
                                      self.root.after(0, self.update_results_text, move_info)

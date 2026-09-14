@@ -240,6 +240,8 @@ if not hasattr(analyse_logic, 'apply_pending_starcount_actions'):
                 r['action'] = 'error_action_deferred'
                 r['status'] = 'error'
                 continue
+            if not analyse_logic.source_action_allowed(r, current_path, input_dir_abs, _log):
+                continue
 
             action_done = False
             original_reason = r['rejected_reason']
@@ -346,6 +348,8 @@ if not hasattr(analyse_logic, 'apply_pending_fwhm_actions'):
                 r['action'] = 'error_action_deferred'
                 r['status'] = 'error'
                 continue
+            if not analyse_logic.source_action_allowed(r, current_path, input_dir_abs, _log):
+                continue
 
             action_done = False
             original_reason = r['rejected_reason']
@@ -451,6 +455,8 @@ if not hasattr(analyse_logic, 'apply_pending_ecc_actions'):
                 r['action_comment'] = r.get('action_comment', '') + ' Source non trouvée pour action différée.'
                 r['action'] = 'error_action_deferred'
                 r['status'] = 'error'
+                continue
+            if not analyse_logic.source_action_allowed(r, current_path, input_dir_abs, _log):
                 continue
 
             action_done = False
@@ -735,8 +741,11 @@ class AstroImageAnalyzerGUI:
         }
         self.trail_reject_dir = tk.StringVar() 
 
-        # Action sur les images rejetées
-        self.reject_action = tk.StringVar(value='move') 
+        # A fresh configuration must not mutate source files implicitly.
+        saved_reject_action = self._config_data.get('reject_action', 'none')
+        if saved_reject_action not in {'none', 'move', 'delete'}:
+            saved_reject_action = 'none'
+        self.reject_action = tk.StringVar(value=saved_reject_action)
 
         # Variables d'état internes
         self.analysis_results = []
@@ -1185,7 +1194,8 @@ class AstroImageAnalyzerGUI:
     def _save_gui_config(self):
         data = {
             'bortle_path': self.bortle_path.get(),
-            'use_bortle': self.use_bortle.get()
+            'use_bortle': self.use_bortle.get(),
+            'reject_action': self.reject_action.get(),
         }
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
