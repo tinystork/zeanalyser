@@ -967,6 +967,11 @@ def _snr_worker(path):
         'fwhm': np.nan,
         'ecc': np.nan,
         'n_star_ecc': 0,
+        # Internal diagnostics for the FWHM/ECC measurement. These are NOT
+        # propagated to the persisted result rows; they only let the
+        # orchestrator distinguish a measurement failure from no detections.
+        'fwhm_ecc_outcome': None,
+        'fwhm_ecc_error': None,
         'ra': None,
         'dec': None,
     }
@@ -1010,18 +1015,24 @@ def _snr_worker(path):
                 if ecc_module is not None:
 
                     try:
-                        fwhm_val, ecc_val, n_det = ecc_module.calculate_fwhm_ecc(
+                        outcome = ecc_module.calculate_fwhm_ecc_outcome(
                             data,
                             sky_bg=sky_bg,
                             sky_noise=sky_noise,
                         )
-                        result['fwhm'] = fwhm_val
-                        result['ecc'] = ecc_val
-                        result['n_star_ecc'] = n_det
-                    except Exception:
+                        result['fwhm'] = outcome.get('fwhm', np.nan)
+                        result['ecc'] = outcome.get('ecc', np.nan)
+                        result['n_star_ecc'] = outcome.get('n', 0)
+                        result['fwhm_ecc_outcome'] = outcome.get('outcome')
+                        result['fwhm_ecc_error'] = outcome.get('reason')
+                    except Exception as metric_error:
                         result['fwhm'] = np.nan
                         result['ecc'] = np.nan
                         result['n_star_ecc'] = 0
+                        result['fwhm_ecc_outcome'] = 'measurement_failure'
+                        result['fwhm_ecc_error'] = (
+                            '{}: {}'.format(type(metric_error).__name__, metric_error)
+                        )[:250]
             else:
                 result['error'] = 'No valid image data in HDU 0.'
     except Exception as e:
@@ -1260,6 +1271,21 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     all_results_list = []
     _log("logic_snr_start")
     snr_loop_errors = 0
+    # Central FWHM/ECC measurement-failure aggregation (bounded examples).
+    metric_failure_count = 0
+    metric_failure_examples = []
+    metric_failure_examples_limit = 3
+
+    def _record_metric_failure(rel_path, reason):
+        """Count a metric measurement failure and keep a bounded first example."""
+        nonlocal metric_failure_count
+        metric_failure_count += 1
+        if len(metric_failure_examples) < metric_failure_examples_limit:
+            metric_failure_examples.append({
+                'file': rel_path,
+                'reason': reason or 'unspecified',
+            })
+
     if _is_cancelled():
         return _cancelled_result()
     try:
@@ -1341,6 +1367,11 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                             result_base['ecc'] = worker_res['ecc']
                         if 'n_star_ecc' in worker_res:
                             result_base['n_star_ecc'] = worker_res['n_star_ecc']
+                        if worker_res.get('fwhm_ecc_outcome') == 'measurement_failure':
+                            _record_metric_failure(
+                                result_base['rel_path'],
+                                worker_res.get('fwhm_ecc_error'),
+                            )
                         result_base['status'] = 'ok'
                         _log("logic_snr_info", file=result_base['rel_path'], snr=worker_res['snr'], bg=worker_res['sky_bg'])
                     else:
@@ -1447,18 +1478,29 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                     if ecc_module is not None:
 
                                         try:
-                                            fwhm_val, ecc_val, n_det = ecc_module.calculate_fwhm_ecc(
+                                            outcome = ecc_module.calculate_fwhm_ecc_outcome(
                                                 data,
                                                 sky_bg=sky_bg,
                                                 sky_noise=sky_noise,
                                             )
-                                            result['fwhm'] = fwhm_val
-                                            result['ecc'] = ecc_val
-                                            result['n_star_ecc'] = n_det
-                                        except Exception:
+                                            result['fwhm'] = outcome.get('fwhm', np.nan)
+                                            result['ecc'] = outcome.get('ecc', np.nan)
+                                            result['n_star_ecc'] = outcome.get('n', 0)
+                                            if outcome.get('outcome') == 'measurement_failure':
+                                                _record_metric_failure(
+                                                    result['rel_path'],
+                                                    outcome.get('reason'),
+                                                )
+                                        except Exception as metric_error:
                                             result['fwhm'] = np.nan
                                             result['ecc'] = np.nan
                                             result['n_star_ecc'] = 0
+                                            _record_metric_failure(
+                                                result['rel_path'],
+                                                '{}: {}'.format(
+                                                    type(metric_error).__name__, metric_error
+                                                ),
+                                            )
                                     result['status'] = 'ok'
                                     _log("logic_snr_info", file=result['rel_path'], snr=snr, bg=sky_bg)
                                 else:
@@ -1491,6 +1533,15 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 all_results_list.append(result)
     if snr_loop_errors > 0:
         _log("logic_snr_loop_errors", count=snr_loop_errors)
+
+    if metric_failure_count > 0:
+        first_example = metric_failure_examples[0] if metric_failure_examples else {'file': '', 'reason': ''}
+        _log(
+            "logic_fwhm_ecc_measurement_failures",
+            count=metric_failure_count,
+            file=first_example['file'],
+            reason=first_example['reason'],
+        )
 
     if _is_cancelled():
         return _cancelled_result()
