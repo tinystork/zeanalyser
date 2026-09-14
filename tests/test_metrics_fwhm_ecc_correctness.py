@@ -81,6 +81,33 @@ class _RaisingExecutor:
         raise RuntimeError("pool unavailable for test")
 
 
+def _metric_failure_result(path: str) -> dict:
+    return {
+        "path": path,
+        "snr": 20.0,
+        "sky_bg": 1.0,
+        "sky_noise": 1.0,
+        "signal_pixels": 10,
+        "starcount": 5,
+        "exposure": 10.0,
+        "filter": "LP",
+        "temperature": 0.0,
+        "eqmode": 2,
+        "sitelong": None,
+        "sitelat": None,
+        "telescope": "Seestar",
+        "date_obs": "2026-09-14T00:00:00",
+        "error": None,
+        "fwhm": np.nan,
+        "ecc": np.nan,
+        "n_star_ecc": 0,
+        "fwhm_ecc_outcome": "measurement_failure",
+        "fwhm_ecc_error": "KeyError: 'xcentroid'",
+        "ra": None,
+        "dec": None,
+    }
+
+
 class _ImmediateMetricFailureExecutor:
     """Pool stand-in returning a measurement-failure worker result per file."""
 
@@ -96,32 +123,34 @@ class _ImmediateMetricFailureExecutor:
 
     def submit(self, _function, path):
         future = Future()
-        future.set_result(
-            {
-                "path": path,
-                "snr": 20.0,
-                "sky_bg": 1.0,
-                "sky_noise": 1.0,
-                "signal_pixels": 10,
-                "starcount": 5,
-                "exposure": 10.0,
-                "filter": "LP",
-                "temperature": 0.0,
-                "eqmode": 2,
-                "sitelong": None,
-                "sitelat": None,
-                "telescope": "Seestar",
-                "date_obs": "2026-09-14T00:00:00",
-                "error": None,
-                "fwhm": np.nan,
-                "ecc": np.nan,
-                "n_star_ecc": 0,
-                "fwhm_ecc_outcome": "measurement_failure",
-                "fwhm_ecc_error": "KeyError: 'xcentroid'",
-                "ra": None,
-                "dec": None,
-            }
-        )
+        future.set_result(_metric_failure_result(path))
+        return future
+
+    def shutdown(self, wait=True, *, cancel_futures=False):
+        return None
+
+
+class _CountThenRaiseExecutor:
+    """Pool stand-in: every file yields a measurement failure, then the pool dies.
+
+    Reproduces D1: failures counted while draining a partially-completed pool
+    must not be counted a second time when the sequential fallback re-processes
+    every file.
+    """
+
+    def __init__(self, **_kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        # Raised only after the drain loop recorded its metric failures.
+        raise RuntimeError("pool died after draining all results")
+
+    def submit(self, _function, path):
+        future = Future()
+        future.set_result(_metric_failure_result(path))
         return future
 
     def shutdown(self, wait=True, *, cancel_futures=False):
@@ -307,3 +336,37 @@ def test_aggregation_sequential_fallback_matches_pool(tmp_path, monkeypatch):
     # measurement failure did not turn the files into errors
     assert all(row["status"] == "ok" for row in rows)
     assert np.isfinite(rows[0]["snr"])
+
+
+def test_d1_fallback_does_not_double_count_pool_metric_failures(tmp_path, monkeypatch):
+    """D1: pool drain failures must not be re-counted by the sequential fallback."""
+    paths = []
+    for idx in range(3):
+        paths.append(_write_fits(tmp_path / f"light_{idx}.fit", gaussian_field(seed=idx)))
+
+    def _boom(*_args, **_kwargs):
+        raise ValueError("injected metric failure")
+
+    monkeypatch.setattr(
+        analyse_logic.concurrent.futures, "ProcessPoolExecutor", _CountThenRaiseExecutor
+    )
+    monkeypatch.setattr(ecc_module, "calculate_fwhm_ecc_outcome", _boom)
+
+    logs = []
+    rows = analyse_logic.perform_analysis(
+        str(tmp_path),
+        str(tmp_path / project_state.DEFAULT_LOG_FILENAME),
+        _options(tmp_path),
+        _recording_callbacks(logs),
+    )
+
+    # the pool drained some results (recording failures) and then died
+    assert [entry[0] for entry in logs].count("logic_snr_pool_fallback") == 1
+
+    summaries = [entry for entry in logs if entry[0] == "logic_fwhm_ecc_measurement_failures"]
+    assert len(summaries) == 1
+    assert summaries[0][1]["count"] == len(paths), (
+        "pool failures were double counted by the sequential fallback"
+    )
+    assert all(row["status"] == "ok" for row in rows)
+    assert len(rows) == len(paths)

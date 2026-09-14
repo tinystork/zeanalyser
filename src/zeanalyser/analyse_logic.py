@@ -1395,6 +1395,10 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         _log("logic_snr_pool_fallback", e=pool_e)
         all_results_list = []
         snr_loop_errors = 0
+        # The fallback re-processes every file, so metric-failure aggregation must
+        # restart from zero to avoid double counting partial pool results.
+        metric_failure_count = 0
+        metric_failure_examples = []
 
         for i, fits_file_path in enumerate(fits_files_to_process):
             if _is_cancelled():
