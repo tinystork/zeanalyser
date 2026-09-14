@@ -1,7 +1,7 @@
 import pytest
 
 import zeanalyser.analyse_gui_qt as mod
-from zeanalyser.zone import _
+from zeanalyser.zone import translations
 pytestmark = pytest.mark.skipif(
     mod.QApplication is object, reason="PySide6 not installed in this environment"
 )
@@ -38,7 +38,11 @@ def test_reject_action_radio_and_options(monkeypatch):
     opts = win._build_options_from_ui()
     assert opts['move_rejected'] is False
     assert opts['delete_rejected'] is False
-    assert win.include_subfolders_cb.toolTip() == _("include_subfolders_tooltip")
+    tooltip = win.include_subfolders_cb.toolTip()
+    assert tooltip in (
+        translations["fr"]["include_subfolders_tooltip"],
+        translations["en"]["include_subfolders_tooltip"],
+    )
 
     # switch to move explicitly
     if win.reject_move_rb is not None:

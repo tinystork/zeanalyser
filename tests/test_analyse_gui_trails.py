@@ -36,6 +36,7 @@ def test_trail_ui_and_options(monkeypatch):
     win.trail_small_edge_spin.setValue(3)
     win.trail_line_gap_spin.setValue(11)
     win.trail_reject_dir_edit.setText("C:/tmp/trails_reject")
+    win.reject_move_rb.setChecked(True)
 
     opts = win._build_options_from_ui()
 
@@ -150,6 +151,7 @@ def test_apply_trail_calls_logic(monkeypatch):
     win.set_results(rows)
 
     win.trail_reject_dir_edit.setText("C:/tmp/trails_reject")
+    win.reject_move_rb.setChecked(True)
 
     called = {}
 

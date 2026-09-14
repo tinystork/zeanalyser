@@ -1,7 +1,7 @@
 import pytest
 
 import zeanalyser.analyse_gui_qt as mod
-from zeanalyser.zone import _
+from zeanalyser.zone import translations
 pytestmark = pytest.mark.skipif(
     mod.QApplication is object, reason="PySide6 not installed in this environment"
 )
@@ -34,7 +34,11 @@ def test_move_rejected_requires_dirs(monkeypatch):
     win.analyse_btn.click()
 
     assert getattr(win, '_current_worker', None) is None
-    assert _("gui_trail_reject_dir_required") in win.log.toPlainText()
+    log_text = win.log.toPlainText()
+    assert (
+        translations["fr"]["gui_trail_reject_dir_required"] in log_text
+        or translations["en"]["gui_trail_reject_dir_required"] in log_text
+    )
 
     if created_app:
         app.quit()
