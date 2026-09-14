@@ -437,6 +437,25 @@ def is_finite_number(value):
     return isinstance(value, (int, float)) and np.isfinite(value) if np else False
 
 
+def extract_valid_metric_values(rows, key, require_ok_status: bool = False):
+    """Return the finite values of ``key`` from result ``rows``.
+
+    Shared by the visualization dialog so the exact same extraction semantics
+    apply to every metric (SNR uses ``require_ok_status=True``).
+    """
+    values = []
+    for row in rows or []:
+        try:
+            if require_ok_status and row.get('status') != 'ok':
+                continue
+            value = row.get(key)
+            if is_finite_number(value):
+                values.append(value)
+        except Exception:
+            continue
+    return values
+
+
 class ResultsFilterProxy(QSortFilterProxyModel if 'QSortFilterProxyModel' in globals() else object):
     """Custom proxy that applies substring filtering plus a set of numeric/boolean filters.
 
@@ -2710,8 +2729,13 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         Useful for tests or callers that don't have a live Qt SelectionModel.
         """
-        # search fallback _results_rows stored in non-Qt mode
+        # search canonical rows first, then legacy caches (non-Qt mode)
         try:
+            for r in self._get_analysis_results_rows():
+                if r.get('file') == file_name or r.get('file_path', '').endswith(file_name) or r.get('path', '').endswith(file_name):
+                    self._load_preview_from_row(r)
+                    return True
+
             if getattr(self, '_results_rows', None) is not None:
                 for r in self._results_rows:
                     if r.get('file') == file_name or r.get('file_path', '').endswith(file_name) or r.get('path', '').endswith(file_name):
@@ -3487,12 +3511,8 @@ class ZeAnalyserMainWindow(QMainWindow):
     def _create_simple_stack_plan(self):
         """Create a simple stack plan from current results."""
         try:
-            # Get analysis results
-            rows = None
-            if getattr(self, '_results_model', None) is not None and hasattr(self._results_model, '_rows'):
-                rows = list(self._results_model._rows)
-            elif getattr(self, '_results_rows', None) is not None:
-                rows = list(self._results_rows)
+            # Get analysis results from the canonical owner.
+            rows = self._get_analysis_results_rows()
 
             if not rows:
                 self._log(_("gui_no_results_stack_plan"))
@@ -4155,15 +4175,11 @@ class ZeAnalyserMainWindow(QMainWindow):
         summary = f"Apply SNR rejection (mode={opts.get('snr_mode')}, value={opts.get('snr_value')}, dir={opts.get('snr_reject_dir')}, immediate={opts.get('apply_snr_action_immediately')})"
         self._log(summary)
 
-        # mark pending actions on the results model (mirror Tk behavior)
+        # mark pending actions on the canonical analysis rows (mirror Tk behavior)
         import math
-        rows = None
-        if getattr(self, '_results_model', None) is not None and hasattr(self._results_model, '_rows'):
-            rows = self._results_model._rows
-        elif getattr(self, '_results_rows', None) is not None:
-            rows = self._results_rows
+        rows = self._get_analysis_results_rows()
 
-        if rows is None:
+        if not rows:
             # nothing to apply
             try:
                 self._snr_last_applied = opts
@@ -4250,14 +4266,10 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             opts = {}
 
-        # mark rows pending
-        rows = None
-        if getattr(self, '_results_model', None) is not None and hasattr(self._results_model, '_rows'):
-            rows = self._results_model._rows
-        elif getattr(self, '_results_rows', None) is not None:
-            rows = self._results_rows
+        # mark rows pending (canonical analysis rows)
+        rows = self._get_analysis_results_rows()
 
-        if rows is None:
+        if not rows:
             return
 
         for r in rows:
@@ -4717,8 +4729,8 @@ class ZeAnalyserMainWindow(QMainWindow):
         log_path = getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip()
         has_log = bool(log_path and os.path.isfile(log_path))
         has_recos = bool(getattr(self, 'recommended_images', None))
-        if not has_recos and getattr(self, '_results_rows', None):
-            has_recos = any(r.get('recommended') for r in self._results_rows)
+        if not has_recos and rows:
+            has_recos = any(r.get('recommended') for r in rows)
 
         # Enable/disable based on presence of results
         try:
@@ -5155,14 +5167,9 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self._log("Qt not available for visualization")
                 return
 
-            # Get results
-            rows = None
-            if getattr(self, '_results_model', None) is not None and hasattr(self._results_model, '_rows'):
-                rows = list(self._results_model._rows)
-            elif getattr(self, '_results_rows', None) is not None:
-                rows = list(self._results_rows)
-            elif getattr(self, 'analysis_results', None):
-                rows = list(self.analysis_results)
+            # Get results from the canonical owner (analysis_results) so a
+            # stale model/legacy cache can never shadow the current rows.
+            rows = self._get_analysis_results_rows()
 
             if not rows:
                 log_path = getattr(self, 'log_path_edit', None) and self.log_path_edit.text().strip()
@@ -5218,11 +5225,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             fig_snr, ax_snr = plt.subplots(figsize=(8, 6))
             dialog._figures.append(fig_snr)
 
-            valid_snrs = [
-                r["snr"]
-                for r in rows
-                if r.get("status") == "ok" and is_finite_number(r.get("snr"))
-            ]
+            valid_snrs = extract_valid_metric_values(rows, 'snr', require_ok_status=True)
             snr_range_label = QLabel()
             if valid_snrs:
                 min_snr, max_snr = min(valid_snrs), max(valid_snrs)
@@ -5305,7 +5308,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             dialog._figures.append(fig_fwhm)
 
             fwhm_range_label = QLabel()
-            valid_fwhms = [r['fwhm'] for r in rows if is_finite_number(r.get('fwhm'))]
+            valid_fwhms = extract_valid_metric_values(rows, 'fwhm')
             if valid_fwhms:
                 min_fwhm, max_fwhm = min(valid_fwhms), max(valid_fwhms)
                 self.current_fwhm_min = min_fwhm
@@ -5376,7 +5379,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             dialog._figures.append(fig_ecc)
 
             ecc_range_label = QLabel()
-            valid_eccs = [r['ecc'] for r in rows if is_finite_number(r.get('ecc'))]
+            valid_eccs = extract_valid_metric_values(rows, 'ecc')
             if valid_eccs:
                 min_ecc, max_ecc = min(valid_eccs), max(valid_eccs)
                 self.current_ecc_min = min_ecc
@@ -5447,7 +5450,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             dialog._figures.append(fig_sc)
 
             sc_range_label = QLabel()
-            sc_values = [r['starcount'] for r in rows if is_finite_number(r.get('starcount'))]
+            sc_values = extract_valid_metric_values(rows, 'starcount')
             if sc_values:
                 min_sc, max_sc = min(sc_values), max(sc_values)
                 self.current_sc_min = min_sc
@@ -6072,10 +6075,10 @@ class ZeAnalyserMainWindow(QMainWindow):
             except Exception as e:
                 self._log(_("gui_apply_reco_error", e=e))
 
-            # Refresh model if present
+            # Refresh the results table through the canonical owner so the model
+            # rows and self.analysis_results can never diverge.
             try:
-                if getattr(self, '_results_model', None) is not None:
-                    self._results_model.set_rows(rows)
+                self.set_results(rows)
             except Exception:
                 pass
 
