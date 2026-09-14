@@ -80,6 +80,163 @@ DEFAULT_SHARPHI = 1.0
 DEFAULT_ROUNDLO = -0.6
 DEFAULT_ROUNDHI = 0.6
 
+# Centroid column names across Photutils versions.
+# Photutils < 3.0 exposed ``xcentroid``/``ycentroid``; Photutils >= 3.0 exposes
+# ``x_centroid``/``y_centroid``. Both forms are supported for measurements.
+LEGACY_CENTROID_COLUMNS = ('xcentroid', 'ycentroid')
+MODERN_CENTROID_COLUMNS = ('x_centroid', 'y_centroid')
+
+# Structured measurement outcomes (internal, not persisted).
+OUTCOME_OK = 'ok'
+OUTCOME_NO_DETECTIONS = 'no_detections'
+OUTCOME_MEASUREMENT_FAILURE = 'measurement_failure'
+
+
+def _resolve_centroid_columns(tbl):
+    """Return the ``(x, y)`` centroid column names available in ``tbl``.
+
+    Returns ``(None, None)`` when neither the legacy nor the modern naming
+    form is present. That situation is an internal measurement failure, not a
+    genuine "no detections" image.
+    """
+    try:
+        columns = set(getattr(tbl, 'colnames', ()) or ())
+    except Exception:
+        columns = set()
+    for x_key, y_key in (LEGACY_CENTROID_COLUMNS, MODERN_CENTROID_COLUMNS):
+        if x_key in columns and y_key in columns:
+            return x_key, y_key
+    return None, None
+
+
+def _outcome(outcome, fwhm=np.nan, ecc=np.nan, n=0, reason=None):
+    """Build a picklable structured metric outcome."""
+    return {
+        'outcome': outcome,
+        'fwhm': fwhm,
+        'ecc': ecc,
+        'n': int(n),
+        'reason': reason,
+    }
+
+
+def _measure_fwhm_ecc(
+    data,
+    fwhm_guess,
+    threshold_sigma,
+    sky_bg,
+    sky_noise,
+    box_radius,
+):
+    """Compute median FWHM/ECC, returning a structured outcome dict."""
+    arr = np.asarray(data)
+    bg, _, tbl = _detect_stars(
+        data=arr,
+        fwhm=fwhm_guess,
+        threshold_sigma=threshold_sigma,
+        sky_bg=sky_bg,
+        sky_noise=sky_noise,
+    )
+    if tbl is None:
+        return _outcome(OUTCOME_NO_DETECTIONS)
+
+    x_key, y_key = _resolve_centroid_columns(tbl)
+    if x_key is None or y_key is None:
+        return _outcome(
+            OUTCOME_MEASUREMENT_FAILURE,
+            reason='unsupported centroid columns: {}'.format(
+                list(getattr(tbl, 'colnames', ()) or ())
+            ),
+        )
+
+    fwhm_list = []
+    ecc_list = []
+
+    for star in tbl:
+        x_c = star[x_key]
+        y_c = star[y_key]
+        x_min = max(int(round(x_c - box_radius)), 0)
+        x_max = min(int(round(x_c + box_radius + 1)), arr.shape[1])
+        y_min = max(int(round(y_c - box_radius)), 0)
+        y_max = min(int(round(y_c + box_radius + 1)), arr.shape[0])
+        cutout = arr[y_min:y_max, x_min:x_max]
+        if cutout.size == 0:
+            continue
+
+        cutout = cutout - bg
+        cutout = np.clip(cutout, 0, None)
+        total_flux = np.sum(cutout)
+        if total_flux <= 0:
+            continue
+
+        y_coords, x_coords = np.indices(cutout.shape)
+        x_mean = np.sum(x_coords * cutout) / total_flux + x_min
+        y_mean = np.sum(y_coords * cutout) / total_flux + y_min
+
+        x_var = np.sum((x_coords - (x_mean - x_min))**2 * cutout) / total_flux
+        y_var = np.sum((y_coords - (y_mean - y_min))**2 * cutout) / total_flux
+        xy_cov = np.sum((x_coords - (x_mean - x_min)) * (y_coords - (y_mean - y_min)) * cutout) / total_flux
+
+        cov_matrix = np.array([[x_var, xy_cov], [xy_cov, y_var]])
+        eigvals = np.linalg.eigvals(cov_matrix)
+        sigma_major2 = np.max(eigvals)
+        sigma_minor2 = np.min(eigvals)
+
+        fwhm_major = 2.3548 * np.sqrt(sigma_major2)
+        fwhm_minor = 2.3548 * np.sqrt(sigma_minor2)
+        fwhm_mean = 0.5 * (fwhm_major + fwhm_minor)
+
+        ecc = np.sqrt(1.0 - sigma_minor2 / sigma_major2)
+
+        fwhm_list.append(fwhm_mean)
+        ecc_list.append(ecc)
+
+    if not fwhm_list:
+        return _outcome(
+            OUTCOME_MEASUREMENT_FAILURE,
+            reason='detections present but no usable star cutout',
+        )
+
+    fwhm_med = float(np.nanmedian(fwhm_list))
+    ecc_med = float(np.nanmedian(ecc_list))
+    return _outcome(OUTCOME_OK, fwhm=fwhm_med, ecc=ecc_med, n=len(fwhm_list))
+
+
+def calculate_fwhm_ecc_outcome(
+    data,
+    fwhm_guess=3.5,
+    threshold_sigma=5.0,
+    *,
+    sky_bg=None,
+    sky_noise=None,
+    box_radius=4,
+):
+    """Structured variant of :func:`calculate_fwhm_ecc`.
+
+    Returns a picklable dict::
+
+        {'outcome': 'ok'|'no_detections'|'measurement_failure',
+         'fwhm': float, 'ecc': float, 'n': int, 'reason': str|None}
+
+    ``measurement_failure`` reports an internal problem (e.g. unsupported
+    centroid columns or an unexpected exception) and must not be confused with
+    a genuine ``no_detections`` image.
+    """
+    try:
+        return _measure_fwhm_ecc(
+            data,
+            fwhm_guess,
+            threshold_sigma,
+            sky_bg,
+            sky_noise,
+            box_radius,
+        )
+    except Exception as exc:
+        return _outcome(
+            OUTCOME_MEASUREMENT_FAILURE,
+            reason=('{}: {}'.format(type(exc).__name__, exc))[:250],
+        )
+
 
 def _detect_stars(
     data: np.ndarray,
@@ -164,66 +321,19 @@ def calculate_fwhm_ecc(
         Median eccentricity of detected stars, or ``np.nan`` if none.
     n_detected : int
         Number of detected stars.
+
+    Notes
+    -----
+    This keeps its historical 3-tuple return for backward compatibility.
+    Callers that need to distinguish "no detections" from an internal
+    measurement failure should use :func:`calculate_fwhm_ecc_outcome`.
     """
-    try:
-        bg, _, tbl = _detect_stars(
-            data=np.asarray(data),
-            fwhm=fwhm_guess,
-            threshold_sigma=threshold_sigma,
-            sky_bg=sky_bg,
-            sky_noise=sky_noise,
-        )
-        if tbl is None:
-            return np.nan, np.nan, 0
-
-        fwhm_list = []
-        ecc_list = []
-
-        for star in tbl:
-            x_c = star['xcentroid']
-            y_c = star['ycentroid']
-            x_min = max(int(round(x_c - box_radius)), 0)
-            x_max = min(int(round(x_c + box_radius + 1)), data.shape[1])
-            y_min = max(int(round(y_c - box_radius)), 0)
-            y_max = min(int(round(y_c + box_radius + 1)), data.shape[0])
-            cutout = data[y_min:y_max, x_min:x_max]
-            if cutout.size == 0:
-                continue
-
-            cutout = cutout - bg
-            cutout = np.clip(cutout, 0, None)
-            total_flux = np.sum(cutout)
-            if total_flux <= 0:
-                continue
-
-            y_coords, x_coords = np.indices(cutout.shape)
-            x_mean = np.sum(x_coords * cutout) / total_flux + x_min
-            y_mean = np.sum(y_coords * cutout) / total_flux + y_min
-
-            x_var = np.sum((x_coords - (x_mean - x_min))**2 * cutout) / total_flux
-            y_var = np.sum((y_coords - (y_mean - y_min))**2 * cutout) / total_flux
-            xy_cov = np.sum((x_coords - (x_mean - x_min)) * (y_coords - (y_mean - y_min)) * cutout) / total_flux
-
-            cov_matrix = np.array([[x_var, xy_cov], [xy_cov, y_var]])
-            eigvals = np.linalg.eigvals(cov_matrix)
-            sigma_major2 = np.max(eigvals)
-            sigma_minor2 = np.min(eigvals)
-
-            fwhm_major = 2.3548 * np.sqrt(sigma_major2)
-            fwhm_minor = 2.3548 * np.sqrt(sigma_minor2)
-            fwhm_mean = 0.5 * (fwhm_major + fwhm_minor)
-
-            ecc = np.sqrt(1.0 - sigma_minor2 / sigma_major2)
-
-            fwhm_list.append(fwhm_mean)
-            ecc_list.append(ecc)
-
-        if not fwhm_list:
-            return np.nan, np.nan, 0
-
-        fwhm_med = float(np.nanmedian(fwhm_list))
-        ecc_med = float(np.nanmedian(ecc_list))
-        n = len(fwhm_list)
-        return fwhm_med, ecc_med, n
-    except Exception:
-        return np.nan, np.nan, 0
+    outcome = calculate_fwhm_ecc_outcome(
+        data,
+        fwhm_guess=fwhm_guess,
+        threshold_sigma=threshold_sigma,
+        sky_bg=sky_bg,
+        sky_noise=sky_noise,
+        box_radius=box_radius,
+    )
+    return outcome['fwhm'], outcome['ecc'], outcome['n']
