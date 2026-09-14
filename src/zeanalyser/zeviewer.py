@@ -588,12 +588,19 @@ else:
     # Graphics view with pan/zoom + key handling
     # -----------------------------------------------------------------------
     class ZeImageView(QGraphicsView):
+        viewScaled = Signal()
+
+        MODE_FIT = "fit"
+        MODE_ONE_TO_ONE = "one"
+        MODE_MANUAL = "manual"
+
         def __init__(self, parent=None):
             super().__init__(parent)
             self.setScene(QGraphicsScene(self))
             self._pix_item = QGraphicsPixmapItem()
             self.scene().addItem(self._pix_item)
             self._fit_on_resize = True
+            self._view_mode = self.MODE_FIT
             self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
             self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
             self.setDragMode(QGraphicsView.ScrollHandDrag)
@@ -612,28 +619,51 @@ else:
 
         def fit_in_view(self):
             if not self._has_pixmap:
-                return
+                return False
             try:
                 rect = self._pix_item.boundingRect()
                 if rect.isNull():
-                    return
+                    return False
                 self.fitInView(rect, Qt.KeepAspectRatio)
                 self._fit_on_resize = True
+                self._view_mode = self.MODE_FIT
+                return True
             except Exception:
-                pass
+                return False
 
         def reset_view(self):
             try:
                 self.resetTransform()
-                self.fit_in_view()
+                return self.fit_in_view()
             except Exception:
-                pass
+                return False
 
         def set_zoom_1_1(self):
+            if not self._has_pixmap:
+                return False
             try:
                 self.resetTransform()
+                self._fit_on_resize = False
+                self._view_mode = self.MODE_ONE_TO_ONE
+                return True
             except Exception:
-                pass
+                return False
+
+        def set_manual_scale(self, scale: float):
+            """Restore an absolute manual scale without entering Fit mode."""
+            if not self._has_pixmap:
+                return False
+            try:
+                scale = float(scale)
+                if not math.isfinite(scale) or scale <= 0:
+                    return False
+                self.resetTransform()
+                self.scale(scale, scale)
+                self._fit_on_resize = False
+                self._view_mode = self.MODE_MANUAL
+                return True
+            except Exception:
+                return False
 
         def zoom_in(self):
             self._scale_view(1.25)
@@ -643,18 +673,15 @@ else:
 
         def _scale_view(self, factor: float):
             if not self._has_pixmap:
-                return
+                return False
             try:
                 self.scale(factor, factor)
                 self._fit_on_resize = False
-                viewer = self.parent()
-                try:
-                    if viewer is not None and hasattr(viewer, "_on_image_view_scaled"):
-                        viewer._on_image_view_scaled()
-                except Exception:
-                    pass
+                self._view_mode = self.MODE_MANUAL
+                self.viewScaled.emit()
+                return True
             except Exception:
-                pass
+                return False
 
         # Events ---------------------------------------------------------
         def wheelEvent(self, event):  # noqa: N802 - Qt signature
@@ -1109,6 +1136,7 @@ else:
                 pass
 
             self.image_view = ZeImageView(self)
+            self.image_view.viewScaled.connect(self._on_image_view_scaled)
             self.image_view.setMinimumSize(320, 240)
             try:
                 self.image_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -1363,18 +1391,8 @@ else:
             try:
                 if mode == "one":
                     self.image_view.set_zoom_1_1()
-                    try:
-                        self.image_view._fit_on_resize = False
-                    except Exception:
-                        pass
                 elif mode == "manual":
-                    self.image_view.set_zoom_1_1()
-                    try:
-                        self.image_view._fit_on_resize = False
-                    except Exception:
-                        pass
-                    if scale and math.isfinite(scale) and scale > 0:
-                        self.image_view.scale(scale, scale)
+                    self.image_view.set_manual_scale(scale)
                 else:
                     self.image_view.fit_in_view()
             except Exception:
@@ -1889,36 +1907,34 @@ else:
         # Internal helpers -------------------------------------------------
         def _fit_view(self):
             try:
-                self.image_view.fit_in_view()
-                self._update_session_view_zoom("fit", 1.0)
+                if self.image_view.fit_in_view():
+                    self._update_session_view_zoom("fit", 1.0)
             except Exception:
                 pass
 
         def _one_to_one(self):
             try:
-                self.image_view.set_zoom_1_1()
-                self._update_session_view_zoom("one", 1.0)
+                if self.image_view.set_zoom_1_1():
+                    self._update_session_view_zoom("one", 1.0)
             except Exception:
                 pass
 
         def _zoom_in(self):
             try:
                 self.image_view.zoom_in()
-                self._update_session_view_zoom("manual", self._current_view_scale())
             except Exception:
                 pass
 
         def _zoom_out(self):
             try:
                 self.image_view.zoom_out()
-                self._update_session_view_zoom("manual", self._current_view_scale())
             except Exception:
                 pass
 
         def _reset_view(self):
             try:
-                self.image_view.reset_view()
-                self._update_session_view_zoom("fit", 1.0)
+                if self.image_view.reset_view():
+                    self._update_session_view_zoom("fit", 1.0)
             except Exception:
                 pass
 
