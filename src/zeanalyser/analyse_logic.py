@@ -1053,6 +1053,25 @@ def _trail_worker(args):
     return trail_module.run_trail_detection(chunk, params)
 
 
+def _build_progress_plan(trails_planned):
+    """Return {phase: (start, end)} contiguous over [0,100] for enabled phases."""
+    if trails_planned:
+        return {
+            'discovery': (0.0, 2.0),
+            'snr': (2.0, 55.0),
+            'snr_selection': (55.0, 60.0),
+            'trail_detection': (60.0, 90.0),
+            'trail_marking': (90.0, 95.0),
+            'finalize': (95.0, 100.0),
+        }
+    return {
+        'discovery': (0.0, 2.0),
+        'snr': (2.0, 90.0),
+        'snr_selection': (90.0, 95.0),
+        'finalize': (95.0, 100.0),
+    }
+
+
 # --- Fonction principale d'analyse (Orchestrateur) ---
 def perform_analysis(input_dir, output_log, options, callbacks):
     """
@@ -1090,6 +1109,18 @@ def perform_analysis(input_dir, output_log, options, callbacks):
             diag.finish_run()
         except Exception:
             logger.debug("perf diagnostics finish failed", exc_info=True)
+
+    trails_planned = bool(
+        options.get('detect_trails') and SATDET_AVAILABLE
+        and TRAIL_MODULE_LOADED
+        and hasattr(trail_module, 'run_trail_detection')
+    )
+    progress_plan = _build_progress_plan(trails_planned)
+
+    def _phase_progress(phase, fraction):
+        start, end = progress_plan[phase]
+        fraction = min(max(float(fraction), 0.0), 1.0)
+        return start + fraction * (end - start)
 
     bortle_dataset = None
     cancellation_reported = False
@@ -1307,6 +1338,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         return []
     _log("logic_fits_found", count=total_files)
     diag.stage_end("fits_enumeration", files=total_files)
+    _progress(_phase_progress('discovery', 1.0))
 
 
     # --- Étape 2: Boucle Analyse SNR ---
@@ -1358,7 +1390,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     ex.shutdown(wait=True, cancel_futures=True)
                     return _cancelled_result()
                 fits_file_path = future_map[future]
-                progress = ((idx + 1) / total_files) * 50
+                progress = _phase_progress('snr', (idx + 1) / total_files)
                 try:
                     rel_path_for_status = os.path.relpath(fits_file_path, abs_input_dir)
                 except ValueError:
@@ -1456,7 +1488,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         for i, fits_file_path in enumerate(fits_files_to_process):
             if _is_cancelled():
                 return _cancelled_result()
-            progress = ((i + 1) / total_files) * 50
+            progress = _phase_progress('snr', (i + 1) / total_files)
             try:
                 rel_path_for_status = os.path.relpath(fits_file_path, abs_input_dir)
             except ValueError:
@@ -1642,7 +1674,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     for r_idx, r in enumerate(all_results_list):
         if _is_cancelled():
             return _cancelled_result()
-        progress_snr_action = 50 + ((r_idx + 1) / total_files) * 5 # Petite progression pour cette étape
+        progress_snr_action = _phase_progress('snr_selection', (r_idx + 1) / total_files)
         _progress(progress_snr_action)
 
         process_for_trails = True # Par défaut, on traite pour les traînées
@@ -1795,17 +1827,16 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                         trail_results.update(res or {})
                         trail_errors.update(err or {})
                         completed += 1
-                        prog = 55 + ((completed / total_chunks) * 35)
-                        _progress(min(prog, 90.0))
+                        prog = _phase_progress('trail_detection', completed / total_chunks)
+                        _progress(prog)
             except Exception as trail_e:
                 if _is_cancelled():
                     return _cancelled_result()
                 _log("logic_trail_pool_error", e=trail_e)
                 traceback.print_exc()
                 trail_errors[('FATAL_CALL_ERROR', 0)] = str(trail_e)
-            _progress(90.0)
-    else:
-        _progress(90.0)
+            if trails_planned:
+                _progress(_phase_progress('trail_detection', 1.0))
 
 
     # --- Étape 6: Rejet Traînées et Actions Associées ---
@@ -1816,7 +1847,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         for r_idx, r in enumerate(all_results_list):
             if _is_cancelled():
                 return _cancelled_result()
-            progress_trail_action = 90 + ((r_idx + 1) / total_files) * 5 # 5% pour cette étape
+            progress_trail_action = _phase_progress('trail_marking', (r_idx + 1) / total_files)
             _progress(progress_trail_action)
 
             # On ne traite que les fichiers qui sont encore OK et qui n'ont pas été actionnés par SNR (si action immédiate)
@@ -1997,7 +2028,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     # --- Étape 7: Écrire les résultats détaillés FINALS dans le log ---
     if _is_cancelled():
         return _cancelled_result()
-    _progress(95.0)
+    _progress(_phase_progress('finalize', 0.0))
     detailed_log_persisted = True
     diag.stage_start("finalize_detailed_log_write")
     try:
@@ -2050,7 +2081,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         _log_func = _log if callable(_log) else print
         _log_func("logic_log_init_error", path=output_log, e=e) # Ou une clé d'erreur plus générique pour le log
     diag.stage_end("finalize_detailed_log_write")
-    _progress(97.0)
+    _progress(_phase_progress('finalize', 0.4))
 
 
     # --- Étape 8: Persistance du résumé et finalisation des sorties ---
@@ -2124,7 +2155,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         except OSError as marker_error:
             _log("logic_marker_invalidation_error", dir=abs_input_dir, e=marker_error)
         return _cancelled_result()
-    _progress(100)
+    _progress(_phase_progress('finalize', 1.0))
     _status("status_analysis_done") # Statut final générique
     _finish_diag()
     return all_results_list
