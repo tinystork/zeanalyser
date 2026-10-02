@@ -1,0 +1,254 @@
+{
+  "$schema": "urn:zeanalyser:contracts:corpus-manifest:v1",
+  "schema_version": "1.0.0",
+  "contract": "zeanalyser.corpus-manifest.v1",
+  "manifest_id": "corpus-deepsky-001",
+  "corpus": {
+    "corpus_id": "corpus-deepsky-001",
+    "phase": "initial",
+    "target_image_count": {
+      "min": 100,
+      "max": 200
+    }
+  },
+  "splits": {
+    "development": {
+      "split_id": "development",
+      "session_ids": ["s001", "s002"],
+      "target_ids": ["m31-nebula", "m45-dense"]
+    },
+    "validation": {
+      "split_id": "validation",
+      "session_ids": ["s003"],
+      "target_ids": ["m42-nebula"]
+    },
+    "holdout": {
+      "split_id": "holdout",
+      "session_ids": ["s004"],
+      "target_ids": ["m45-moon-pollution"]
+    }
+  },
+  "targets": [
+    {
+      "target_id": "m31-nebula",
+      "split": "development",
+      "session_ids": ["s001"],
+      "object_type": "deep_sky_nebula"
+    },
+    {
+      "target_id": "m45-dense",
+      "split": "development",
+      "session_ids": ["s002"],
+      "object_type": "deep_sky_dense"
+    },
+    {
+      "target_id": "m42-nebula",
+      "split": "validation",
+      "session_ids": ["s003"],
+      "object_type": "deep_sky_nebula"
+    },
+    {
+      "target_id": "m45-moon-pollution",
+      "split": "holdout",
+      "session_ids": ["s004"],
+      "object_type": "moon_adjacent_pollution"
+    }
+  ],
+  "sessions": [
+    {
+      "session_id": "s001",
+      "target_id": "m31-nebula",
+      "split": "development",
+      "image_ids": [
+        {
+          "image_id": "s001-img01",
+          "rel_path": "s001/img01.fits",
+          "sha256": null,
+          "color_mode": "cfa",
+          "bayer_pattern": "RGGB"
+        },
+        {
+          "image_id": "s001-img02",
+          "rel_path": "s001/img02.fits",
+          "sha256": null,
+          "color_mode": "cfa",
+          "bayer_pattern": "RGGB"
+        },
+        {
+          "image_id": "s001-img07",
+          "rel_path": "s001/img07.fits",
+          "sha256": null,
+          "color_mode": "cfa",
+          "bayer_pattern": "RGGB"
+        }
+      ],
+      "metadata": {
+        "instrument": "Seestar-S50",
+        "exposure_s": 10.0,
+        "filter": "none",
+        "gain": 80,
+        "binning": "1x1",
+        "calibration": "dark_applied"
+      }
+    },
+    {
+      "session_id": "s002",
+      "target_id": "m45-dense",
+      "split": "development",
+      "image_ids": [
+        {
+          "image_id": "s002-img01",
+          "rel_path": "s002/img01.fits",
+          "sha256": null,
+          "color_mode": "cfa",
+          "bayer_pattern": "RGGB"
+        }
+      ],
+      "metadata": {
+        "instrument": "Seestar-S50",
+        "exposure_s": 10.0,
+        "filter": "none",
+        "gain": 80,
+        "binning": "1x1",
+        "calibration": "dark_applied"
+      }
+    },
+    {
+      "session_id": "s003",
+      "target_id": "m42-nebula",
+      "split": "validation",
+      "image_ids": [
+        {
+          "image_id": "s003-img01",
+          "rel_path": "s003/img01.fits",
+          "sha256": null,
+          "color_mode": "mono",
+          "bayer_pattern": null
+        },
+        {
+          "image_id": "s003-img04",
+          "rel_path": "s003/img04.fits",
+          "sha256": null,
+          "color_mode": "mono",
+          "bayer_pattern": null
+        },
+        {
+          "image_id": "s003-img05",
+          "rel_path": "s003/img05.fits",
+          "sha256": null,
+          "color_mode": "mono",
+          "bayer_pattern": null
+        }
+      ],
+      "metadata": {
+        "instrument": "Seestar-S50",
+        "exposure_s": 10.0,
+        "filter": "none",
+        "gain": 80,
+        "binning": "1x1",
+        "calibration": "dark_applied"
+      }
+    },
+    {
+      "session_id": "s004",
+      "target_id": "m45-moon-pollution",
+      "split": "holdout",
+      "image_ids": [
+        {
+          "image_id": "s004-img01",
+          "rel_path": "s004/img01.fits",
+          "sha256": null,
+          "color_mode": "mono",
+          "bayer_pattern": null
+        }
+      ],
+      "metadata": {
+        "instrument": "Seestar-S50",
+        "exposure_s": 10.0,
+        "filter": "none",
+        "gain": 80,
+        "binning": "1x1",
+        "calibration": "dark_applied"
+      }
+    }
+  ],
+  "annotations": [
+    {
+      "annotation_id": "ann-trail-s001-img07-0001",
+      "image_id": "s001-img07",
+      "kind": "trail",
+      "label": "present",
+      "confidence": 0.9,
+      "annotator": "annotator-a",
+      "provenance": {
+        "tool": "manual_review",
+        "date": "2026-10-01"
+      },
+      "geometry": {
+        "segments": [
+          {
+            "segment_id": "s1",
+            "endpoints": [[100.5, 50.0], [104.0, 350.0]]
+          }
+        ]
+      },
+      "object_class": "unknown",
+      "stacking_usability": null,
+      "reviewed": false
+    },
+    {
+      "annotation_id": "ann-trail-s001-img02-0001",
+      "image_id": "s001-img02",
+      "kind": "trail",
+      "label": "absent",
+      "confidence": 0.95,
+      "annotator": "annotator-a",
+      "provenance": {
+        "tool": "manual_review",
+        "date": "2026-10-01"
+      },
+      "geometry": null,
+      "object_class": null,
+      "stacking_usability": null,
+      "reviewed": true
+    },
+    {
+      "annotation_id": "ann-transparency-s003-img04-0001",
+      "image_id": "s003-img04",
+      "kind": "transparency",
+      "label": "uncertain",
+      "confidence": 0.5,
+      "annotator": "annotator-b",
+      "provenance": {
+        "tool": "manual_review",
+        "date": "2026-10-01"
+      },
+      "geometry": null,
+      "object_class": null,
+      "stacking_usability": "uncertain",
+      "reviewed": true
+    },
+    {
+      "annotation_id": "ann-transparency-s003-img05-0001",
+      "image_id": "s003-img05",
+      "kind": "transparency",
+      "label": "not_applicable",
+      "confidence": null,
+      "annotator": "annotator-b",
+      "provenance": {
+        "tool": "manual_review",
+        "date": "2026-10-01"
+      },
+      "geometry": null,
+      "object_class": null,
+      "stacking_usability": null,
+      "reviewed": true
+    }
+  ],
+  "anti_leak_rules": [
+    "sessions and targets are assigned to a single split as a whole group",
+    "neighboring poses, dithers, copies/exports, series and mosaics stay in the same split",
+    "no random per-file splitting",
+    "validation/holdout annotations require a second reviewer"
+  ]
+}

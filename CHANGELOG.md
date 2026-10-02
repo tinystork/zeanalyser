@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.5.0 – Fiabilisation et preuves de recherche (2026-10-02)
+
+* Fiabilisation de l'aperçu, de la réouverture de projet et du chemin canonique des lignes de résultats
+* Observables scientifiques robustes : comptage d'étoiles sans faux « zéro » sur erreur interne ; ECC calculé avec `eigvalsh` sur covariance symétrique (gardes physiques testées)
+* Contrats documentaires v1 : états de résultat versionnés, format de corpus annoté et protocole de benchmark (schémas + exemples, sans image ni chemin privé)
+* Réparation de l'intégration produit du détecteur de traînées satdet : unités de seuil, normalisation multi-extension et propagation fail-safe (aucun faux négatif sur erreur/absence)
+* Séparation stricte des catégories de rejet : les recommandations déplacent les images hors sélection vers un dossier dédié `rejected_recommendations` (plus jamais fusionnées avec le rejet faible SNR) ; application SNR / traînées / recommandations isolées ; « Organiser » traite chaque catégorie vers sa destination propre sans double déplacement ; confirmation explicite avant application (annulation = zéro mutation) et persistance du log après action
+* Spikes 001–003 inclus à titre de preuve de recherche uniquement : aucun backend sélectionné ni intégré ; le spike 003 (profil transverse) est publié avec verdict `PARTIAL`
+
 ## v3.4.0 – Project reopen and marker contract (2026-09-13)
 
 * Restauration automatique des résultats persistés à l'ouverture d'un projet analysé, sans relancer l'analyse scientifique

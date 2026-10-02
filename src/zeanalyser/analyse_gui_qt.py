@@ -69,6 +69,7 @@ import traceback
 from zeanalyser.platform_utils import open_path_with_default_app
 from zeanalyser import organizer_module
 from zeanalyser import project_state
+from zeanalyser import analysis_schema
 from zeanalyser.app_identity import (
     WINDOWS_APP_USER_MODEL_ID,
     configure_qt_application,
@@ -663,6 +664,19 @@ def extract_valid_metric_values(rows, key, require_ok_status: bool = False):
     return values
 
 
+def count_trail_states(rows):
+    """Thin alias to the shared analysis_schema helper (Qt consumer)."""
+    return analysis_schema.count_trail_states(rows)
+
+
+# Canonical row path resolution is shared with the Tk frontend via
+# analysis_schema.resolve_row_file_path / resolve_row_abs_path so that the
+# recommendation matching never conflates same-basename rows from different
+# directories (see resolve_row_abs_path).
+resolve_row_file_path = analysis_schema.resolve_row_file_path
+resolve_row_abs_path = analysis_schema.resolve_row_abs_path
+
+
 class ResultsFilterProxy(QSortFilterProxyModel if 'QSortFilterProxyModel' in globals() else object):
     """Custom proxy that applies substring filtering plus a set of numeric/boolean filters.
 
@@ -805,17 +819,20 @@ class ResultsFilterProxy(QSortFilterProxyModel if 'QSortFilterProxyModel' in glo
             desired_has_trails = desired_has_trails
 
         if desired_has_trails is not None:
-            v = get_value('has_trails')
-            # accept 0/1, True/False, 'True' strings
+            # Only proven states match; None/indeterminate/error/skipped/
+            # unavailable never match "Yes" nor "No".
+            from zeanalyser import analysis_schema
             try:
-                if isinstance(v, str):
-                    vv = v.lower() in ('1', 'true', 'yes')
-                else:
-                    vv = bool(v)
-                if vv is not desired_has_trails:
-                    return False
+                row = model._rows[source_row]
             except Exception:
-                return False
+                row = None
+            state = analysis_schema.resolve_trail_state(row) if isinstance(row, dict) else 'indeterminate'
+            if desired_has_trails is True:
+                if state != 'measured_positive':
+                    return False
+            else:  # desired_has_trails is False
+                if state != 'measured_negative':
+                    return False
 
         return True
 
@@ -1062,8 +1079,8 @@ class ZeAnalyserMainWindow(QMainWindow):
             ok_fwhm = (r.get('fwhm', np.inf) <= fwhm_p) if is_finite_number(r.get('fwhm', np.nan)) else True
             ok_ecc = (r.get('ecc', np.inf) <= ecc_p) if is_finite_number(r.get('ecc', np.nan)) else True
             ok_sc = True
-            if self.use_starcount_filter and sc_p is not None:
-                ok_sc = (r.get('starcount', -np.inf) >= sc_p)
+            if self.use_starcount_filter and sc_p is not None and is_finite_number(r.get('starcount', np.nan)):
+                ok_sc = (r.get('starcount') >= sc_p)
             return ok_snr and ok_fwhm and ok_ecc and ok_sc
 
         recos = [r for r in valid_kept if ok(r)]
@@ -1462,10 +1479,16 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.trail_sigma_spin.setValue(2.5)
             self.trail_sigma_spin.setDecimals(2)
             self.trail_low_thr_spin = QDoubleSpinBox()
-            self.trail_low_thr_spin.setRange(0.0, 10000.0)
+            self.trail_low_thr_spin.setRange(0.0, 100.0)
+            self.trail_low_thr_spin.setDecimals(2)
+            self.trail_low_thr_spin.setSingleStep(0.5)
+            self.trail_low_thr_spin.setSuffix(" %")
             self.trail_low_thr_spin.setValue(10.0)
             self.trail_high_thr_spin = QDoubleSpinBox()
-            self.trail_high_thr_spin.setRange(0.0, 10000.0)
+            self.trail_high_thr_spin.setRange(0.0, 100.0)
+            self.trail_high_thr_spin.setDecimals(2)
+            self.trail_high_thr_spin.setSingleStep(0.5)
+            self.trail_high_thr_spin.setSuffix(" %")
             self.trail_high_thr_spin.setValue(50.0)
             self.trail_sigma_label = QLabel(_("sigma_label"))
             params_row.addWidget(self.trail_sigma_label)
@@ -1487,7 +1510,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.trail_small_edge_spin.setRange(1, 1000)
             self.trail_small_edge_spin.setValue(5)
             self.trail_line_gap_spin = QSpinBox()
-            self.trail_line_gap_spin.setRange(0, 1000)
+            self.trail_line_gap_spin.setRange(1, 1000)
             self.trail_line_gap_spin.setValue(10)
             self.trail_line_len_label = QLabel(_("line_len_label"))
             params_row2.addWidget(self.trail_line_len_label)
@@ -1505,7 +1528,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.trail_reject_dir_edit = QLineEdit()
             self.trail_reject_dir_edit.setPlaceholderText(_("trail_reject_dir_label"))
             self.trail_reject_browse = QPushButton(_("browse_button"))
-            self.trail_apply_btn = QPushButton(_("apply_snr_rejection_button"))
+            self.trail_apply_btn = QPushButton(_("apply_trail_rejection_button"))
             rej_row.addWidget(self.trail_reject_dir_edit)
             rej_row.addWidget(self.trail_reject_browse)
             rej_row.addWidget(self.trail_apply_btn)
@@ -2896,13 +2919,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             target_idx = None
             norm_target = os.path.normcase(os.path.abspath(full_path))
             for i, r in enumerate(rows):
-                candidate = ''
-                if r.get('file_path'):
-                    candidate = r.get('file_path')
-                elif r.get('path') and r.get('file'):
-                    candidate = os.path.join(r.get('path'), r.get('file'))
-                elif r.get('path'):
-                    candidate = r.get('path')
+                candidate = resolve_row_file_path(r)
                 if candidate and os.path.normcase(os.path.abspath(candidate)) == norm_target:
                     target_idx = i
                     break
@@ -2965,13 +2982,7 @@ class ZeAnalyserMainWindow(QMainWindow):
         try:
             import os
 
-            path = ''
-            if 'file_path' in row and isinstance(row.get('file_path'), str) and row.get('file_path'):
-                path = row.get('file_path')
-            elif 'path' in row and 'file' in row and row.get('path') and row.get('file'):
-                path = os.path.join(row.get('path'), row.get('file'))
-            elif 'path' in row and isinstance(row.get('path'), str):
-                path = row.get('path')
+            path = resolve_row_file_path(row)
 
             self._preview_last_path = path
             self._preview_last_histogram = None
@@ -3496,6 +3507,13 @@ class ZeAnalyserMainWindow(QMainWindow):
         except Exception:
             opts['snr_reject_dir'] = None
 
+        # Dedicated recommendations reject directory (never merged into SNR dir).
+        try:
+            reco_edit = getattr(self, 'reco_reject_dir_edit', None)
+            opts['reco_reject_dir'] = reco_edit.text().strip() if (opts['move_rejected'] and reco_edit is not None) else None
+        except Exception:
+            opts['reco_reject_dir'] = None
+
         # Action immediates
         try:
             opts['apply_snr_action_immediately'] = bool(getattr(self, 'snr_apply_immediately_cb', None) and self.snr_apply_immediately_cb.isChecked())
@@ -3506,10 +3524,14 @@ class ZeAnalyserMainWindow(QMainWindow):
         try:
             # params
             if getattr(self, 'trail_sigma_spin', None) is not None:
+                low_pct = float(self.trail_low_thr_spin.value()) if getattr(self, 'trail_low_thr_spin', None) is not None else None
+                high_pct = float(self.trail_high_thr_spin.value()) if getattr(self, 'trail_high_thr_spin', None) is not None else None
                 opts['trail_params'] = {
                     'sigma': float(self.trail_sigma_spin.value()) if getattr(self, 'trail_sigma_spin', None) is not None else None,
-                    'low_thr': float(self.trail_low_thr_spin.value()) if getattr(self, 'trail_low_thr_spin', None) is not None else None,
-                    'high_thr': float(self.trail_high_thr_spin.value()) if getattr(self, 'trail_high_thr_spin', None) is not None else None,
+                    # GUI présente les seuils en pourcentage explicite 0..100 ;
+                    # le backend attend des fractions canoniques 0..1.
+                    'low_thresh': (low_pct / 100.0) if low_pct is not None else None,
+                    'h_thresh': (high_pct / 100.0) if high_pct is not None else None,
                     'line_len': int(self.trail_line_len_spin.value()) if getattr(self, 'trail_line_len_spin', None) is not None else None,
                     'small_edge': int(self.trail_small_edge_spin.value()) if getattr(self, 'trail_small_edge_spin', None) is not None else None,
                     'line_gap': int(self.trail_line_gap_spin.value()) if getattr(self, 'trail_line_gap_spin', None) is not None else None,
@@ -4481,7 +4503,8 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         for r in rows:
             try:
-                if r.get('status') == 'ok' and (r.get('has_trails') or r.get('rejected_reason') == 'trail_pending_action'):
+                is_positive = analysis_schema.resolve_trail_state(r) == 'measured_positive'
+                if r.get('status') == 'ok' and (is_positive or r.get('rejected_reason') == 'trail_pending_action'):
                     # mark as pending trail action (mirror Tk which only flags trail hits)
                     r['rejected_reason'] = 'trail_pending_action'
                     r['action'] = 'pending_trail_action'
@@ -4750,7 +4773,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             if getattr(self, 'trail_reject_browse', None) is not None:
                 self.trail_reject_browse.setText(zone._("browse_button"))
             if getattr(self, 'trail_apply_btn', None) is not None:
-                self.trail_apply_btn.setText(zone._("apply_snr_rejection_button"))
+                self.trail_apply_btn.setText(zone._("apply_trail_rejection_button"))
             try:
                 self._update_acstools_status_label()
             except Exception:
@@ -5798,7 +5821,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             tab_widget.addTab(comp_tab, _("visu_tab_snr_comp"))
 
             # --- Satellite Trails Pie Chart ---
-            detect_trails_was_active = any('has_trails' in r for r in rows)
+            detect_trails_was_active = analysis_schema.has_measured_or_attempted_trail_state(rows)
             if detect_trails_was_active:
                 sat_tab = QWidget()
                 sat_layout = QVBoxLayout(sat_tab)
@@ -5806,8 +5829,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                 fig_sat, ax_sat = plt.subplots(figsize=(6, 6))
                 dialog._figures.append(fig_sat)
 
-                sat_count = sum(1 for r in rows if r.get('has_trails', False))
-                no_sat_count = sum(1 for r in rows if 'has_trails' in r and not r.get('has_trails'))
+                sat_count, no_sat_count = count_trail_states(rows)
                 total_analyzed_for_trails = sat_count + no_sat_count
 
                 if total_analyzed_for_trails > 0:
@@ -5867,8 +5889,14 @@ class ZeAnalyserMainWindow(QMainWindow):
                 sig = r.get('signal_pixels')
                 item.setText(6, str(sig) if sig is not None else "N/A")
 
-                trails = r.get('has_trails')
-                item.setText(7, _("logic_trail_yes") if trails else _("logic_trail_no"))
+                state = analysis_schema.resolve_trail_state(r)
+                if state == 'measured_positive':
+                    trail_text = _("logic_trail_yes")
+                elif state == 'measured_negative':
+                    trail_text = _("logic_trail_no")
+                else:
+                    trail_text = 'N/A'
+                item.setText(7, trail_text)
 
                 nbseg = r.get('num_trails')
                 item.setText(8, str(nbseg) if nbseg is not None else "N/A")
@@ -5971,6 +5999,16 @@ class ZeAnalyserMainWindow(QMainWindow):
                 ])
                 self.rec_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
                 recom_group_layout.addWidget(self.rec_tree)
+
+                # Dedicated recommendations reject directory (never low-SNR dir)
+                reco_dir_layout = QHBoxLayout()
+                reco_dir_layout.addWidget(QLabel(_("reco_reject_dir_label")))
+                self.reco_reject_dir_edit = QLineEdit()
+                self.reco_reject_dir_edit.setPlaceholderText(
+                    os.path.join("<input>", "rejected_recommendations")
+                )
+                reco_dir_layout.addWidget(self.reco_reject_dir_edit, 1)
+                recom_group_layout.addLayout(reco_dir_layout)
 
                 # Buttons
                 btns_layout = QHBoxLayout()
@@ -6172,7 +6210,14 @@ class ZeAnalyserMainWindow(QMainWindow):
         return '\n'.join(lines)
 
     def _apply_recommendations_gui(self, *, recommended=None, auto: bool = False):
-        """Apply recommended images selection."""
+        """Apply recommended images selection (dedicated recommendations dir).
+
+        Preview-only by default: computing the recommended set never mutates
+        files. Manual application requires an explicit confirmation and moves
+        non-recommended images to a dedicated ``rejected_recommendations``
+        directory (never the low-SNR reject directory). No auto-apply without
+        consent.
+        """
         try:
             rows = self._get_analysis_results_rows()
             if not rows:
@@ -6187,24 +6232,13 @@ class ZeAnalyserMainWindow(QMainWindow):
                 return
 
             recommended_files = {
-                os.path.abspath(r.get('file'))
+                resolve_row_abs_path(r)
                 for r in recommended
-                if r.get('file')
             }
+            recommended_files.discard('')
             if not recommended_files:
                 self._log(_("gui_apply_reco_no_paths"))
                 return
-
-            # Flag non-recommended images for reco actions
-            for r in rows:
-                try:
-                    if r.get('status') == 'ok' and r.get('action') == 'kept':
-                        file_path = r.get('file') or r.get('path') or r.get('file_path')
-                        if file_path and os.path.abspath(file_path) not in recommended_files:
-                            r['rejected_reason'] = 'not_in_recommendation'
-                            r['action'] = 'pending_reco_action'
-                except Exception:
-                    continue
 
             # Build options from UI
             try:
@@ -6216,14 +6250,60 @@ class ZeAnalyserMainWindow(QMainWindow):
             move_flag = opts.get('move_rejected', False)
             input_dir = opts.get('input_path', '')
 
+            from zeanalyser import analyse_logic
+            # Dedicated recommendations reject directory — NEVER the SNR dir.
+            reco_dir = analyse_logic.resolve_reco_reject_dir(
+                opts.get('reco_reject_dir'), input_dir
+            )
+
+            kept_rows = [
+                r for r in rows
+                if r.get('status') == 'ok' and r.get('action') == 'kept'
+            ]
+
+            def _is_recommended(r):
+                return resolve_row_abs_path(r) in recommended_files
+
+            to_move = [
+                r for r in kept_rows
+                if resolve_row_abs_path(r) and not _is_recommended(r)
+            ]
+
+            # Consent contract: NO auto-apply of recommendations without
+            # explicit consent. In auto mode we only compute/preview and log;
+            # the caller continues with already-pending SNR/trail categories.
+            if auto:
+                self._log(_translate("gui_reco_auto_skipped", count=len(to_move)))
+                return
+
+            # Explicit confirmation before manual application. Cancel => zero
+            # mutation.
+            if not self._confirm_recommendations_apply(
+                total=len(kept_rows),
+                recommended_count=len(recommended),
+                move_count=len(to_move),
+                reco_dir=reco_dir,
+                to_move=to_move,
+            ):
+                self._log(_("gui_reco_confirm_cancelled"))
+                return
+
+            # Flag non-recommended images for reco actions (dedicated category)
+            for r in kept_rows:
+                try:
+                    if resolve_row_abs_path(r) and not _is_recommended(r):
+                        r['rejected_reason'] = 'not_in_recommendation'
+                        r['action'] = 'pending_reco_action'
+                except Exception:
+                    continue
+
             callbacks = self._build_logic_callbacks()
 
             applied = 0
             try:
-                from zeanalyser import analyse_logic
                 applied += analyse_logic.apply_pending_reco_actions(
                     rows,
-                    opts.get('snr_reject_dir'),
+                    reco_dir,
                     delete_rejected_flag=delete_flag,
                     move_rejected_flag=move_flag,
                     log_callback=callbacks['log'],
@@ -6231,54 +6311,6 @@ class ZeAnalyserMainWindow(QMainWindow):
                     progress_callback=callbacks['progress'],
                     input_dir_abs=input_dir,
                 )
-
-                applied += analyse_logic.apply_pending_snr_actions(
-                    rows,
-                    opts.get('snr_reject_dir'),
-                    delete_rejected_flag=delete_flag,
-                    move_rejected_flag=move_flag,
-                    log_callback=callbacks['log'],
-                    status_callback=callbacks['status'],
-                    progress_callback=callbacks['progress'],
-                    input_dir_abs=input_dir,
-                )
-
-                if hasattr(analyse_logic, 'apply_pending_starcount_actions'):
-                    applied += analyse_logic.apply_pending_starcount_actions(
-                        rows,
-                        opts.get('starcount_reject_dir', opts.get('snr_reject_dir')),
-                        delete_rejected_flag=delete_flag,
-                        move_rejected_flag=move_flag,
-                        log_callback=callbacks['log'],
-                        status_callback=callbacks['status'],
-                        progress_callback=callbacks['progress'],
-                        input_dir_abs=input_dir,
-                    )
-
-                if hasattr(analyse_logic, 'apply_pending_fwhm_actions'):
-                    applied += analyse_logic.apply_pending_fwhm_actions(
-                        rows,
-                        opts.get('fwhm_reject_dir', opts.get('snr_reject_dir')),
-                        delete_rejected_flag=delete_flag,
-                        move_rejected_flag=move_flag,
-                        log_callback=callbacks['log'],
-                        status_callback=callbacks['status'],
-                        progress_callback=callbacks['progress'],
-                        input_dir_abs=input_dir,
-                    )
-
-                if hasattr(analyse_logic, 'apply_pending_ecc_actions'):
-                    applied += analyse_logic.apply_pending_ecc_actions(
-                        rows,
-                        opts.get('ecc_reject_dir', opts.get('snr_reject_dir')),
-                        delete_rejected_flag=delete_flag,
-                        move_rejected_flag=move_flag,
-                        log_callback=callbacks['log'],
-                        status_callback=callbacks['status'],
-                        progress_callback=callbacks['progress'],
-                        input_dir_abs=input_dir,
-                    )
-
             except Exception as e:
                 self._log(_("gui_apply_reco_error", e=e))
 
@@ -6293,6 +6325,9 @@ class ZeAnalyserMainWindow(QMainWindow):
                 self._refresh_results_display()
             except Exception:
                 pass
+
+            # Persist the post-action state so a reload matches the filesystem.
+            self._persist_actions_state(opts, input_dir, rows)
 
             if applied and hasattr(self, '_regenerate_stack_plan'):
                 try:
@@ -6319,6 +6354,101 @@ class ZeAnalyserMainWindow(QMainWindow):
 
         except Exception as e:
             self._log(_("gui_apply_reco_inner_error", e=e))
+
+    def _confirm_recommendations_apply(self, *, total, recommended_count,
+                                       move_count, reco_dir, to_move):
+        """Ask the user to confirm applying recommendations.
+
+        Returns True when the user confirms, False otherwise (cancel => zero
+        mutation). Builds an honest preview with totals, effective thresholds
+        and a failure breakdown (SNR/FWHM/ECC/starcount + overlaps).
+        """
+        try:
+            from zeanalyser import analyse_logic
+        except Exception:
+            return False
+
+        snr_min = getattr(self, 'reco_snr_min', None)
+        fwhm_max = getattr(self, 'reco_fwhm_max', None)
+        ecc_max = getattr(self, 'reco_ecc_max', None)
+        sc_min = getattr(self, 'reco_starcount_min', None)
+        use_sc = bool(getattr(self, 'use_starcount_filter', False))
+
+        breakdown = analyse_logic.recommendation_failure_breakdown(
+            to_move,
+            snr_min=snr_min,
+            fwhm_max=fwhm_max,
+            ecc_max=ecc_max,
+            starcount_min=sc_min,
+            use_starcount=use_sc,
+        )
+
+        def _fmt(v):
+            if v is None:
+                return "-"
+            if isinstance(v, float):
+                return f"{v:.3g}"
+            return str(v)
+
+        msg = "\n".join([
+            _translate("gui_reco_confirm_total", total=total),
+            _translate("gui_reco_confirm_recommended", count=recommended_count),
+            _translate("gui_reco_confirm_move", count=move_count),
+            _translate("gui_reco_confirm_dest", dir=reco_dir or "-"),
+            "",
+            _translate("gui_reco_confirm_thresholds",
+                       snr=_fmt(snr_min), fwhm=_fmt(fwhm_max),
+                       ecc=_fmt(ecc_max), sc=_fmt(sc_min)),
+            _translate("gui_reco_confirm_breakdown",
+                       snr=breakdown['snr'], fwhm=breakdown['fwhm'],
+                       ecc=breakdown['ecc'], sc=breakdown['starcount'],
+                       overlap=breakdown['overlap']),
+        ])
+
+        try:
+            ans = QMessageBox.question(
+                self,
+                _translate("gui_reco_confirm_title"),
+                msg,
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+        except Exception:
+            return False
+        return ans == QMessageBox.Yes
+
+    def _persist_actions_state(self, opts, input_dir, rows):
+        """Persist post-action state to the log so reload == filesystem."""
+        try:
+            log_edit = getattr(self, 'log_path_edit', None)
+            if log_edit is None or not log_edit.text().strip():
+                return
+            from zeanalyser import analyse_logic
+            current_options = {
+                'analyze_snr': opts.get('analyze_snr', False),
+                'detect_trails': opts.get('detect_trails', False),
+                'include_subfolders': opts.get('include_subfolders', False),
+                'move_rejected': opts.get('move_rejected', False),
+                'delete_rejected': opts.get('delete_rejected', False),
+                'snr_reject_dir': opts.get('snr_reject_dir'),
+                'trail_reject_dir': opts.get('trail_reject_dir'),
+                'reco_reject_dir': opts.get('reco_reject_dir'),
+                'snr_selection_mode': opts.get('snr_selection_mode'),
+                'snr_selection_value': opts.get('snr_selection_value'),
+                'trail_params': opts.get('trail_params', {}),
+            }
+            analyse_logic.write_log_summary(
+                log_edit.text().strip(),
+                input_dir,
+                current_options,
+                results_list=rows,
+            )
+        except Exception:
+            pass
+        try:
+            self._update_log_and_vis_buttons_state()
+        except Exception:
+            pass
 
     def _mark_good_images(self, rows):
         """Mark all images with status 'ok'."""
@@ -6724,7 +6854,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
             total += analyse_logic.apply_pending_reco_actions(
                 rows,
-                opts.get('snr_reject_dir'),
+                analyse_logic.resolve_reco_reject_dir(opts.get('reco_reject_dir'), input_dir),
                 delete_rejected_flag=delete_flag,
                 move_rejected_flag=move_flag,
                 log_callback=callbacks['log'],
@@ -6808,6 +6938,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                         'delete_rejected': delete_flag,
                         'snr_reject_dir': opts.get('snr_reject_dir'),
                         'trail_reject_dir': opts.get('trail_reject_dir'),
+                        'reco_reject_dir': opts.get('reco_reject_dir'),
                         'snr_selection_mode': opts.get('snr_selection_mode'),
                         'snr_selection_value': opts.get('snr_selection_value'),
                         'trail_params': opts.get('trail_params', {}),
@@ -6859,7 +6990,7 @@ class ZeAnalyserMainWindow(QMainWindow):
 
             total += analyse_logic.apply_pending_reco_actions(
                 rows,
-                opts.get('snr_reject_dir'),
+                analyse_logic.resolve_reco_reject_dir(opts.get('reco_reject_dir'), input_dir),
                 delete_rejected_flag=delete_flag,
                 move_rejected_flag=move_flag,
                 log_callback=callbacks['log'],
@@ -6962,6 +7093,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                         'delete_rejected': delete_flag,
                         'snr_reject_dir': opts.get('snr_reject_dir'),
                         'trail_reject_dir': opts.get('trail_reject_dir'),
+                        'reco_reject_dir': opts.get('reco_reject_dir'),
                         'snr_selection_mode': opts.get('snr_selection_mode'),
                         'snr_selection_value': opts.get('snr_selection_value'),
                         'trail_params': opts.get('trail_params', {}),
@@ -7010,7 +7142,9 @@ class ZeAnalyserMainWindow(QMainWindow):
         elif action_type == 'ecc':
             reject_dir = opts.get('ecc_reject_dir', opts.get('snr_reject_dir'))  # fallback
         elif action_type == 'reco':
-            reject_dir = opts.get('snr_reject_dir')
+            reject_dir = analyse_logic.resolve_reco_reject_dir(
+                opts.get('reco_reject_dir'), input_dir
+            )
         else:
             reject_dir = opts.get('snr_reject_dir')
 

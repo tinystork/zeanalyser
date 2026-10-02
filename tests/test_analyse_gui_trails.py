@@ -44,8 +44,8 @@ def test_trail_ui_and_options(monkeypatch):
     assert isinstance(opts.get('trail_params'), dict)
     tp = opts['trail_params']
     assert tp.get('sigma') == pytest.approx(3.14, rel=1e-6)
-    assert tp.get('low_thr') == pytest.approx(12.5, rel=1e-6)
-    assert tp.get('high_thr') == pytest.approx(65.0, rel=1e-6)
+    assert tp.get('low_thresh') == pytest.approx(0.125, rel=1e-6)
+    assert tp.get('h_thresh') == pytest.approx(0.65, rel=1e-6)
     assert tp.get('line_len') == 120
     assert tp.get('small_edge') == 3
     assert tp.get('line_gap') == 11
@@ -59,8 +59,8 @@ def test_qt_and_tk_trail_apply_parity(monkeypatch):
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
 
     rows_template = [
-        {'file': 'a.fits', 'has_trails': True, 'status': 'ok', 'path': 'C:/tmp/a.fits'},
-        {'file': 'b.fits', 'has_trails': False, 'status': 'ok', 'path': 'C:/tmp/b.fits'},
+        {'file': 'a.fits', 'has_trails': True, 'trail_state': 'measured_positive', 'status': 'ok', 'path': 'C:/tmp/a.fits'},
+        {'file': 'b.fits', 'has_trails': False, 'trail_state': 'measured_negative', 'status': 'ok', 'path': 'C:/tmp/b.fits'},
     ]
 
     called_snapshots = []

@@ -1,0 +1,3093 @@
+{
+  "meta": {
+    "mission": "ZA-TRAIL-02C-TRANSVERSE-PROFILE-SPIKE-20261002",
+    "seed_dev": 20261005,
+    "seed_blind": 20261006,
+    "config": {
+      "sample_order": 1,
+      "sample_half_width": 10.0,
+      "sample_offset_step": 0.25,
+      "sample_long_reduce": "median",
+      "fit_max_nfev": 2000,
+      "ridge_sigma_bounds": [
+        0.3,
+        10.0
+      ],
+      "column_width_bounds": [
+        0.5,
+        20.0
+      ],
+      "column_softness_bounds": [
+        0.01,
+        4.0
+      ],
+      "min_snr": 4.0,
+      "max_rss_frac": 0.1,
+      "pref_delta_threshold": 0.1,
+      "aicc_delta_threshold": 4.0,
+      "column_flat_top_ratio": 2.0
+    },
+    "config_sha256": "30eae771ba70d0a744bb3dca6ac42fde16d08188249ec6693e22d01f7c59ad71",
+    "fingerprints": {
+      "profile_models.py": "285c047896e4df519be6c42bce1615e9dbb4ff871ae77285f04aa1c08043926f",
+      "synthetic_profiles.py": "3bdb88fec5e990f492c149e9ebeceaa611b0ff7f5300527a4e19dc1ea6991308",
+      "run_spike.py": "9acf01aa545c103c7c15114c21b615cecb58e23df392d9f4624b068e5d30f53a",
+      "run_probe_impl.py": "edd478e67f9290dfcc6986fb31133e05305d203cc99290c74e7bb7d8f673d163",
+      "../002-adaptive-hough-trail-detector/detector.py": "6af23e9b01ccd4713e50e0af2567e67397aaf9745a13dd6cbf2c911e9916382f",
+      "../002-adaptive-hough-trail-detector/synthetic.py": "335416e7773e5015545b5a6e03417afaaf3186fb9ff0c256b750eb6eec5e377a",
+      "../002-adaptive-hough-trail-detector/metrics.py": "02595c4e53693dfe4f4bf949eed89acd6fe5ae5986bd4c1b8726440d62ae8992",
+      "../001-trail-detector-comparison/synthetic.py": "991b152dbb78787ab9fa26073d4a65469e8c39f1b935abe18e53baf7bfb1ac27"
+    },
+    "generated_at_utc": "2026-10-02T11:22:42Z"
+  },
+  "results": {
+    "dev": [
+      {
+        "label": "ambiguous",
+        "reason": "column fit degenerate (no flat top)",
+        "preference": -0.30372291227284454,
+        "snr": 207.96347807346632,
+        "converged": true,
+        "aicc_delta": -49.59090862293829,
+        "ridge": {
+          "params": {
+            "baseline": 0.0007448848336844755,
+            "amplitude": 355.9431407167391,
+            "center": 0.0016025486787067363,
+            "sigma": 0.6504259712764501
+          },
+          "rss": 5282.722570660719,
+          "rrss": 68.60678663195739,
+          "aicc": 346.9238817181718,
+          "status": 2,
+          "nfev": 11
+        },
+        "column": {
+          "params": {
+            "baseline": -0.9365746041841925,
+            "amplitude": 1198.6038399579388,
+            "center": 0.001384423431493571,
+            "width": 0.5000000000000001,
+            "softness": 0.3945938423481247
+          },
+          "rss": 2784.693985968662,
+          "rrss": 36.64071034169292,
+          "aicc": 297.3329730952335,
+          "status": 2,
+          "nfev": 13
+        },
+        "runtime_s": 0.096188,
+        "coverage": 1.0,
+        "noise": 5.7635,
+        "case_id": "ridge_s0.6_c0.0",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ambiguous",
+        "sigma_err": 0.0504,
+        "correct": false,
+        "outcome": "missed_ambiguous"
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.2595468484183803,
+        "snr": 32.0130076463645,
+        "converged": true,
+        "aicc_delta": 44.24568455817075,
+        "ridge": {
+          "params": {
+            "baseline": -0.9748486616627043,
+            "amplitude": 163.14543736663728,
+            "center": 0.0012015524430312155,
+            "sigma": 0.7359272547728587
+          },
+          "rss": 21.987889399871456,
+          "rrss": 0.2855570051931358,
+          "aicc": -97.09422832194673,
+          "status": 2,
+          "nfev": 6
+        },
+        "column": {
+          "params": {
+            "baseline": -1.0575850010928378,
+            "amplitude": 202.50742197410426,
+            "center": 0.0013633700496208897,
+            "width": 1.4944101998000796,
+            "softness": 0.34266258807877353
+          },
+          "rss": 36.91672364775136,
+          "rrss": 0.4857463637862021,
+          "aicc": -52.84854376377598,
+          "status": 2,
+          "nfev": 9
+        },
+        "runtime_s": 0.050499,
+        "coverage": 1.0,
+        "noise": 6.3258,
+        "case_id": "ridge_s0.6_c0.25",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.1359,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.511432418059474,
+        "snr": 5.880996425183733,
+        "converged": true,
+        "aicc_delta": -90.26131318081875,
+        "ridge": {
+          "params": {
+            "baseline": -1.1447075956913761,
+            "amplitude": 48.37403217985495,
+            "center": 0.029698389203394467,
+            "sigma": 0.7845583584715158
+          },
+          "rss": 169.94365542940182,
+          "rrss": 2.2070604601221016,
+          "aicc": 68.54875668140832,
+          "status": 2,
+          "nfev": 12
+        },
+        "column": {
+          "params": {
+            "baseline": -0.9828048741337387,
+            "amplitude": 45.58455331566961,
+            "center": 0.027507421685894807,
+            "width": 2.0150171242163784,
+            "softness": 0.22509674065544646
+          },
+          "rss": 54.220527248115225,
+          "rrss": 0.7134279901067793,
+          "aicc": -21.71255649941043,
+          "status": 2,
+          "nfev": 11
+        },
+        "runtime_s": 0.057428,
+        "coverage": 1.0,
+        "noise": 8.2255,
+        "case_id": "ridge_s0.6_c0.5",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "column",
+        "sigma_err": 0.1846,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.4441074677222343,
+        "snr": 76.44749870566258,
+        "converged": true,
+        "aicc_delta": 78.54325751685393,
+        "ridge": {
+          "params": {
+            "baseline": -0.9421961007193275,
+            "amplitude": 328.5936850825484,
+            "center": 0.00020414429455979473,
+            "sigma": 0.7307183216427197
+          },
+          "rss": 77.9373522268006,
+          "rrss": 1.0121734055428648,
+          "aicc": 5.40426577967645,
+          "status": 2,
+          "nfev": 8
+        },
+        "column": {
+          "params": {
+            "baseline": -1.2563871460011535,
+            "amplitude": 438.0151614219007,
+            "center": 0.00012374617336441724,
+            "width": 1.3885990663338075,
+            "softness": 0.35838169068677145
+          },
+          "rss": 199.83759223471367,
+          "rrss": 2.6294420030883376,
+          "aicc": 83.94752329653038,
+          "status": 2,
+          "nfev": 17
+        },
+        "runtime_s": 0.05389,
+        "coverage": 1.0,
+        "noise": 5.7296,
+        "case_id": "ridge_s0.6_c0.75",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.1307,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.3600249137203686,
+        "snr": 26.876536774881345,
+        "converged": true,
+        "aicc_delta": 62.274998618449516,
+        "ridge": {
+          "params": {
+            "baseline": -2.1118829695666004,
+            "amplitude": 176.1704004262274,
+            "center": 0.008429551568913724,
+            "sigma": 0.900980426714713
+          },
+          "rss": 36.02388197424178,
+          "rrss": 0.46784262304210106,
+          "aicc": -57.105315097522976,
+          "status": 2,
+          "nfev": 8
+        },
+        "column": {
+          "params": {
+            "baseline": -2.2587748982982347,
+            "amplitude": 223.23814940727766,
+            "center": 0.008360579551701407,
+            "width": 1.7955795150019995,
+            "softness": 0.4265051780086032
+          },
+          "rss": 75.56090914721041,
+          "rrss": 0.9942224887790844,
+          "aicc": 5.169683520926537,
+          "status": 2,
+          "nfev": 17
+        },
+        "runtime_s": 0.063038,
+        "coverage": 1.0,
+        "noise": 8.3061,
+        "case_id": "ridge_s0.8_c0.0",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.101,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.02832997083383408,
+        "snr": 11.948419408304938,
+        "converged": true,
+        "aicc_delta": 5.805529283005978,
+        "ridge": {
+          "params": {
+            "baseline": -1.0278674600965327,
+            "amplitude": 52.95188774956789,
+            "center": -0.013218085294727613,
+            "sigma": 0.8911931070848252
+          },
+          "rss": 88.45146203581461,
+          "rrss": 1.1487202861794106,
+          "aicc": 15.654704209919927,
+          "status": 2,
+          "nfev": 7
+        },
+        "column": {
+          "params": {
+            "baseline": -1.0853645215883667,
+            "amplitude": 69.18386071340356,
+            "center": -0.010530832318834638,
+            "width": 1.7266021054137681,
+            "softness": 0.431464800831044
+          },
+          "rss": 92.3935319422757,
+          "rrss": 1.2157043676615225,
+          "aicc": 21.460233492925905,
+          "status": 2,
+          "nfev": 12
+        },
+        "runtime_s": 0.06398,
+        "coverage": 1.0,
+        "noise": 5.7902,
+        "case_id": "ridge_s0.8_c0.25",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0912,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.4664604231148797,
+        "snr": 70.13989340384083,
+        "converged": true,
+        "aicc_delta": 83.11181119518055,
+        "ridge": {
+          "params": {
+            "baseline": -1.570206938970422,
+            "amplitude": 354.33872035461525,
+            "center": -0.00039184697607261537,
+            "sigma": 0.9009196537535824
+          },
+          "rss": 58.03226796215176,
+          "rrss": 0.7536658176902825,
+          "aicc": -18.483130537422067,
+          "status": 2,
+          "nfev": 6
+        },
+        "column": {
+          "params": {
+            "baseline": -1.8315087644328385,
+            "amplitude": 443.32057037849773,
+            "center": -0.0005541635035589008,
+            "width": 1.8169337441376676,
+            "softness": 0.42232595232507664
+          },
+          "rss": 157.43312544231685,
+          "rrss": 2.071488492662064,
+          "aicc": 64.62868065775848,
+          "status": 2,
+          "nfev": 13
+        },
+        "runtime_s": 0.063219,
+        "coverage": 1.0,
+        "noise": 6.3205,
+        "case_id": "ridge_s0.8_c0.5",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.1009,
+        "correct": true
+      },
+      {
+        "label": "ambiguous",
+        "reason": "insufficient AICc delta",
+        "preference": 0.009659536654302013,
+        "snr": 27.789262974344304,
+        "converged": true,
+        "aicc_delta": 2.779739214438081,
+        "ridge": {
+          "params": {
+            "baseline": -2.0813353632750395,
+            "amplitude": 178.79680698394935,
+            "center": -0.0038578438981622283,
+            "sigma": 0.8974247454754704
+          },
+          "rss": 906.4995150187791,
+          "rrss": 11.772720974269859,
+          "aicc": 204.15276437144942,
+          "status": 2,
+          "nfev": 7
+        },
+        "column": {
+          "params": {
+            "baseline": -2.255591330317852,
+            "amplitude": 229.57208211575983,
+            "center": -0.006978877876995507,
+            "width": 1.7673487492066724,
+            "softness": 0.42917641113427674
+          },
+          "rss": 912.1806830504403,
+          "rrss": 12.002377408558425,
+          "aicc": 206.9325035858875,
+          "status": 2,
+          "nfev": 12
+        },
+        "runtime_s": 0.0738,
+        "coverage": 1.0,
+        "noise": 8.2612,
+        "case_id": "ridge_s0.8_c0.75",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ambiguous",
+        "sigma_err": 0.0974,
+        "correct": false,
+        "outcome": "missed_ambiguous"
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.06256205078630485,
+        "snr": 11.401196267889343,
+        "converged": true,
+        "aicc_delta": 11.363151870030002,
+        "ridge": {
+          "params": {
+            "baseline": -2.153700237598173,
+            "amplitude": 56.546784024667666,
+            "center": -0.00694950159419387,
+            "sigma": 1.2718164293932852
+          },
+          "rss": 36.69332044978439,
+          "rrss": 0.47653662921797907,
+          "aicc": -55.61389225237505,
+          "status": 2,
+          "nfev": 6
+        },
+        "column": {
+          "params": {
+            "baseline": -2.2480540201540786,
+            "amplitude": 73.17391216646709,
+            "center": -0.006838237287130034,
+            "width": 2.4896880767916203,
+            "softness": 0.6120028783676701
+          },
+          "rss": 41.05080247876006,
+          "rrss": 0.5401421378784219,
+          "aicc": -44.25074038234505,
+          "status": 2,
+          "nfev": 33
+        },
+        "runtime_s": 0.102138,
+        "coverage": 1.0,
+        "noise": 6.4181,
+        "case_id": "ridge_s1.2_c0.0",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0718,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.6603784464777488,
+        "snr": 57.25729136186836,
+        "converged": true,
+        "aicc_delta": 129.7593277485231,
+        "ridge": {
+          "params": {
+            "baseline": -3.212439776763685,
+            "amplitude": 376.77137482319705,
+            "center": -0.0015619583507701113,
+            "sigma": 1.2592136200718094
+          },
+          "rss": 57.72559938720863,
+          "rrss": 0.7496831089247874,
+          "aicc": -18.912305905836593,
+          "status": 2,
+          "nfev": 9
+        },
+        "column": {
+          "params": {
+            "baseline": -3.771572425142093,
+            "amplitude": 482.5667395190797,
+            "center": -0.0016332202338591607,
+            "width": 2.4878557964469183,
+            "softness": 0.6012439457638874
+          },
+          "rss": 278.54999889041244,
+          "rrss": 3.665131564347532,
+          "aicc": 110.8470218426865,
+          "status": 2,
+          "nfev": 8
+        },
+        "runtime_s": 0.081071,
+        "coverage": 1.0,
+        "noise": 8.428,
+        "case_id": "ridge_s1.2_c0.25",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0592,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.07509122434957254,
+        "snr": 41.124167389587804,
+        "converged": true,
+        "aicc_delta": 13.402566095928009,
+        "ridge": {
+          "params": {
+            "baseline": -2.4618251653185497,
+            "amplitude": 189.263396788264,
+            "center": 0.00218971969917048,
+            "sigma": 1.2661115838705561
+          },
+          "rss": 282.44410188593025,
+          "rrss": 3.6681052192977956,
+          "aicc": 109.69786784877732,
+          "status": 2,
+          "nfev": 6
+        },
+        "column": {
+          "params": {
+            "baseline": -2.719465331073809,
+            "amplitude": 240.40569846491726,
+            "center": 0.0022991642610732978,
+            "width": 2.5202276732878066,
+            "softness": 0.6005855590756899
+          },
+          "rss": 324.0423655455493,
+          "rrss": 4.263715336125649,
+          "aicc": 123.10043394470533,
+          "status": 2,
+          "nfev": 10
+        },
+        "runtime_s": 0.081979,
+        "coverage": 1.0,
+        "noise": 5.8458,
+        "case_id": "ridge_s1.2_c0.5",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0661,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.22078187887592127,
+        "snr": 11.245421318670195,
+        "converged": true,
+        "aicc_delta": 37.58026610442603,
+        "ridge": {
+          "params": {
+            "baseline": -1.893727547780019,
+            "amplitude": 55.58136118274517,
+            "center": -0.01460858668743297,
+            "sigma": 1.2408052822817168
+          },
+          "rss": 11.094014290229703,
+          "rrss": 0.1440781076653208,
+          "aicc": -152.50520325033193,
+          "status": 2,
+          "nfev": 6
+        },
+        "column": {
+          "params": {
+            "baseline": -1.9734138124300584,
+            "amplitude": 71.21556600847407,
+            "center": -0.014530681452792599,
+            "width": 2.4500951251730774,
+            "softness": 0.5924833325058076
+          },
+          "rss": 17.154995891572455,
+          "rrss": 0.22572363015226915,
+          "aicc": -114.9249371459059,
+          "status": 2,
+          "nfev": 8
+        },
+        "runtime_s": 0.049304,
+        "coverage": 1.0,
+        "noise": 6.3328,
+        "case_id": "ridge_s1.2_c0.75",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0408,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.7379727692457668,
+        "snr": 82.51102898678057,
+        "converged": true,
+        "aicc_delta": 154.46896823271032,
+        "ridge": {
+          "params": {
+            "baseline": -3.122746234283999,
+            "amplitude": 383.4334409368831,
+            "center": 0.0027126649698868293,
+            "sigma": 1.546353569276392
+          },
+          "rss": 51.98844621627819,
+          "rrss": 0.675174626185431,
+          "aicc": -27.391323773609372,
+          "status": 2,
+          "nfev": 8
+        },
+        "column": {
+          "params": {
+            "baseline": -3.9731074695892903,
+            "amplitude": 494.8306919116997,
+            "center": 0.002691985734285652,
+            "width": 3.0383438068307926,
+            "softness": 0.7430573666091601
+          },
+          "rss": 340.3503844535168,
+          "rrss": 4.478294532283116,
+          "aicc": 127.07764445910095,
+          "status": 2,
+          "nfev": 33
+        },
+        "runtime_s": 0.065445,
+        "coverage": 1.0,
+        "noise": 5.9971,
+        "case_id": "ridge_s1.5_c0.0",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0464,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.18321448667277615,
+        "snr": 37.648180977774445,
+        "converged": true,
+        "aicc_delta": 31.234549160048715,
+        "ridge": {
+          "params": {
+            "baseline": -3.7034185891665983,
+            "amplitude": 193.43872962422185,
+            "center": -6.000025521901861e-05,
+            "sigma": 1.551100045883478
+          },
+          "rss": 158.3776287302587,
+          "rrss": 2.0568523211721907,
+          "aicc": 62.83949542905037,
+          "status": 2,
+          "nfev": 6
+        },
+        "column": {
+          "params": {
+            "baseline": -4.115769324534903,
+            "amplitude": 248.61820978095434,
+            "center": -4.726856287283252e-05,
+            "width": 3.058703313808493,
+            "softness": 0.7429494576533084
+          },
+          "rss": 226.44991150947027,
+          "rrss": 2.9796040988088195,
+          "aicc": 94.07404458909909,
+          "status": 2,
+          "nfev": 15
+        },
+        "runtime_s": 0.057937,
+        "coverage": 1.0,
+        "noise": 6.6037,
+        "case_id": "ridge_s1.5_c0.25",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0511,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.11455072116064982,
+        "snr": 8.197464980636221,
+        "converged": true,
+        "aicc_delta": 19.853875980174106,
+        "ridge": {
+          "params": {
+            "baseline": -3.0392416373270787,
+            "amplitude": 56.95367451515436,
+            "center": -0.01382790245673763,
+            "sigma": 1.5108329634845503
+          },
+          "rss": 41.98437451264338,
+          "rrss": 0.5452516170473166,
+          "aicc": -44.70296713352434,
+          "status": 2,
+          "nfev": 9
+        },
+        "column": {
+          "params": {
+            "baseline": -3.0915392258475776,
+            "amplitude": 68.77846256783117,
+            "center": -0.013559417427789102,
+            "width": 3.151400326352383,
+            "softness": 0.688118456996139
+          },
+          "rss": 52.1610954024291,
+          "rrss": 0.6863302026635407,
+          "aicc": -24.849091153350233,
+          "status": 2,
+          "nfev": 19
+        },
+        "runtime_s": 0.054884,
+        "coverage": 1.0,
+        "noise": 8.3902,
+        "case_id": "ridge_s1.5_c0.5",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0108,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.13332580018802337,
+        "snr": 83.91192315367526,
+        "converged": true,
+        "aicc_delta": 22.942986061333585,
+        "ridge": {
+          "params": {
+            "baseline": -3.911159770673899,
+            "amplitude": 386.77557751155393,
+            "center": 0.0019420606390547124,
+            "sigma": 1.5495029536227765
+          },
+          "rss": 593.0037018101435,
+          "rrss": 7.701346776755111,
+          "aicc": 169.77718622178773,
+          "status": 2,
+          "nfev": 6
+        },
+        "column": {
+          "params": {
+            "baseline": -4.867462332514524,
+            "amplitude": 505.4462123978929,
+            "center": 0.0019017858221304484,
+            "width": 3.010448901175012,
+            "softness": 0.7513379050762687
+          },
+          "rss": 765.3836470660596,
+          "rrss": 10.07083746139552,
+          "aicc": 192.72017228312131,
+          "status": 2,
+          "nfev": 15
+        },
+        "runtime_s": 0.060736,
+        "coverage": 1.0,
+        "noise": 6.0235,
+        "case_id": "ridge_s1.5_c0.75",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0495,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.2445768669409038,
+        "snr": 27.990826740149785,
+        "converged": true,
+        "aicc_delta": 41.65594660114959,
+        "ridge": {
+          "params": {
+            "baseline": -8.762066251640192,
+            "amplitude": 195.10538146368785,
+            "center": -0.005207766469172123,
+            "sigma": 2.4607917636225896
+          },
+          "rss": 135.77869613545704,
+          "rrss": 1.7633596900708706,
+          "aicc": 50.36906667139714,
+          "status": 2,
+          "nfev": 7
+        },
+        "column": {
+          "params": {
+            "baseline": -9.626910846257196,
+            "amplitude": 246.2738682801606,
+            "center": -0.005307395272503577,
+            "width": 4.960884467249718,
+            "softness": 1.1660556908203144
+          },
+          "rss": 220.79332794562671,
+          "rrss": 2.9051753677056147,
+          "aicc": 92.02501327254673,
+          "status": 2,
+          "nfev": 8
+        },
+        "runtime_s": 0.057517,
+        "coverage": 1.0,
+        "noise": 8.7984,
+        "case_id": "ridge_s2.5_c0.0",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0392,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.040856971664289,
+        "snr": 10.617768067550042,
+        "converged": true,
+        "aicc_delta": -5.407670419125282,
+        "ridge": {
+          "params": {
+            "baseline": -3.667461579351479,
+            "amplitude": 54.23319661299781,
+            "center": -0.0032527924374590126,
+            "sigma": 2.392917566726742
+          },
+          "rss": 32.332177607434964,
+          "rrss": 0.4198984104861684,
+          "aicc": -65.86296718617834,
+          "status": 2,
+          "nfev": 8
+        },
+        "column": {
+          "params": {
+            "baseline": -3.701451537796834,
+            "amplitude": 63.588237488038736,
+            "center": -0.0051990504592471475,
+            "width": 5.128086482040952,
+            "softness": 1.0594948135174214
+          },
+          "rss": 29.406960748040625,
+          "rrss": 0.38693369405316613,
+          "aicc": -71.27063760530362,
+          "status": 2,
+          "nfev": 28
+        },
+        "runtime_s": 0.060057,
+        "coverage": 1.0,
+        "noise": 5.9889,
+        "case_id": "ridge_s2.5_c0.25",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "column",
+        "sigma_err": 0.1071,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.2075081139913428,
+        "snr": 70.02919646728138,
+        "converged": true,
+        "aicc_delta": 35.32652447683853,
+        "ridge": {
+          "params": {
+            "baseline": -8.96406752947975,
+            "amplitude": 388.63559918781704,
+            "center": -0.004819882939225025,
+            "sigma": 2.462587032716316
+          },
+          "rss": 480.6186215246684,
+          "rrss": 6.241800279541148,
+          "aicc": 152.7569338469113,
+          "status": 2,
+          "nfev": 7
+        },
+        "column": {
+          "params": {
+            "baseline": -10.481329428910279,
+            "amplitude": 485.20087867040485,
+            "center": -0.004859122356881793,
+            "width": 5.01053310536297,
+            "softness": 1.156311978883045
+          },
+          "rss": 722.8009155120291,
+          "rrss": 9.510538362000382,
+          "aicc": 188.08345832374982,
+          "status": 2,
+          "nfev": 14
+        },
+        "runtime_s": 0.067727,
+        "coverage": 1.0,
+        "noise": 6.9286,
+        "case_id": "ridge_s2.5_c0.5",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0374,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.3798755568980129,
+        "snr": 26.80397422299926,
+        "converged": true,
+        "aicc_delta": 66.0009480565166,
+        "ridge": {
+          "params": {
+            "baseline": -6.780741085945321,
+            "amplitude": 179.36457570589766,
+            "center": -0.005048018563378443,
+            "sigma": 2.4638139597824322
+          },
+          "rss": 38.492230999195534,
+          "rrss": 0.4998991038856563,
+          "aicc": -51.7370950141108,
+          "status": 2,
+          "nfev": 8
+        },
+        "column": {
+          "params": {
+            "baseline": -7.715520508795966,
+            "amplitude": 230.2024080642635,
+            "center": -0.004936095580516891,
+            "width": 4.897554854747233,
+            "softness": 1.1827859111968657
+          },
+          "rss": 84.53898361054117,
+          "rrss": 1.1123550475071207,
+          "aicc": 14.263853042405803,
+          "status": 2,
+          "nfev": 33
+        },
+        "runtime_s": 0.088907,
+        "coverage": 1.0,
+        "noise": 8.5884,
+        "case_id": "ridge_s2.5_c0.75",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0362,
+        "correct": true
+      },
+      {
+        "label": "ambiguous",
+        "reason": "insufficient AICc delta",
+        "preference": -0.0026613439131831563,
+        "snr": 8.413530183866916,
+        "converged": true,
+        "aicc_delta": 0.7837068717503115,
+        "ridge": {
+          "params": {
+            "baseline": -4.594673062010125,
+            "amplitude": 44.748780430340936,
+            "center": 0.0008625750954539331,
+            "sigma": 3.187838017354543
+          },
+          "rss": 17.569646430704488,
+          "rrss": 0.22817722637278556,
+          "aicc": -115.2640706780115,
+          "status": 2,
+          "nfev": 9
+        },
+        "column": {
+          "params": {
+            "baseline": -4.872331899731731,
+            "amplitude": 56.689224320203806,
+            "center": 0.0022161520845647036,
+            "width": 6.428655764850049,
+            "softness": 1.5169771161124617
+          },
+          "rss": 17.24941097591236,
+          "rrss": 0.22696593389358372,
+          "aicc": -114.4803638062612,
+          "status": 2,
+          "nfev": 50
+        },
+        "runtime_s": 0.111413,
+        "coverage": 1.0,
+        "noise": 6.7379,
+        "case_id": "ridge_s3.5_c0.0",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ambiguous",
+        "sigma_err": 0.3122,
+        "correct": false,
+        "outcome": "missed_ambiguous"
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.41238717301193084,
+        "snr": 39.717517366088885,
+        "converged": true,
+        "aicc_delta": -69.8195874091926,
+        "ridge": {
+          "params": {
+            "baseline": -12.683043222177643,
+            "amplitude": 337.1220840804846,
+            "center": 0.006534069063170467,
+            "sigma": 2.9448924526177507
+          },
+          "rss": 4360.720763835634,
+          "rrss": 56.63273719267057,
+          "aicc": 331.38773773543386,
+          "status": 2,
+          "nfev": 10
+        },
+        "column": {
+          "params": {
+            "baseline": -9.120577408334947,
+            "amplitude": 355.54183328268687,
+            "center": 0.006078282018317902,
+            "width": 6.7984154977056725,
+            "softness": 1.1365151538495166
+          },
+          "rss": 1790.6827400221705,
+          "rrss": 23.561615000291717,
+          "aicc": 261.56815032624127,
+          "status": 2,
+          "nfev": 12
+        },
+        "runtime_s": 0.09703,
+        "coverage": 1.0,
+        "noise": 8.9518,
+        "case_id": "ridge_s3.5_c0.25",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "column",
+        "sigma_err": 0.5551,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.02275272938984277,
+        "snr": 28.494423937099516,
+        "converged": true,
+        "aicc_delta": 4.90142401676923,
+        "ridge": {
+          "params": {
+            "baseline": -5.190698150121628,
+            "amplitude": 137.49803802717526,
+            "center": 0.0033195042968640676,
+            "sigma": 3.1047056584584616
+          },
+          "rss": 47.50094916107532,
+          "rrss": 0.6168954436503288,
+          "aicc": -34.70334059146415,
+          "status": 2,
+          "nfev": 6
+        },
+        "column": {
+          "params": {
+            "baseline": -6.336675398703653,
+            "amplitude": 178.64782555380324,
+            "center": 0.003427676032843031,
+            "width": 6.140416188078641,
+            "softness": 1.5079060058903366
+          },
+          "rss": 49.06720678218697,
+          "rrss": 0.6456211418708812,
+          "aicc": -29.801916574694918,
+          "status": 2,
+          "nfev": 20
+        },
+        "runtime_s": 0.095928,
+        "coverage": 1.0,
+        "noise": 6.2696,
+        "case_id": "ridge_s3.5_c0.5",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.3953,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.29501253659964477,
+        "snr": 8.827469856068708,
+        "converged": true,
+        "aicc_delta": -48.040900800275864,
+        "ridge": {
+          "params": {
+            "baseline": -6.53991668445126,
+            "amplitude": 53.48640794207908,
+            "center": 0.0009287998662668149,
+            "sigma": 3.1788754282229013
+          },
+          "rss": 64.75181053913296,
+          "rrss": 0.8409326044043242,
+          "aicc": -9.608571102166863,
+          "status": 2,
+          "nfev": 9
+        },
+        "column": {
+          "params": {
+            "baseline": -6.13169662113806,
+            "amplitude": 59.550987524062755,
+            "center": 0.0010802872378094857,
+            "width": 7.025272650686498,
+            "softness": 1.322235669072157
+          },
+          "rss": 34.792225129495655,
+          "rrss": 0.45779243591441654,
+          "aicc": -57.64947190244273,
+          "status": 2,
+          "nfev": 44
+        },
+        "runtime_s": 0.089305,
+        "coverage": 1.0,
+        "noise": 6.7461,
+        "case_id": "ridge_s3.5_c0.75",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "column",
+        "sigma_err": 0.3211,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.10447581096524318,
+        "snr": 85.77835954372544,
+        "converged": true,
+        "aicc_delta": 18.20191363536412,
+        "ridge": {
+          "params": {
+            "baseline": -0.6766888424919486,
+            "amplitude": 378.64713293740334,
+            "center": -0.0004802887610203965,
+            "sigma": 0.43263849850712843
+          },
+          "rss": 3297.796496389029,
+          "rrss": 42.828525927130244,
+          "aicc": 308.75772774168286,
+          "status": 2,
+          "nfev": 10
+        },
+        "column": {
+          "params": {
+            "baseline": -0.8582372115640262,
+            "amplitude": 486.6291163500031,
+            "center": -0.0004830397449269733,
+            "width": 0.8513787247352345,
+            "softness": 0.20808802488532518
+          },
+          "rss": 4014.4458774661503,
+          "rrss": 52.82165628244935,
+          "aicc": 326.959641377047,
+          "status": 2,
+          "nfev": 14
+        },
+        "runtime_s": 0.089051,
+        "coverage": 1.0,
+        "noise": 5.6731,
+        "case_id": "col_w1_b0.0",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "ridge",
+        "width_err": 0.1486,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "ambiguous",
+        "reason": "column fit degenerate (no flat top)",
+        "preference": -0.2411118480455212,
+        "snr": 63.10582648083519,
+        "converged": true,
+        "aicc_delta": -38.62974324787447,
+        "ridge": {
+          "params": {
+            "baseline": -0.5913959282497708,
+            "amplitude": 144.22506549154988,
+            "center": -0.24968513510212895,
+            "sigma": 0.5326467578440758
+          },
+          "rss": 580.3152908657233,
+          "rrss": 7.5365622190353685,
+          "aicc": 168.02523068432592,
+          "status": 2,
+          "nfev": 11
+        },
+        "column": {
+          "params": {
+            "baseline": -0.9187989880954729,
+            "amplitude": 398.38327314366535,
+            "center": -0.24968272112690248,
+            "width": 0.5000000000000001,
+            "softness": 0.3208162916706192
+          },
+          "rss": 350.23031288117886,
+          "rrss": 4.608293590541827,
+          "aicc": 129.39548743645145,
+          "status": 2,
+          "nfev": 24
+        },
+        "runtime_s": 0.118931,
+        "coverage": 1.0,
+        "noise": 6.3129,
+        "case_id": "col_w1_b0.5",
+        "gt_label": "ambiguous",
+        "kind": "column",
+        "predicted": "ambiguous",
+        "width_err": 0.5,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.01840810951375431,
+        "snr": 5.935175333541419,
+        "converged": true,
+        "aicc_delta": 4.197296251492091,
+        "ridge": {
+          "params": {
+            "baseline": -2.107143985352779,
+            "amplitude": 39.560510839172395,
+            "center": 0.03955498295856738,
+            "sigma": 1.1917933501750746
+          },
+          "rss": 33.75182794565958,
+          "rrss": 0.4383354278657088,
+          "aicc": -62.38226498540975,
+          "status": 2,
+          "nfev": 7
+        },
+        "column": {
+          "params": {
+            "baseline": -2.146500522317605,
+            "amplitude": 49.370629301783204,
+            "center": 0.03945315118619872,
+            "width": 2.4099220845083207,
+            "softness": 0.5572607733064135
+          },
+          "rss": 34.56296987085025,
+          "rrss": 0.4547759193532928,
+          "aicc": -58.18496873391766,
+          "status": 2,
+          "nfev": 14
+        },
+        "runtime_s": 0.048913,
+        "coverage": 1.0,
+        "noise": 8.3183,
+        "case_id": "col_w1_b1.0",
+        "gt_label": "ambiguous",
+        "kind": "column",
+        "predicted": "ridge",
+        "width_err": 1.4099,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.16856855830028714,
+        "snr": 15.826927036632144,
+        "converged": true,
+        "aicc_delta": 28.786110018874904,
+        "ridge": {
+          "params": {
+            "baseline": -3.920601392333779,
+            "amplitude": 77.30063273148969,
+            "center": 0.24431204019759467,
+            "sigma": 2.012182014196287
+          },
+          "rss": 43.688355630121514,
+          "rrss": 0.56738124194963,
+          "aicc": -41.48045573066689,
+          "status": 2,
+          "nfev": 7
+        },
+        "column": {
+          "params": {
+            "baseline": -4.077695916065255,
+            "amplitude": 95.17604185047408,
+            "center": 0.24368266343886438,
+            "width": 4.130251527564354,
+            "softness": 0.9319728621924697
+          },
+          "rss": 60.60609732328219,
+          "rrss": 0.7974486489905551,
+          "aicc": -12.694345711791986,
+          "status": 2,
+          "nfev": 27
+        },
+        "runtime_s": 0.065775,
+        "coverage": 1.0,
+        "noise": 6.0136,
+        "case_id": "col_w1_b2.0",
+        "gt_label": "ambiguous",
+        "kind": "column",
+        "predicted": "ridge",
+        "width_err": 3.1303,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.8856370552458064,
+        "snr": 36.63222046920973,
+        "converged": true,
+        "aicc_delta": -225.79930917414248,
+        "ridge": {
+          "params": {
+            "baseline": -3.075569667220604,
+            "amplitude": 234.28955569057143,
+            "center": 0.0021808489275395976,
+            "sigma": 1.093996403290898
+          },
+          "rss": 15866.916124676653,
+          "rrss": 206.06384577502146,
+          "aicc": 436.0072436202812,
+          "status": 2,
+          "nfev": 13
+        },
+        "column": {
+          "params": {
+            "baseline": -1.3185439176434102,
+            "amplitude": 203.43333010542233,
+            "center": 0.0010377045556824568,
+            "width": 2.9832822352619663,
+            "softness": 0.1871576591158085
+          },
+          "rss": 949.8228617182871,
+          "rrss": 12.497669233135356,
+          "aicc": 210.20793444613872,
+          "status": 2,
+          "nfev": 17
+        },
+        "runtime_s": 0.064501,
+        "coverage": 1.0,
+        "noise": 6.3957,
+        "case_id": "col_w2_b0.0",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.9833,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.5509294828557277,
+        "snr": 7.102467329926893,
+        "converged": true,
+        "aicc_delta": -99.17896555257036,
+        "ridge": {
+          "params": {
+            "baseline": -1.3490979357916786,
+            "amplitude": 59.01330535639592,
+            "center": 0.2412795057671961,
+            "sigma": 0.8024385799298547
+          },
+          "rss": 201.78006443632728,
+          "rrss": 2.6205203173548997,
+          "aicc": 82.45737772090159,
+          "status": 2,
+          "nfev": 11
+        },
+        "column": {
+          "params": {
+            "baseline": -1.1527297701689634,
+            "amplitude": 56.3774389227216,
+            "center": 0.24301969104712556,
+            "width": 2.0349240456320357,
+            "softness": 0.24023687754213133
+          },
+          "rss": 57.66650286836033,
+          "rrss": 0.7587697745836885,
+          "aicc": -16.72158783166877,
+          "status": 2,
+          "nfev": 13
+        },
+        "runtime_s": 0.067807,
+        "coverage": 1.0,
+        "noise": 8.3088,
+        "case_id": "col_w2_b0.5",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.0349,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.0389468804237649,
+        "snr": 56.70096570002971,
+        "converged": true,
+        "aicc_delta": 7.527433293829802,
+        "ridge": {
+          "params": {
+            "baseline": -2.545594650539205,
+            "amplitude": 267.3489642653075,
+            "center": 0.001529926761943163,
+            "sigma": 1.1975093959294836
+          },
+          "rss": 661.6074209592643,
+          "rrss": 8.592304168302134,
+          "aicc": 178.64439544792108,
+          "status": 2,
+          "nfev": 7
+        },
+        "column": {
+          "params": {
+            "baseline": -2.840031949518015,
+            "amplitude": 336.14501518688814,
+            "center": 0.0015369795970530294,
+            "width": 2.4051128868705915,
+            "softness": 0.5633071664225108
+          },
+          "rss": 705.9422675394719,
+          "rrss": 9.288714046571998,
+          "aicc": 186.1718287417509,
+          "status": 2,
+          "nfev": 10
+        },
+        "runtime_s": 0.067266,
+        "coverage": 1.0,
+        "noise": 5.9284,
+        "case_id": "col_w2_b1.0",
+        "gt_label": "ambiguous",
+        "kind": "column",
+        "predicted": "ridge",
+        "width_err": 0.4051,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.19447993705220273,
+        "snr": 14.302630970090634,
+        "converged": true,
+        "aicc_delta": 33.12706852566498,
+        "ridge": {
+          "params": {
+            "baseline": -4.579779908247707,
+            "amplitude": 75.54408985409286,
+            "center": -0.23742857171915757,
+            "sigma": 2.0690803812210374
+          },
+          "rss": 40.71128239945378,
+          "rrss": 0.5287179532396594,
+          "aicc": -47.197139446923316,
+          "status": 2,
+          "nfev": 8
+        },
+        "column": {
+          "params": {
+            "baseline": -4.780343243921509,
+            "amplitude": 94.21539493813079,
+            "center": -0.23779033161854415,
+            "width": 4.202190583347112,
+            "softness": 0.969336044701616
+          },
+          "rss": 59.585439591242604,
+          "rrss": 0.7840189419900343,
+          "aicc": -14.070070921258331,
+          "status": 2,
+          "nfev": 9
+        },
+        "runtime_s": 0.064414,
+        "coverage": 1.0,
+        "noise": 6.5873,
+        "case_id": "col_w2_b2.0",
+        "gt_label": "ambiguous",
+        "kind": "column",
+        "predicted": "ridge",
+        "width_err": 2.2022,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.9432792141644468,
+        "snr": 8.669040419626217,
+        "converged": true,
+        "aicc_delta": -285.0384581921351,
+        "ridge": {
+          "params": {
+            "baseline": -3.8126890688248367,
+            "amplitude": 72.33025263835493,
+            "center": 0.02325501274783581,
+            "sigma": 1.8236341444225324
+          },
+          "rss": 4249.598264540331,
+          "rrss": 55.18958785117313,
+          "aicc": 329.2968925092734,
+          "status": 2,
+          "nfev": 18
+        },
+        "column": {
+          "params": {
+            "baseline": -2.4479593292216495,
+            "amplitude": 60.77609010745114,
+            "center": 0.009097101700485888,
+            "width": 4.985485819659033,
+            "softness": 0.1810634917668231
+          },
+          "rss": 122.42716050434669,
+          "rrss": 1.610883690846667,
+          "aicc": 44.25843431713827,
+          "status": 2,
+          "nfev": 20
+        },
+        "runtime_s": 0.109951,
+        "coverage": 1.0,
+        "noise": 8.3435,
+        "case_id": "col_w4_b0.0",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.9855,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.9404896514968079,
+        "snr": 77.62293430353714,
+        "converged": true,
+        "aicc_delta": -281.0333314754523,
+        "ridge": {
+          "params": {
+            "baseline": -7.486684785808305,
+            "amplitude": 455.7716857883441,
+            "center": 0.25180004433024333,
+            "sigma": 1.4940757116347079
+          },
+          "rss": 55753.828512551954,
+          "rrss": 724.0756949682072,
+          "aicc": 537.8007444076717,
+          "status": 2,
+          "nfev": 11
+        },
+        "column": {
+          "params": {
+            "baseline": -1.7610691206789462,
+            "amplitude": 396.82029391627725,
+            "center": 0.25157314444821083,
+            "width": 4.0092792513683735,
+            "softness": 0.274954598213916
+          },
+          "rss": 1687.6357808416349,
+          "rrss": 22.205733958442565,
+          "aicc": 256.7674129322194,
+          "status": 2,
+          "nfev": 9
+        },
+        "runtime_s": 0.080448,
+        "coverage": 1.0,
+        "noise": 5.8716,
+        "case_id": "col_w4_b0.5",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.0093,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.6156259761308931,
+        "snr": 30.939007680340016,
+        "converged": true,
+        "aicc_delta": -115.08994908713161,
+        "ridge": {
+          "params": {
+            "baseline": -4.828602278092511,
+            "amplitude": 197.14233928031754,
+            "center": -0.0020113063341897623,
+            "sigma": 1.666755826193821
+          },
+          "rss": 992.7783737091873,
+          "rrss": 12.893225632586848,
+          "aicc": 211.51703775343373,
+          "status": 2,
+          "nfev": 9
+        },
+        "column": {
+          "params": {
+            "baseline": -4.126794535035682,
+            "amplitude": 204.88209883021193,
+            "center": -0.0022171212922432308,
+            "width": 3.950746762561211,
+            "softness": 0.6263456380583858
+          },
+          "rss": 233.12474722507446,
+          "rrss": 3.067430884540453,
+          "aicc": 96.42708866630211,
+          "status": 2,
+          "nfev": 20
+        },
+        "runtime_s": 0.070948,
+        "coverage": 1.0,
+        "noise": 6.6221,
+        "case_id": "col_w4_b1.0",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.0493,
+        "correct": true
+      },
+      {
+        "label": "ambiguous",
+        "reason": "insufficient AICc delta",
+        "preference": 0.00041624825643434335,
+        "snr": 5.738085831664495,
+        "converged": true,
+        "aicc_delta": 1.282277825007597,
+        "ridge": {
+          "params": {
+            "baseline": -5.361602031447012,
+            "amplitude": 40.81691941656118,
+            "center": -0.24896234436589143,
+            "sigma": 2.3191876178590336
+          },
+          "rss": 23.23985685931429,
+          "rrss": 0.30181632284823756,
+          "aicc": -92.60869514810888,
+          "status": 2,
+          "nfev": 7
+        },
+        "column": {
+          "params": {
+            "baseline": -5.420720736189275,
+            "amplitude": 48.92729919274451,
+            "center": -0.2493750251279281,
+            "width": 4.875493652545087,
+            "softness": 1.048527883061585
+          },
+          "rss": 22.957144327144263,
+          "rrss": 0.3020676885150561,
+          "aicc": -91.32641732310128,
+          "status": 2,
+          "nfev": 18
+        },
+        "runtime_s": 0.079104,
+        "coverage": 1.0,
+        "noise": 8.5268,
+        "case_id": "col_w4_b2.0",
+        "gt_label": "ambiguous",
+        "kind": "column",
+        "predicted": "ambiguous",
+        "width_err": 0.8755,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.9741330278142537,
+        "snr": 82.47568440224798,
+        "converged": true,
+        "aicc_delta": -349.91348468987013,
+        "ridge": {
+          "params": {
+            "baseline": -24.050967839802208,
+            "amplitude": 491.8757992855003,
+            "center": 0.00208266566621844,
+            "sigma": 2.623834331453894
+          },
+          "rss": 302292.861748456,
+          "rrss": 3925.88132140852,
+          "aicc": 674.7272112164369,
+          "status": 2,
+          "nfev": 18
+        },
+        "column": {
+          "params": {
+            "baseline": -3.5043745121637078,
+            "amplitude": 402.7418430339473,
+            "center": 0.0006433959415664726,
+            "width": 6.998580296884236,
+            "softness": 0.18425737190115907
+          },
+          "rss": 3909.4885071634167,
+          "rrss": 51.44063825215022,
+          "aicc": 324.81372652656677,
+          "status": 2,
+          "nfev": 17
+        },
+        "runtime_s": 0.1077,
+        "coverage": 1.0,
+        "noise": 5.9639,
+        "case_id": "col_w6_b0.0",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.9986,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.9765361192793607,
+        "snr": 36.58285572161386,
+        "converged": true,
+        "aicc_delta": -357.90990600728185,
+        "ridge": {
+          "params": {
+            "baseline": -10.07811902794787,
+            "amplitude": 237.63145549654658,
+            "center": 0.2525834571127609,
+            "sigma": 2.234967240814013
+          },
+          "rss": 36835.490081219104,
+          "rrss": 478.38298806778056,
+          "aicc": 504.22751642871253,
+          "status": 2,
+          "nfev": 15
+        },
+        "column": {
+          "params": {
+            "baseline": -3.283319833316831,
+            "amplitude": 198.8701505551261,
+            "center": 0.2508012211831104,
+            "width": 6.002223238672521,
+            "softness": 0.2749161375696847
+          },
+          "rss": 431.60295218497913,
+          "rrss": 5.678986212960251,
+          "aicc": 146.31761042143066,
+          "status": 2,
+          "nfev": 25
+        },
+        "runtime_s": 0.096918,
+        "coverage": 1.0,
+        "noise": 6.4957,
+        "case_id": "col_w6_b0.5",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.0022,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.8382764284444442,
+        "snr": 7.7682272300245145,
+        "converged": true,
+        "aicc_delta": -195.67146224242427,
+        "ridge": {
+          "params": {
+            "baseline": -6.522069161852963,
+            "amplitude": 66.39260365170213,
+            "center": -0.040287943504969954,
+            "sigma": 2.3177472893394317
+          },
+          "rss": 745.5927064800087,
+          "rrss": 9.683022162078036,
+          "aicc": 188.3244722416084,
+          "status": 2,
+          "nfev": 12
+        },
+        "column": {
+          "params": {
+            "baseline": -5.387988588512001,
+            "amplitude": 60.845425692051094,
+            "center": -0.0286304109318311,
+            "width": 5.961895933111022,
+            "softness": 0.6273926743303622
+          },
+          "rss": 64.742135975125,
+          "rrss": 0.8518702101990131,
+          "aicc": -7.34699000081588,
+          "status": 2,
+          "nfev": 20
+        },
+        "runtime_s": 0.087462,
+        "coverage": 1.0,
+        "noise": 8.5467,
+        "case_id": "col_w6_b1.0",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.0381,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.42386800862468704,
+        "snr": 61.42528434852435,
+        "converged": true,
+        "aicc_delta": -72.073598884629,
+        "ridge": {
+          "params": {
+            "baseline": -11.892132712659096,
+            "amplitude": 345.05722302804367,
+            "center": -0.24893037456211609,
+            "sigma": 2.7036384285651622
+          },
+          "rss": 1788.9808444910961,
+          "rrss": 23.233517460923327,
+          "aicc": 259.2174457225137,
+          "status": 2,
+          "nfev": 8
+        },
+        "column": {
+          "params": {
+            "baseline": -10.627269011558603,
+            "amplitude": 384.6021787107442,
+            "center": -0.2487241654867751,
+            "width": 6.016608990094705,
+            "softness": 1.1277743409828624
+          },
+          "rss": 714.4647661338653,
+          "rrss": 9.400852185971912,
+          "aicc": 187.14384683788467,
+          "status": 2,
+          "nfev": 19
+        },
+        "runtime_s": 0.079525,
+        "coverage": 1.0,
+        "noise": 6.2613,
+        "case_id": "col_w6_b2.0",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.0166,
+        "correct": true
+      },
+      {
+        "label": "ambiguous",
+        "reason": "no structure (low SNR)",
+        "preference": 0.0,
+        "aicc_delta": null,
+        "snr": 0.23938653814452948,
+        "converged": true,
+        "runtime_s": 0.193189,
+        "coverage": 1.0,
+        "noise": 6.2734,
+        "case_id": "no_structure",
+        "gt_label": "ambiguous",
+        "kind": "no_structure",
+        "predicted": "ambiguous",
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.8595599796576253,
+        "snr": 50.9991321667018,
+        "converged": true,
+        "aicc_delta": -208.0336428685992,
+        "ridge": {
+          "params": {
+            "baseline": -11.330861456986785,
+            "amplitude": 334.9791278425839,
+            "center": -0.0014181137262791045,
+            "sigma": 2.2850300222414646
+          },
+          "rss": 34769.8008582106,
+          "rrss": 451.55585530143634,
+          "aicc": 499.5527985652192,
+          "status": 2,
+          "nfev": 13
+        },
+        "column": {
+          "params": {
+            "baseline": -3.3556333229082043,
+            "amplitude": 297.17568162012145,
+            "center": -0.0017105484227900476,
+            "width": 5.9128355790326035,
+            "softness": 0.5038576679582648
+          },
+          "rss": 2591.8255281072097,
+          "rrss": 34.102967475094864,
+          "aicc": 291.51915569662,
+          "status": 2,
+          "nfev": 16
+        },
+        "runtime_s": 0.086111,
+        "coverage": 1.0,
+        "noise": 6.5683,
+        "case_id": "double_ridge",
+        "gt_label": "ambiguous",
+        "kind": "double_ridge",
+        "predicted": "column",
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "ambiguous",
+        "reason": "no structure (low SNR)",
+        "preference": 0.0,
+        "aicc_delta": null,
+        "snr": 1.456509537544059,
+        "converged": true,
+        "runtime_s": 0.068332,
+        "coverage": 1.0,
+        "noise": 6.4239,
+        "case_id": "aligned_stars",
+        "gt_label": "ambiguous",
+        "kind": "aligned_stars",
+        "predicted": "ambiguous",
+        "correct": true
+      },
+      {
+        "label": "ambiguous",
+        "reason": "no structure (low SNR)",
+        "preference": 0.0,
+        "aicc_delta": null,
+        "snr": 0.10450467901237381,
+        "converged": true,
+        "runtime_s": 0.189526,
+        "coverage": 1.0,
+        "noise": 6.2549,
+        "case_id": "gradient",
+        "gt_label": "ambiguous",
+        "kind": "gradient",
+        "predicted": "ambiguous",
+        "correct": true
+      },
+      {
+        "label": "ambiguous",
+        "reason": "insufficient AICc delta",
+        "preference": -0.027836989882910494,
+        "snr": 43.05031623106377,
+        "converged": true,
+        "aicc_delta": -3.2959121240419336,
+        "ridge": {
+          "params": {
+            "baseline": -2.3628474366421974,
+            "amplitude": 280.8874613531216,
+            "center": -1.121808210128455,
+            "sigma": 1.9821876776606453
+          },
+          "rss": 25785.93845677163,
+          "rrss": 334.8823176204108,
+          "aicc": 475.3402869643931,
+          "status": 2,
+          "nfev": 13
+        },
+        "column": {
+          "params": {
+            "baseline": -1.1258994807202134,
+            "amplitude": 298.28226788751493,
+            "center": -1.1513528132387119,
+            "width": 4.595002380034375,
+            "softness": 0.7681975476436067
+          },
+          "rss": 24072.47023646708,
+          "rrss": 316.74302942719845,
+          "aicc": 472.04437484035117,
+          "status": 2,
+          "nfev": 21
+        },
+        "runtime_s": 0.110515,
+        "coverage": 1.0,
+        "noise": 6.9287,
+        "case_id": "asymmetric",
+        "gt_label": "ambiguous",
+        "kind": "asymmetric",
+        "predicted": "ambiguous",
+        "correct": true
+      }
+    ],
+    "blind": [
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.4359002408803884,
+        "snr": 34.06053688557842,
+        "converged": true,
+        "aicc_delta": 76.89445483308515,
+        "ridge": {
+          "params": {
+            "baseline": -1.1651867745475728,
+            "amplitude": 170.78804309728355,
+            "center": 0.0015528343177999573,
+            "sigma": 0.819113442453282
+          },
+          "rss": 19.125701904130295,
+          "rrss": 0.24838573901467917,
+          "aicc": -108.39038626638941,
+          "status": 2,
+          "nfev": 8
+        },
+        "column": {
+          "params": {
+            "baseline": -1.2931406630408946,
+            "amplitude": 216.54485431001055,
+            "center": 0.0016002285784213258,
+            "width": 1.6313261438284123,
+            "softness": 0.3879320630757865
+          },
+          "rss": 48.05168304090205,
+          "rrss": 0.6322589873802901,
+          "aicc": -31.49593143330426,
+          "status": 2,
+          "nfev": 11
+        },
+        "runtime_s": 0.045454,
+        "coverage": 1.0,
+        "noise": 6.3576,
+        "case_id": "ridge_s0.7_c0.125",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.1191,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.2038723439434334,
+        "snr": 9.431994798442759,
+        "converged": true,
+        "aicc_delta": -32.281817341611315,
+        "ridge": {
+          "params": {
+            "baseline": -1.016005784054613,
+            "amplitude": 51.90778031925856,
+            "center": 0.0018752969314735203,
+            "sigma": 0.8344962934655514
+          },
+          "rss": 97.64376362702207,
+          "rrss": 1.268100826324962,
+          "aicc": 23.66332331067366,
+          "status": 2,
+          "nfev": 11
+        },
+        "column": {
+          "params": {
+            "baseline": -0.9282277953412948,
+            "amplitude": 53.91681899063444,
+            "center": 0.012935489007443459,
+            "width": 1.980861246628102,
+            "softness": 0.31009548757676597
+          },
+          "rss": 63.73377618683982,
+          "rrss": 0.8386023182478923,
+          "aicc": -8.618494030937658,
+          "status": 2,
+          "nfev": 22
+        },
+        "runtime_s": 0.061386,
+        "coverage": 1.0,
+        "noise": 5.7164,
+        "case_id": "ridge_s0.7_c0.375",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "column",
+        "sigma_err": 0.1345,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.5417181600519625,
+        "snr": 53.86366800146419,
+        "converged": true,
+        "aicc_delta": 99.48148567299043,
+        "ridge": {
+          "params": {
+            "baseline": -1.6707790807382141,
+            "amplitude": 341.89741196333983,
+            "center": -0.0010784135778016608,
+            "sigma": 0.816410514593786
+          },
+          "rss": 47.86815477164324,
+          "rrss": 0.6216643476836784,
+          "aicc": -34.07957880243867,
+          "status": 2,
+          "nfev": 8
+        },
+        "column": {
+          "params": {
+            "baseline": -2.010183318118113,
+            "amplitude": 447.97695141751956,
+            "center": -0.0010644829826299755,
+            "width": 1.5771898061158531,
+            "softness": 0.39597570908771956
+          },
+          "rss": 158.94317848946113,
+          "rrss": 2.091357611703436,
+          "aicc": 65.40190687055177,
+          "status": 2,
+          "nfev": 15
+        },
+        "runtime_s": 0.055509,
+        "coverage": 1.0,
+        "noise": 8.3169,
+        "case_id": "ridge_s0.7_c0.625",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.1164,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.11184565271930373,
+        "snr": 58.538020543071084,
+        "converged": true,
+        "aicc_delta": 19.40996642658834,
+        "ridge": {
+          "params": {
+            "baseline": -3.0188364219767263,
+            "amplitude": 367.3556073386256,
+            "center": 0.0012324525396544858,
+            "sigma": 1.0838962985756557
+          },
+          "rss": 1087.7318108465079,
+          "rrss": 14.126387153850752,
+          "aicc": 218.915776132388,
+          "status": 2,
+          "nfev": 6
+        },
+        "column": {
+          "params": {
+            "baseline": -3.65306845399464,
+            "amplitude": 491.0938096778744,
+            "center": 0.0018251552372394357,
+            "width": 2.0585087281634755,
+            "softness": 0.5336745507495451
+          },
+          "rss": 1344.0045941601297,
+          "rrss": 17.68427097579118,
+          "aicc": 238.32574255897634,
+          "status": 2,
+          "nfev": 28
+        },
+        "runtime_s": 0.058764,
+        "coverage": 1.0,
+        "noise": 8.3893,
+        "case_id": "ridge_s1.0_c0.125",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0839,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.532342263866323,
+        "snr": 36.148432892634496,
+        "converged": true,
+        "aicc_delta": 97.34694483281486,
+        "ridge": {
+          "params": {
+            "baseline": -1.8822498024065535,
+            "amplitude": 183.58019107043407,
+            "center": -0.007953822894843402,
+            "sigma": 1.0759241939882105
+          },
+          "rss": 20.809400456509138,
+          "rrss": 0.27025195398063817,
+          "aicc": -101.55627453852989,
+          "status": 2,
+          "nfev": 9
+        },
+        "column": {
+          "params": {
+            "baseline": -2.0624516907881283,
+            "amplitude": 230.7813243453131,
+            "center": -0.008019597397143865,
+            "width": 2.1611550351874764,
+            "softness": 0.5063485795208709
+          },
+          "rss": 67.29922950585973,
+          "rrss": 0.8855161777086806,
+          "aicc": -4.209329705715041,
+          "status": 2,
+          "nfev": 10
+        },
+        "runtime_s": 0.056723,
+        "coverage": 1.0,
+        "noise": 6.3843,
+        "case_id": "ridge_s1.0_c0.375",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0759,
+        "correct": true
+      },
+      {
+        "label": "ambiguous",
+        "reason": "insufficient AICc delta",
+        "preference": -0.003948467056498504,
+        "snr": 12.11990850336161,
+        "converged": true,
+        "aicc_delta": 0.5751906162468146,
+        "ridge": {
+          "params": {
+            "baseline": -1.472652120432906,
+            "amplitude": 54.39142276983285,
+            "center": -0.006833701717805022,
+            "sigma": 1.1036438980628742
+          },
+          "rss": 31.55366594829537,
+          "rrss": 0.40978786945838147,
+          "aicc": -67.83719379294001,
+          "status": 2,
+          "nfev": 9
+        },
+        "column": {
+          "params": {
+            "baseline": -1.5427908518033169,
+            "amplitude": 70.32945546860851,
+            "center": -0.007607253454011163,
+            "width": 2.159694013043412,
+            "softness": 0.530024241152965
+          },
+          "rss": 30.898904196927628,
+          "rrss": 0.40656452890694245,
+          "aicc": -67.2620031766932,
+          "status": 2,
+          "nfev": 14
+        },
+        "runtime_s": 0.045007,
+        "coverage": 1.0,
+        "noise": 5.8028,
+        "case_id": "ridge_s1.0_c0.625",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ambiguous",
+        "sigma_err": 0.1036,
+        "correct": false,
+        "outcome": "missed_ambiguous"
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.2420435417368641,
+        "snr": 12.970770865906964,
+        "converged": true,
+        "aicc_delta": 41.219723267758894,
+        "ridge": {
+          "params": {
+            "baseline": -2.7058441583786355,
+            "amplitude": 56.32390371584282,
+            "center": -0.0008376595739321088,
+            "sigma": 1.79039863267739
+          },
+          "rss": 18.58872083188286,
+          "rrss": 0.24141195885562156,
+          "aicc": -110.69711155773251,
+          "status": 2,
+          "nfev": 7
+        },
+        "column": {
+          "params": {
+            "baseline": -2.9306050826724253,
+            "amplitude": 76.48711730468114,
+            "center": -0.000557014553756098,
+            "width": 3.364430942317469,
+            "softness": 0.8912362533814262
+          },
+          "rss": 30.065258031067128,
+          "rrss": 0.395595500408778,
+          "aicc": -69.47738828997362,
+          "status": 2,
+          "nfev": 28
+        },
+        "runtime_s": 0.102444,
+        "coverage": 1.0,
+        "noise": 5.8969,
+        "case_id": "ridge_s1.8_c0.125",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0096,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.35072857095148086,
+        "snr": 58.275306750232694,
+        "converged": true,
+        "aicc_delta": 60.55127833127641,
+        "ridge": {
+          "params": {
+            "baseline": -6.719375704173525,
+            "amplitude": 388.62710432416543,
+            "center": 0.0007311679923657592,
+            "sigma": 1.8421562781833638
+          },
+          "rss": 221.50555876949417,
+          "rrss": 2.876695568434989,
+          "aicc": 90.01219676180882,
+          "status": 2,
+          "nfev": 7
+        },
+        "column": {
+          "params": {
+            "baseline": -7.975991842399973,
+            "amplitude": 505.40231328849524,
+            "center": 0.0006341753933062803,
+            "width": 3.6011874191083804,
+            "softness": 0.8908693156413613
+          },
+          "rss": 454.83019696874027,
+          "rrss": 5.984607854851846,
+          "aicc": 150.56347509308523,
+          "status": 2,
+          "nfev": 26
+        },
+        "runtime_s": 0.07128,
+        "coverage": 1.0,
+        "noise": 8.6727,
+        "case_id": "ridge_s1.8_c0.375",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0422,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.48536007001886866,
+        "snr": 36.5005567353866,
+        "converged": true,
+        "aicc_delta": 87.0703907809509,
+        "ridge": {
+          "params": {
+            "baseline": -3.9210992084819636,
+            "amplitude": 190.75310772373052,
+            "center": 0.004064889259871738,
+            "sigma": 1.821608013174149
+          },
+          "rss": 39.770530370265426,
+          "rrss": 0.5165003944190315,
+          "aicc": -49.09084393840832,
+          "status": 2,
+          "nfev": 7
+        },
+        "column": {
+          "params": {
+            "baseline": -4.359464020321524,
+            "amplitude": 239.63249967168719,
+            "center": 0.004052280276446538,
+            "width": 3.6718695498795624,
+            "softness": 0.8580443740632901
+          },
+          "rss": 113.29546216047346,
+          "rrss": 1.4907297652693876,
+          "aicc": 37.97954684254259,
+          "status": 2,
+          "nfev": 9
+        },
+        "runtime_s": 0.093095,
+        "coverage": 1.0,
+        "noise": 6.5652,
+        "case_id": "ridge_s1.8_c0.625",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.0216,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.3422310502728216,
+        "snr": 31.26337172444361,
+        "converged": true,
+        "aicc_delta": -56.55716848968726,
+        "ridge": {
+          "params": {
+            "baseline": -8.31181125869904,
+            "amplitude": 185.06097976315647,
+            "center": -0.006006829641663781,
+            "sigma": 2.790424275849573
+          },
+          "rss": 393.30338552429737,
+          "rrss": 5.107836175640226,
+          "aicc": 136.51701854003102,
+          "status": 2,
+          "nfev": 9
+        },
+        "column": {
+          "params": {
+            "baseline": -7.9441908288299405,
+            "amplitude": 211.6610890998707,
+            "center": -0.00627776675075857,
+            "width": 6.085148094907858,
+            "softness": 1.2007006805736071
+          },
+          "rss": 190.23772302982434,
+          "rrss": 2.503127934602952,
+          "aicc": 79.95985005034376,
+          "status": 2,
+          "nfev": 11
+        },
+        "runtime_s": 0.104908,
+        "coverage": 1.0,
+        "noise": 6.7703,
+        "case_id": "ridge_s3.0_c0.125",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "column",
+        "sigma_err": 0.2096,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.18852822070540515,
+        "snr": 11.064658194297584,
+        "converged": true,
+        "aicc_delta": 32.126180700877654,
+        "ridge": {
+          "params": {
+            "baseline": -4.545061169681424,
+            "amplitude": 49.6625978227326,
+            "center": -0.009294245922667588,
+            "sigma": 2.8638225581286605
+          },
+          "rss": 12.814059334188636,
+          "rrss": 0.1664163549894628,
+          "aicc": -140.8300864953627,
+          "status": 2,
+          "nfev": 6
+        },
+        "column": {
+          "params": {
+            "baseline": -5.00847905811536,
+            "amplitude": 66.16743060449008,
+            "center": -0.008842569463474443,
+            "width": 5.5429627586353565,
+            "softness": 1.416714586770296
+          },
+          "rss": 18.524465039624737,
+          "rrss": 0.2437429610476939,
+          "aicc": -108.70390579448505,
+          "status": 2,
+          "nfev": 16
+        },
+        "runtime_s": 0.131585,
+        "coverage": 1.0,
+        "noise": 5.9801,
+        "case_id": "ridge_s3.0_c0.375",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "ridge",
+        "sigma_err": 0.1362,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.19466789164574455,
+        "snr": 47.908507622212504,
+        "converged": true,
+        "aicc_delta": -30.729024077698455,
+        "ridge": {
+          "params": {
+            "baseline": -12.77235875856072,
+            "amplitude": 369.49480820799766,
+            "center": -0.003345802899942851,
+            "sigma": 2.7830839891292474
+          },
+          "rss": 1538.989511718048,
+          "rrss": 19.986876775559065,
+          "aicc": 247.02532108523476,
+          "status": 2,
+          "nfev": 9
+        },
+        "column": {
+          "params": {
+            "baseline": -12.522863437156966,
+            "amplitude": 428.19443090512203,
+            "center": -0.0027658519240685736,
+            "width": 6.013296936680349,
+            "softness": 1.2164148232316983
+          },
+          "rss": 1023.9679187399222,
+          "rrss": 13.473262088683187,
+          "aicc": 216.2962970075363,
+          "status": 2,
+          "nfev": 19
+        },
+        "runtime_s": 0.104428,
+        "coverage": 1.0,
+        "noise": 8.9378,
+        "case_id": "ridge_s3.0_c0.625",
+        "gt_label": "ridge",
+        "kind": "ridge",
+        "predicted": "column",
+        "sigma_err": 0.2169,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.6717484966122004,
+        "snr": 35.485200935227745,
+        "converged": true,
+        "aicc_delta": -130.64062114192345,
+        "ridge": {
+          "params": {
+            "baseline": -1.6516097305245399,
+            "amplitude": 226.05549510110154,
+            "center": 0.24990330349427142,
+            "sigma": 0.7424739942165219
+          },
+          "rss": 4540.568036617377,
+          "rrss": 58.96841605996594,
+          "aicc": 334.66133377492656,
+          "status": 2,
+          "nfev": 13
+        },
+        "column": {
+          "params": {
+            "baseline": -0.975230181196801,
+            "amplitude": 207.06504334267404,
+            "center": 0.24983887288151924,
+            "width": 1.965646657381882,
+            "softness": 0.1945292116853214
+          },
+          "rss": 879.9719670819693,
+          "rrss": 11.578578514236439,
+          "aicc": 204.02071263300311,
+          "status": 2,
+          "nfev": 13
+        },
+        "runtime_s": 0.116167,
+        "coverage": 1.0,
+        "noise": 6.3704,
+        "case_id": "col_w1.5_b0.25",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.4656,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.08920478234230202,
+        "snr": 9.678731921036453,
+        "converged": true,
+        "aicc_delta": -13.27484490539323,
+        "ridge": {
+          "params": {
+            "baseline": -1.3503222610318124,
+            "amplitude": 48.11800973743488,
+            "center": 0.004213104501629317,
+            "sigma": 1.0001451992009598
+          },
+          "rss": 52.37871504212185,
+          "rrss": 0.6802430524950889,
+          "aicc": -26.78554084618721,
+          "status": 2,
+          "nfev": 8
+        },
+        "column": {
+          "params": {
+            "baseline": -1.3337474817781536,
+            "amplitude": 55.829638871750376,
+            "center": 0.004131798618405559,
+            "width": 2.154694887211995,
+            "softness": 0.43443666700097927
+          },
+          "rss": 43.230365686702115,
+          "rrss": 0.5688206011408173,
+          "aicc": -40.06038575158044,
+          "status": 2,
+          "nfev": 21
+        },
+        "runtime_s": 0.052727,
+        "coverage": 1.0,
+        "noise": 5.7683,
+        "case_id": "col_w1.5_b0.75",
+        "gt_label": "ambiguous",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.6547,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.149006018089203,
+        "snr": 29.441709829399425,
+        "converged": true,
+        "aicc_delta": 25.534889762111284,
+        "ridge": {
+          "params": {
+            "baseline": -5.219425600636959,
+            "amplitude": 194.05955284720434,
+            "center": -0.25255610120317756,
+            "sigma": 1.642149038671894
+          },
+          "rss": 143.0536191057039,
+          "rrss": 1.8578392091649856,
+          "aicc": 54.59671528069388,
+          "status": 2,
+          "nfev": 7
+        },
+        "column": {
+          "params": {
+            "baseline": -5.688403726380473,
+            "amplitude": 249.81476207065106,
+            "center": -0.25250630149801057,
+            "width": 3.235613925066083,
+            "softness": 0.7877990836010239
+          },
+          "rss": 190.64153716533272,
+          "rrss": 2.5084412784912202,
+          "aicc": 80.13160504280516,
+          "status": 2,
+          "nfev": 14
+        },
+        "runtime_s": 0.052956,
+        "coverage": 1.0,
+        "noise": 8.4851,
+        "case_id": "col_w1.5_b1.5",
+        "gt_label": "ambiguous",
+        "kind": "column",
+        "predicted": "ridge",
+        "width_err": 1.7356,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.849561670228817,
+        "snr": 8.268780042644723,
+        "converged": true,
+        "aicc_delta": -202.0263630192832,
+        "ridge": {
+          "params": {
+            "baseline": -1.6187154402986643,
+            "amplitude": 68.7451458027936,
+            "center": -0.24540451957001547,
+            "sigma": 1.0897842364870685
+          },
+          "rss": 1465.2837222418673,
+          "rrss": 19.02965873041386,
+          "aicc": 243.05007201151906,
+          "status": 2,
+          "nfev": 16
+        },
+        "column": {
+          "params": {
+            "baseline": -1.111384101516634,
+            "amplitude": 59.613272517891396,
+            "center": -0.2481007873039771,
+            "width": 2.977803198219953,
+            "softness": 0.18321863190184737
+          },
+          "rss": 117.63438291437603,
+          "rrss": 1.5478208278207373,
+          "aicc": 41.02370899223587,
+          "status": 2,
+          "nfev": 20
+        },
+        "runtime_s": 0.072603,
+        "coverage": 1.0,
+        "noise": 8.3138,
+        "case_id": "col_w3.0_b0.25",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.0222,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.8441398237371075,
+        "snr": 65.68394399026221,
+        "converged": true,
+        "aicc_delta": -198.9206775841514,
+        "ridge": {
+          "params": {
+            "baseline": -6.615208164739014,
+            "amplitude": 426.4542978048824,
+            "center": 0.0013061620220934456,
+            "sigma": 1.5628455837795625
+          },
+          "rss": 13740.190355041801,
+          "rrss": 178.44403058495845,
+          "aicc": 424.35044826149385,
+          "status": 2,
+          "nfev": 11
+        },
+        "column": {
+          "params": {
+            "baseline": -3.5849419474963744,
+            "amplitude": 405.17331373218894,
+            "center": 0.0013359087562687612,
+            "width": 3.9717825269059253,
+            "softness": 0.473121202750661
+          },
+          "rss": 1146.1908394120792,
+          "rrss": 15.081458413316831,
+          "aicc": 225.42977067734245,
+          "status": 2,
+          "nfev": 15
+        },
+        "runtime_s": 0.053724,
+        "coverage": 1.0,
+        "noise": 6.4925,
+        "case_id": "col_w3.0_b0.75",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.9718,
+        "correct": true
+      },
+      {
+        "label": "ridge",
+        "reason": "ridge preferred (AICc)",
+        "preference": 0.18485998893373334,
+        "snr": 27.96496024462735,
+        "converged": true,
+        "aicc_delta": 31.5104658129212,
+        "ridge": {
+          "params": {
+            "baseline": -4.03390368816194,
+            "amplitude": 135.5017081459903,
+            "center": 0.2359220631376531,
+            "sigma": 1.7694674975291138
+          },
+          "rss": 89.40585193630149,
+          "rrss": 1.1611149602117077,
+          "aicc": 16.524011433956414,
+          "status": 2,
+          "nfev": 8
+        },
+        "column": {
+          "params": {
+            "baseline": -4.298261946740814,
+            "amplitude": 169.03390379224217,
+            "center": 0.2359087620189727,
+            "width": 3.587265144624498,
+            "softness": 0.8283599023020257
+          },
+          "rss": 128.26956922428624,
+          "rrss": 1.6877574897932401,
+          "aicc": 48.034477246877614,
+          "status": 2,
+          "nfev": 26
+        },
+        "runtime_s": 0.080883,
+        "coverage": 1.0,
+        "noise": 6.0445,
+        "case_id": "col_w3.0_b1.5",
+        "gt_label": "ambiguous",
+        "kind": "column",
+        "predicted": "ridge",
+        "width_err": 0.5873,
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.957282823881925,
+        "snr": 82.29694139611256,
+        "converged": true,
+        "aicc_delta": -308.58677663762165,
+        "ridge": {
+          "params": {
+            "baseline": -11.668204634742779,
+            "amplitude": 479.6252073535819,
+            "center": -0.2490937908420978,
+            "sigma": 1.833230350304618
+          },
+          "rss": 178526.05401739493,
+          "rrss": 2318.52018204409,
+          "aicc": 632.0676105260258,
+          "status": 2,
+          "nfev": 17
+        },
+        "column": {
+          "params": {
+            "baseline": -2.271466100936802,
+            "amplitude": 403.12564225329766,
+            "center": -0.2499490726975443,
+            "width": 4.995223616282154,
+            "softness": 0.18541063891514067
+          },
+          "rss": 3845.6824758966986,
+          "rrss": 50.60108520916709,
+          "aicc": 323.4808338884041,
+          "status": 2,
+          "nfev": 21
+        },
+        "runtime_s": 0.085184,
+        "coverage": 1.0,
+        "noise": 5.828,
+        "case_id": "col_w5.0_b0.25",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.0048,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.9624194778090319,
+        "snr": 26.70846438677818,
+        "converged": true,
+        "aicc_delta": -319.176404250401,
+        "ridge": {
+          "params": {
+            "baseline": -10.704646893110118,
+            "amplitude": 230.38392503040907,
+            "center": 0.001471152595464045,
+            "sigma": 2.2688394704210477
+          },
+          "rss": 16052.455845239612,
+          "rrss": 208.47345253557938,
+          "aicc": 436.94892171142016,
+          "status": 2,
+          "nfev": 13
+        },
+        "column": {
+          "params": {
+            "baseline": -5.475007460665793,
+            "amplitude": 201.53181547771285,
+            "center": 0.003924513357837268,
+            "width": 5.975802574767252,
+            "softness": 0.47369764365757516
+          },
+          "rss": 303.41379029069265,
+          "rrss": 3.992286714351219,
+          "aicc": 117.77251746101916,
+          "status": 2,
+          "nfev": 17
+        },
+        "runtime_s": 0.058646,
+        "coverage": 1.0,
+        "noise": 8.6259,
+        "case_id": "col_w5.0_b0.75",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.9758,
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.20453424146886368,
+        "snr": 9.289839110283229,
+        "converged": true,
+        "aicc_delta": -32.393710579967234,
+        "ridge": {
+          "params": {
+            "baseline": -4.666427861845416,
+            "amplitude": 55.18296043952293,
+            "center": 0.24570487511931688,
+            "sigma": 2.2015526924571214
+          },
+          "rss": 56.51660483836631,
+          "rrss": 0.7339818810177443,
+          "aicc": -20.62677237951861,
+          "status": 2,
+          "nfev": 8
+        },
+        "column": {
+          "params": {
+            "baseline": -4.545518740129015,
+            "amplitude": 61.19549667420581,
+            "center": 0.2467465508617175,
+            "width": 4.93667281608981,
+            "softness": 0.913222231261547
+          },
+          "rss": 36.83844340490728,
+          "rrss": 0.4847163605908853,
+          "aicc": -53.02048295948584,
+          "status": 2,
+          "nfev": 19
+        },
+        "runtime_s": 0.057081,
+        "coverage": 1.0,
+        "noise": 6.5874,
+        "case_id": "col_w5.0_b1.5",
+        "gt_label": "column",
+        "kind": "column",
+        "predicted": "column",
+        "width_err": 0.0633,
+        "correct": true
+      },
+      {
+        "label": "ambiguous",
+        "reason": "no structure (low SNR)",
+        "preference": 0.0,
+        "aicc_delta": null,
+        "snr": 0.13731235499510447,
+        "converged": true,
+        "runtime_s": 0.152059,
+        "coverage": 1.0,
+        "noise": 6.7527,
+        "case_id": "no_structure",
+        "gt_label": "ambiguous",
+        "kind": "no_structure",
+        "predicted": "ambiguous",
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.9573734315142103,
+        "snr": 45.517431178152755,
+        "converged": true,
+        "aicc_delta": -308.76251825548474,
+        "ridge": {
+          "params": {
+            "baseline": -7.823861623585293,
+            "amplitude": 327.88122382098993,
+            "center": -0.004233264238083617,
+            "sigma": 1.967919322971738
+          },
+          "rss": 9452.12731028812,
+          "rrss": 122.75490013361195,
+          "aicc": 394.049537956651,
+          "status": 2,
+          "nfev": 10
+        },
+        "column": {
+          "params": {
+            "baseline": -4.3413164527354535,
+            "amplitude": 311.7291549411646,
+            "center": -0.004601751490092815,
+            "width": 4.962209661593486,
+            "softness": 0.5977018943457202
+          },
+          "rss": 203.16978128350618,
+          "rrss": 2.6732865958356076,
+          "aicc": 85.2870197011663,
+          "status": 2,
+          "nfev": 36
+        },
+        "runtime_s": 0.133577,
+        "coverage": 1.0,
+        "noise": 7.2034,
+        "case_id": "double_ridge",
+        "gt_label": "ambiguous",
+        "kind": "double_ridge",
+        "predicted": "column",
+        "correct": false,
+        "outcome": "confusion"
+      },
+      {
+        "label": "ambiguous",
+        "reason": "no structure (low SNR)",
+        "preference": 0.0,
+        "aicc_delta": null,
+        "snr": 1.1402196089635668,
+        "converged": true,
+        "runtime_s": 0.129582,
+        "coverage": 1.0,
+        "noise": 6.924,
+        "case_id": "aligned_stars",
+        "gt_label": "ambiguous",
+        "kind": "aligned_stars",
+        "predicted": "ambiguous",
+        "correct": true
+      },
+      {
+        "label": "ambiguous",
+        "reason": "no structure (low SNR)",
+        "preference": 0.0,
+        "aicc_delta": null,
+        "snr": 0.1431110270598741,
+        "converged": true,
+        "runtime_s": 0.140659,
+        "coverage": 1.0,
+        "noise": 6.7283,
+        "case_id": "gradient",
+        "gt_label": "ambiguous",
+        "kind": "gradient",
+        "predicted": "ambiguous",
+        "correct": true
+      },
+      {
+        "label": "column",
+        "reason": "column preferred (AICc)",
+        "preference": -0.03346463239442398,
+        "snr": 33.77257348464681,
+        "converged": true,
+        "aicc_delta": -4.208449932261658,
+        "ridge": {
+          "params": {
+            "baseline": -2.8307919143618507,
+            "amplitude": 242.45468191288825,
+            "center": -1.126419523151522,
+            "sigma": 1.9766407666421328
+          },
+          "rss": 19417.57916006793,
+          "rrss": 252.17635272815494,
+          "aicc": 452.36459449994163,
+          "status": 2,
+          "nfev": 12
+        },
+        "column": {
+          "params": {
+            "baseline": -1.5774436585833609,
+            "amplitude": 253.63706667880996,
+            "center": -1.158446862638021,
+            "width": 4.636287992909159,
+            "softness": 0.7470775515075017
+          },
+          "rss": 17924.21246654849,
+          "rrss": 235.84490087563805,
+          "aicc": 448.15614456768,
+          "status": 2,
+          "nfev": 21
+        },
+        "runtime_s": 0.107447,
+        "coverage": 1.0,
+        "noise": 7.5101,
+        "case_id": "asymmetric",
+        "gt_label": "ambiguous",
+        "kind": "asymmetric",
+        "predicted": "column",
+        "correct": false,
+        "outcome": "confusion"
+      }
+    ]
+  },
+  "summary": {
+    "dev": {
+      "n_cases": 45,
+      "confusion": {
+        "ridge": {
+          "ridge": 17,
+          "column": 4,
+          "ambiguous": 3
+        },
+        "column": {
+          "ridge": 1,
+          "column": 9,
+          "ambiguous": 0
+        },
+        "ambiguous": {
+          "ridge": 4,
+          "column": 1,
+          "ambiguous": 6
+        }
+      },
+      "n_converged": 45,
+      "n_ambiguous_gt": 11,
+      "n_ambiguous_pred": 9,
+      "ridge_recall": 0.708,
+      "ridge_misclass_column": 4,
+      "ridge_ambiguous": 3,
+      "column_recall": 0.9,
+      "column_misclass_ridge": 1,
+      "column_ambiguous": 0,
+      "ambiguous_ok": 6,
+      "ambiguous_promoted": 5,
+      "runtime_s_mean": 0.082,
+      "runtime_s_p50": 0.0738,
+      "runtime_s_p95": 0.11742739999999997
+    },
+    "blind": {
+      "n_cases": 26,
+      "confusion": {
+        "ridge": {
+          "ridge": 8,
+          "column": 3,
+          "ambiguous": 1
+        },
+        "column": {
+          "ridge": 0,
+          "column": 6,
+          "ambiguous": 0
+        },
+        "ambiguous": {
+          "ridge": 2,
+          "column": 3,
+          "ambiguous": 3
+        }
+      },
+      "n_converged": 26,
+      "n_ambiguous_gt": 8,
+      "n_ambiguous_pred": 4,
+      "ridge_recall": 0.667,
+      "ridge_misclass_column": 3,
+      "ridge_ambiguous": 1,
+      "column_recall": 1.0,
+      "column_misclass_ridge": 0,
+      "column_ambiguous": 0,
+      "ambiguous_ok": 3,
+      "ambiguous_promoted": 5,
+      "runtime_s_mean": 0.0855,
+      "runtime_s_p50": 0.076743,
+      "runtime_s_p95": 0.1388885
+    }
+  }
+}

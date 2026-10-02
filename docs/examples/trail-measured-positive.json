@@ -1,0 +1,95 @@
+{
+  "$schema": "urn:zeanalyser:contracts:detection-result:v1",
+  "schema_version": "1.0.0",
+  "contract": "zeanalyser.detection-result.v1",
+  "result_id": "trail-s001-img07-0001",
+  "detector": {
+    "family": "trail",
+    "backend_id": "zeanalyser.hough.v0",
+    "backend_version": "0.1.0"
+  },
+  "input": {
+    "corpus_id": "corpus-deepsky-001/session-s001/image-img07",
+    "rel_path": "s001/img07.fits",
+    "sha256": null,
+    "image_prep": {
+      "logical_kind": "scientific_2d",
+      "color_mode": "cfa",
+      "bayer_pattern": "RGGB",
+      "cfa_strategy": "bin2x2",
+      "rgb_luminance_formula": null,
+      "shape": [1080, 1920],
+      "dtype": "uint16",
+      "hdu": 0,
+      "nan_inf_policy": "masked",
+      "saturation_policy": "masked",
+      "invalid_pixel_policy": "masked",
+      "background_policy": "local_median_subtracted"
+    }
+  },
+  "state": "measured_positive",
+  "analysis_completed": true,
+  "backend_available": true,
+  "domain_covered": true,
+  "error": null,
+  "reason": null,
+  "measurements": {
+    "segment_count": 3,
+    "physical_trail_count": 1,
+    "object_class_summary": "unknown",
+    "trail_groups": [
+      {
+        "group_id": "g1",
+        "segment_ids": ["s1", "s2", "s3"],
+        "physical_trail_count": 1
+      }
+    ],
+    "segments": [
+      {
+        "segment_id": "s1",
+        "endpoints": [[100.5, 50.0], [104.0, 350.0]],
+        "width_px": 2.4,
+        "length_px": 300.6,
+        "object_class": "unknown"
+      },
+      {
+        "segment_id": "s2",
+        "endpoints": [[104.0, 350.0], [107.5, 650.0]],
+        "width_px": 2.3,
+        "length_px": 300.6,
+        "object_class": "unknown"
+      },
+      {
+        "segment_id": "s3",
+        "endpoints": [[107.5, 650.0], [111.0, 950.0]],
+        "width_px": 2.5,
+        "length_px": 300.6,
+        "object_class": "unknown"
+      }
+    ]
+  },
+  "coordinate_transform": {
+    "version": "1.0.0",
+    "method": "affine",
+    "pixel_convention": "center",
+    "scale": null,
+    "offset": null,
+    "matrix": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+    "origin_preserved": true
+  },
+  "provenance": {
+    "software": {
+      "name": "ZeAnalyser",
+      "version": "3.5.0"
+    },
+    "parameters_effective": {
+      "low_thresh": 0.1,
+      "high_thresh": 0.5,
+      "line_len": 150,
+      "small_edge": 60,
+      "line_gap": 75,
+      "threshold_unit": "fraction_0_to_1"
+    },
+    "timestamp": "2026-10-01T16:00:00Z"
+  }
+}

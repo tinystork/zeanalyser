@@ -176,6 +176,14 @@ def write_marker_atomic(
 ) -> Path:
     """Atomically write the canonical completion marker.
 
+    The marker stores only a stable, versioned reference to the analysis log
+    (plus ``product_version``); it never stores analysis results. Because
+    ``write_log_summary`` *appends* a fresh visualization block on every
+    action, the marker does NOT need rewriting after actions: reloading via
+    the marker reads ``log_file`` and
+    ``load_latest_valid_visualization_block`` always returns the LAST complete
+    block (the most recent post-action state).
+
     ``log_file`` must be relative and confined to ``directory``. The final
     marker appears only after complete JSON has been flushed and fsynced.
     """

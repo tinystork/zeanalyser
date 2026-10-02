@@ -48,7 +48,7 @@ def test_about_action_sets_last_text(monkeypatch):
 
 
 def test_about_packaging_and_source_version_share_canonical_attribute():
-    assert __version__ == "3.4.0"
+    assert __version__ == "3.5.0"
 
     pyproject_path = mod.os.path.join(
         mod.os.path.dirname(mod.os.path.dirname(mod.os.path.dirname(mod.__file__))),

@@ -1,0 +1,69 @@
+{
+  "$schema": "urn:zeanalyser:contracts:detection-result:v1",
+  "schema_version": "1.0.0",
+  "contract": "zeanalyser.detection-result.v1",
+  "result_id": "transparency-s003-img01-0001",
+  "detector": {
+    "family": "transparency",
+    "backend_id": "zeanalyser.relative_photometry.v0",
+    "backend_version": "0.1.0"
+  },
+  "input": {
+    "corpus_id": "corpus-deepsky-001/session-s003/image-img01",
+    "rel_path": "s003/img01.fits",
+    "sha256": null,
+    "image_prep": {
+      "logical_kind": "scientific_2d",
+      "color_mode": "mono",
+      "bayer_pattern": null,
+      "cfa_strategy": null,
+      "rgb_luminance_formula": null,
+      "shape": [1080, 1920],
+      "dtype": "uint16",
+      "hdu": 0,
+      "nan_inf_policy": "masked",
+      "saturation_policy": "masked",
+      "invalid_pixel_policy": "masked",
+      "background_policy": "local_median_subtracted"
+    }
+  },
+  "state": "measured_negative",
+  "analysis_completed": true,
+  "backend_available": true,
+  "domain_covered": true,
+  "error": null,
+  "reason": null,
+  "measurements": {
+    "relative_transmission": 1.02,
+    "transmission_error": 0.03,
+    "veil_state": "clear",
+    "usable_for_stacking": true,
+    "reference": {
+      "method": "relative_to_batch",
+      "reference_session_id": "s003",
+      "reference_frame_count": 12
+    },
+    "star_count_used": 43,
+    "star_fraction_recovered": 0.97
+  },
+  "coordinate_transform": {
+    "version": "1.0.0",
+    "method": "scale_offset",
+    "pixel_convention": "center",
+    "scale": [1.0, 1.0],
+    "offset": [0.0, 0.0],
+    "matrix": null,
+    "origin_preserved": true
+  },
+  "provenance": {
+    "software": {
+      "name": "ZeAnalyser",
+      "version": "3.5.0"
+    },
+    "parameters_effective": {
+      "min_stars": 20,
+      "aperture_radius_px": 3.0
+    },
+    "timestamp": "2026-10-01T16:00:00Z"
+  }
+}

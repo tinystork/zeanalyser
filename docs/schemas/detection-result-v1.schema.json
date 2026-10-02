@@ -1,0 +1,1074 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:zeanalyser:contracts:detection-result:v1",
+  "title": "ZeAnalyser Detection Result v1",
+  "description": "Versioned, self-describing result produced by a ZeAnalyser scientific detector (trail or transparency/veil). This schema is a documentary contract, not a runtime validator dependency.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "contract",
+    "result_id",
+    "detector",
+    "input",
+    "state",
+    "analysis_completed",
+    "backend_available",
+    "domain_covered",
+    "error",
+    "reason",
+    "measurements",
+    "coordinate_transform",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "contract": {
+      "const": "zeanalyser.detection-result.v1"
+    },
+    "result_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique, stable identifier for this result record."
+    },
+    "detector": {
+      "$ref": "#/$defs/detector"
+    },
+    "input": {
+      "$ref": "#/$defs/input"
+    },
+    "state": {
+      "enum": [
+        "measured_positive",
+        "measured_negative",
+        "indeterminate",
+        "measurement_failure",
+        "skipped",
+        "unavailable"
+      ],
+      "description": "Closed, unambiguous execution state. There is no boolean 'detected' field: state is the single source of truth."
+    },
+    "analysis_completed": {
+      "type": "boolean",
+      "description": "True only if the detector ran to completion on this input without being skipped, aborted, or failed."
+    },
+    "backend_available": {
+      "type": "boolean",
+      "description": "True if the requested backend was importable and usable at run time."
+    },
+    "domain_covered": {
+      "type": "boolean",
+      "description": "True if the input falls inside the documented domain of the backend (instrument, field, color mode, resolution...)."
+    },
+    "error": {
+      "$ref": "#/$defs/errorOrNull"
+    },
+    "reason": {
+      "$ref": "#/$defs/errorOrNull",
+      "description": "Bounded, machine-readable reason for indeterminate/skipped/unavailable outcomes. Null when not applicable."
+    },
+    "measurements": {
+      "type": "object"
+    },
+    "coordinate_transform": {
+      "$ref": "#/$defs/coordinateTransform"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "detector": {
+            "properties": {
+              "family": {
+                "const": "trail"
+              }
+            }
+          }
+        },
+        "required": [
+          "detector"
+        ]
+      },
+      "then": {
+        "properties": {
+          "measurements": {
+            "$ref": "#/$defs/trailMeasurements"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "measurements": {
+            "$ref": "#/$defs/transparencyMeasurements"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "measured_positive"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "analysis_completed": {
+            "const": true
+          },
+          "backend_available": {
+            "const": true
+          },
+          "domain_covered": {
+            "const": true
+          },
+          "error": {
+            "const": null
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "measured_negative"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "analysis_completed": {
+            "const": true
+          },
+          "backend_available": {
+            "const": true
+          },
+          "domain_covered": {
+            "const": true
+          },
+          "error": {
+            "const": null
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "measurement_failure"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "analysis_completed": {
+            "const": false
+          },
+          "error": {
+            "$ref": "#/$defs/errorObject"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "skipped"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "analysis_completed": {
+            "const": false
+          },
+          "reason": {
+            "$ref": "#/$defs/errorObject"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "unavailable"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "analysis_completed": {
+            "const": false
+          },
+          "backend_available": {
+            "const": false
+          },
+          "reason": {
+            "$ref": "#/$defs/errorObject"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "indeterminate"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason": {
+            "$ref": "#/$defs/errorObject"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "allOf": [
+          {
+            "properties": {
+              "detector": {
+                "properties": {
+                  "family": {
+                    "const": "trail"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "state": {
+                "const": "measured_positive"
+              }
+            }
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "measurements": {
+            "properties": {
+              "segment_count": {
+                "minimum": 1
+              },
+              "segments": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "allOf": [
+          {
+            "properties": {
+              "detector": {
+                "properties": {
+                  "family": {
+                    "const": "trail"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "state": {
+                "const": "measured_negative"
+              }
+            }
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "measurements": {
+            "properties": {
+              "segment_count": {
+                "const": 0
+              },
+              "segments": {
+                "maxItems": 0
+              },
+              "physical_trail_count": {
+                "enum": [
+                  0,
+                  null
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "allOf": [
+          {
+            "properties": {
+              "detector": {
+                "properties": {
+                  "family": {
+                    "const": "transparency"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "state": {
+                "const": "measured_positive"
+              }
+            }
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "measurements": {
+            "properties": {
+              "veil_state": {
+                "enum": [
+                  "probable_veil",
+                  "unattributed_degradation"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "allOf": [
+          {
+            "properties": {
+              "detector": {
+                "properties": {
+                  "family": {
+                    "const": "transparency"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "state": {
+                "const": "measured_negative"
+              }
+            }
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "measurements": {
+            "properties": {
+              "veil_state": {
+                "const": "clear"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "detector": {
+      "type": "object",
+      "required": [
+        "family",
+        "backend_id",
+        "backend_version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "enum": [
+            "trail",
+            "transparency"
+          ]
+        },
+        "backend_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable backend identifier, e.g. 'acstools.satdet' or 'zeanalyser.hough.v0'."
+        },
+        "backend_version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "required": [
+        "corpus_id",
+        "image_prep"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "corpus_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable, non-private identifier within the corpus. Never an absolute filesystem path."
+        },
+        "rel_path": {
+          "type": "string",
+          "minLength": 1,
+          "not": {
+            "pattern": "^(/|[A-Za-z]:[\\\\/]|~|\\\\+)"
+          },
+          "description": "Optional corpus-relative path, pseudonymized. Must be relative: POSIX absolute (/...), home (~...), Windows drive (C:...), and UNC (\\\\server\\share...) prefixes are forbidden."
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-fA-F]{64}$",
+          "description": "Optional content hash (64 lowercase/uppercase hex chars). Documented as optional to avoid an expensive per-run hash requirement."
+        },
+        "image_prep": {
+          "$ref": "#/$defs/imagePrep"
+        }
+      }
+    },
+    "imagePrep": {
+      "type": "object",
+      "required": [
+        "logical_kind",
+        "color_mode",
+        "shape",
+        "dtype",
+        "nan_inf_policy",
+        "saturation_policy",
+        "invalid_pixel_policy",
+        "background_policy"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "logical_kind": {
+          "const": "scientific_2d",
+          "description": "The logical 2D scientific artifact the detector consumed. Never an auto-stretched preview."
+        },
+        "color_mode": {
+          "enum": [
+            "mono",
+            "rgb",
+            "cfa"
+          ]
+        },
+        "bayer_pattern": {
+          "enum": [
+            "RGGB",
+            "BGGR",
+            "GRBG",
+            "GBRG",
+            null
+          ],
+          "description": "Required non-null when color_mode is 'cfa'; null/absent otherwise."
+        },
+        "cfa_strategy": {
+          "enum": [
+            "demosaic",
+            "bin2x2",
+            "superpixel",
+            null
+          ],
+          "description": "Required non-null when color_mode is 'cfa'. Bounded vocabulary: 'demosaic' (full-colour demosaic), 'bin2x2' (2x2 colour-pooled bin), 'superpixel' (2x2 -> 4 planes). Null/absent otherwise."
+        },
+        "rgb_luminance_formula": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Required non-empty when color_mode is 'rgb' (e.g. Rec.709 luma). Null/absent otherwise."
+        },
+        "shape": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[height, width] of the logical plane."
+        },
+        "dtype": {
+          "type": "string",
+          "minLength": 1,
+          "description": "NumPy dtype string of the logical plane, e.g. 'uint16', 'float32'."
+        },
+        "hdu": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "FITS HDU index used, when applicable."
+        },
+        "nan_inf_policy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Declared policy for NaN/Inf, e.g. 'masked', 'replaced_with_median', 'propagate'. Required."
+        },
+        "saturation_policy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Declared policy for saturated pixels. Required."
+        },
+        "invalid_pixel_policy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Declared policy for invalid/bad pixels and masks. Required."
+        },
+        "background_policy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Declared background handling, if any (estimation/subtraction), for photometric transparency. Required."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "color_mode": {
+                "const": "mono"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "bayer_pattern": {
+                "const": null
+              },
+              "cfa_strategy": {
+                "const": null
+              },
+              "rgb_luminance_formula": {
+                "const": null
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "color_mode": {
+                "const": "rgb"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "rgb_luminance_formula"
+            ],
+            "properties": {
+              "rgb_luminance_formula": {
+                "type": "string",
+                "minLength": 1
+              },
+              "bayer_pattern": {
+                "const": null
+              },
+              "cfa_strategy": {
+                "const": null
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "color_mode": {
+                "const": "cfa"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "bayer_pattern",
+              "cfa_strategy"
+            ],
+            "properties": {
+              "bayer_pattern": {
+                "enum": [
+                  "RGGB",
+                  "BGGR",
+                  "GRBG",
+                  "GBRG"
+                ]
+              },
+              "cfa_strategy": {
+                "enum": [
+                  "demosaic",
+                  "bin2x2",
+                  "superpixel"
+                ]
+              },
+              "rgb_luminance_formula": {
+                "const": null
+              }
+            }
+          }
+        }
+      ]
+    },
+    "trailMeasurements": {
+      "type": "object",
+      "required": [
+        "segment_count",
+        "physical_trail_count",
+        "segments"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "segment_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of geometric segments reported. Distinct from physical_trail_count."
+        },
+        "physical_trail_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Number of physical trails after colinear grouping. Null when grouping was not performed; 0 on a measured negative."
+        },
+        "object_class_summary": {
+          "enum": [
+            "satellite",
+            "aircraft",
+            "unknown",
+            null
+          ],
+          "description": "Best-effort class. 'unknown' is acceptable; satellite/aircraft is not required."
+        },
+        "trail_groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/trailGroup"
+          }
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/trailSegment"
+          }
+        }
+      }
+    },
+    "trailSegment": {
+      "type": "object",
+      "required": [
+        "segment_id",
+        "endpoints",
+        "width_px",
+        "length_px",
+        "object_class"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "segment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "endpoints": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "description": "Two [x, y] endpoints in analysis coordinates."
+        },
+        "width_px": {
+          "type": "number",
+          "minimum": 0
+        },
+        "length_px": {
+          "type": "number",
+          "minimum": 0
+        },
+        "object_class": {
+          "enum": [
+            "satellite",
+            "aircraft",
+            "unknown",
+            null
+          ]
+        }
+      }
+    },
+    "trailGroup": {
+      "type": "object",
+      "required": [
+        "group_id",
+        "segment_ids",
+        "physical_trail_count"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "group_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "segment_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "physical_trail_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "transparencyMeasurements": {
+      "type": "object",
+      "required": [
+        "relative_transmission",
+        "veil_state",
+        "usable_for_stacking"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "relative_transmission": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Photometric, relative transmission normalized to a documented reference. Non-negative; null when not measurable."
+        },
+        "transmission_error": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "veil_state": {
+          "enum": [
+            "clear",
+            "probable_veil",
+            "unattributed_degradation",
+            "indeterminate"
+          ],
+          "description": "Observational veil statement, never a weather attribution. 'probable_veil' is not a cloud certification."
+        },
+        "usable_for_stacking": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Presence of veil is distinct from stacking usefulness. Null when not assessed."
+        },
+        "reference": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/transparencyReference"
+            }
+          ],
+          "description": "Documented origin and quality of the relative reference. Required when relative_transmission is non-null."
+        },
+        "star_count_used": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "star_fraction_recovered": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "relative_transmission": {
+                "type": "number"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reference"
+            ],
+            "properties": {
+              "reference": {
+                "$ref": "#/$defs/transparencyReference"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "transparencyReference": {
+      "type": "object",
+      "required": [
+        "method",
+        "reference_session_id",
+        "reference_frame_count"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reference_session_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reference_frame_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "errorOrNull": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/errorObject"
+        }
+      ]
+    },
+    "errorObject": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      }
+    },
+    "coordinateTransform": {
+      "type": "object",
+      "required": [
+        "version",
+        "method",
+        "pixel_convention",
+        "origin_preserved",
+        "scale",
+        "offset",
+        "matrix"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": "1.0.0"
+        },
+        "method": {
+          "enum": [
+            "scale_offset",
+            "affine"
+          ]
+        },
+        "pixel_convention": {
+          "enum": [
+            "center",
+            "corner"
+          ],
+          "description": "Whether analysis coordinates refer to pixel centers or top-left corners."
+        },
+        "origin_preserved": {
+          "type": "boolean",
+          "description": "Required. True when analysis coordinates map back to native pixels without cropping, flipping, or silent resampling."
+        },
+        "scale": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/vector2"
+            }
+          ],
+          "description": "Always present. [sx, sy] when method is scale_offset; explicitly null when method is affine."
+        },
+        "offset": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/vector2"
+            }
+          ],
+          "description": "Always present. [ox, oy] when method is scale_offset; explicitly null when method is affine."
+        },
+        "matrix": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/matrix2x3"
+            }
+          ],
+          "description": "Always present. 2x3 affine matrix when method is affine: native = M @ [x, y, 1]^T; explicitly null when method is scale_offset."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "scale_offset"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "scale",
+              "offset"
+            ],
+            "properties": {
+              "scale": {
+                "$ref": "#/$defs/vector2"
+              },
+              "offset": {
+                "$ref": "#/$defs/vector2"
+              },
+              "matrix": {
+                "const": null
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "affine"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "matrix"
+            ],
+            "properties": {
+              "matrix": {
+                "$ref": "#/$defs/matrix2x3"
+              },
+              "scale": {
+                "const": null
+              },
+              "offset": {
+                "const": null
+              }
+            }
+          }
+        }
+      ]
+    },
+    "vector2": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "matrix2x3": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        },
+        "minItems": 3,
+        "maxItems": 3
+      },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "2 rows of 3 columns: [ [a, b, c], [d, e, f] ] mapping [x, y, 1] -> [a*x+b*y+c, d*x+e*y+f]."
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "software",
+        "parameters_effective",
+        "timestamp"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "software": {
+          "type": "object",
+          "required": [
+            "name",
+            "version"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "parameters_effective": {
+          "type": "object",
+          "description": "The parameters actually used, with explicit units where applicable."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO-8601 UTC timestamp of the analysis."
+        }
+      }
+    }
+  }
+}

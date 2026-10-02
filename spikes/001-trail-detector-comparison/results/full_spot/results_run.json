@@ -1,0 +1,268 @@
+{
+  "meta": {
+    "mission": "ZA-TRAIL-02A-SATDET-MRT-SPIKE-20261002",
+    "size": 256,
+    "theta_step": 0.5,
+    "seed": 20261002,
+    "rss_method": "resource.getrusage(RUSAGE_SELF).ru_maxrss (child peak, KiB); delta = child peak - import-only baseline",
+    "rss_baselines_kb": {
+      "satdet": 172140,
+      "mrt": 172140
+    },
+    "case_ids": [
+      "diag_strong",
+      "vert_strong",
+      "dense_field"
+    ],
+    "fingerprints": {
+      "synthetic.py": "991b152dbb78787ab9fa26073d4a65469e8c39f1b935abe18e53baf7bfb1ac27",
+      "adapters.py": "192174fd5b85c2932a4a2243d743c83435102b5f977ee9548abf87209edc2db9",
+      "metrics.py": "17adec67d50042a7ba2ea6f2da2383a3d4ea74d49057419d03e8549fbf29fc44",
+      "run_comparison.py": "352a59736dbcbf8276caaa80833947a8164c6d27d1cb6d1550ce044e9dcee4e9"
+    },
+    "generated_at_utc": "2026-10-02T08:06:22Z"
+  },
+  "results": [
+    {
+      "backend": "acstools.satdet",
+      "version": "3.8.2",
+      "state": "ok",
+      "runtime_s": 0.020194763999825227,
+      "n_segments": 2,
+      "n_sources": null,
+      "n_accepted": null,
+      "n_candidate": null,
+      "status_counts": null,
+      "angles_deg": [
+        45.0,
+        45.0
+      ],
+      "detected": true,
+      "error": null,
+      "rss_kb": 177716,
+      "notes": [
+        "geometric params (line_len/small_edge/line_gap/buf) rescaled to image size; this is a single documented feasibility adjustment. Hough angle filter excludes horizontal/vertical trails (round_angle % 90 == 0).",
+        "2 segment(s) => satellite=True; segments describe one physical trail, not several trails."
+      ],
+      "case_id": "diag_strong",
+      "size": 256,
+      "theta_step": 0.5,
+      "seed": 20261002,
+      "worker_wall_s": 2.392,
+      "rss_delta_kb": 5576,
+      "gt_has_trail": true,
+      "gt_ntrails": 1,
+      "angle_error_deg": 0.0,
+      "is_true_positive": true,
+      "is_false_positive": false
+    },
+    {
+      "backend": "acstools.findsat_mrt",
+      "version": "3.8.2",
+      "state": "ok",
+      "runtime_s": 3.73865793099867,
+      "n_segments": null,
+      "n_sources": 1,
+      "n_accepted": 1,
+      "n_candidate": 1,
+      "status_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 1
+      },
+      "angles_deg": [
+        44.99631631340329
+      ],
+      "detected": true,
+      "error": null,
+      "rss_kb": 184924,
+      "notes": [
+        "median subtracted (standard MRT preprocessing); buffer rescaled to small image; theta explicit (step documented) to bound cost; processes=1; all file outputs disabled."
+      ],
+      "case_id": "diag_strong",
+      "size": 256,
+      "theta_step": 0.5,
+      "seed": 20261002,
+      "worker_wall_s": 6.314,
+      "rss_delta_kb": 12784,
+      "gt_has_trail": true,
+      "gt_ntrails": 1,
+      "angle_error_deg": 0.003683686596708924,
+      "is_true_positive": true,
+      "is_false_positive": false
+    },
+    {
+      "backend": "acstools.satdet",
+      "version": "3.8.2",
+      "state": "ok",
+      "runtime_s": 0.017148711000118055,
+      "n_segments": 0,
+      "n_sources": null,
+      "n_accepted": null,
+      "n_candidate": null,
+      "status_counts": null,
+      "angles_deg": [],
+      "detected": false,
+      "error": null,
+      "rss_kb": 178268,
+      "notes": [
+        "geometric params (line_len/small_edge/line_gap/buf) rescaled to image size; this is a single documented feasibility adjustment. Hough angle filter excludes horizontal/vertical trails (round_angle % 90 == 0)."
+      ],
+      "case_id": "vert_strong",
+      "size": 256,
+      "theta_step": 0.5,
+      "seed": 20261002,
+      "worker_wall_s": 2.375,
+      "rss_delta_kb": 6128,
+      "gt_has_trail": true,
+      "gt_ntrails": 1,
+      "angle_error_deg": null,
+      "is_true_positive": false,
+      "is_false_positive": false
+    },
+    {
+      "backend": "acstools.findsat_mrt",
+      "version": "3.8.2",
+      "state": "ok",
+      "runtime_s": 3.849559362000946,
+      "n_segments": null,
+      "n_sources": 2,
+      "n_accepted": 2,
+      "n_candidate": 2,
+      "status_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 2
+      },
+      "angles_deg": [
+        89.00095562655952,
+        91.37774247617615
+      ],
+      "detected": true,
+      "error": null,
+      "rss_kb": 184804,
+      "notes": [
+        "median subtracted (standard MRT preprocessing); buffer rescaled to small image; theta explicit (step documented) to bound cost; processes=1; all file outputs disabled."
+      ],
+      "case_id": "vert_strong",
+      "size": 256,
+      "theta_step": 0.5,
+      "seed": 20261002,
+      "worker_wall_s": 6.224,
+      "rss_delta_kb": 12664,
+      "gt_has_trail": true,
+      "gt_ntrails": 1,
+      "angle_error_deg": 0.9990443734404835,
+      "is_true_positive": true,
+      "is_false_positive": false
+    },
+    {
+      "backend": "acstools.satdet",
+      "version": "3.8.2",
+      "state": "ok",
+      "runtime_s": 0.02161002300090331,
+      "n_segments": 0,
+      "n_sources": null,
+      "n_accepted": null,
+      "n_candidate": null,
+      "status_counts": null,
+      "angles_deg": [],
+      "detected": false,
+      "error": null,
+      "rss_kb": 178268,
+      "notes": [
+        "geometric params (line_len/small_edge/line_gap/buf) rescaled to image size; this is a single documented feasibility adjustment. Hough angle filter excludes horizontal/vertical trails (round_angle % 90 == 0)."
+      ],
+      "case_id": "dense_field",
+      "size": 256,
+      "theta_step": 0.5,
+      "seed": 20261002,
+      "worker_wall_s": 2.567,
+      "rss_delta_kb": 6128,
+      "gt_has_trail": false,
+      "gt_ntrails": 0,
+      "angle_error_deg": null,
+      "is_true_positive": false,
+      "is_false_positive": false
+    },
+    {
+      "backend": "acstools.findsat_mrt",
+      "version": "3.8.2",
+      "state": "ok",
+      "runtime_s": 3.811833376999857,
+      "n_segments": null,
+      "n_sources": 2,
+      "n_accepted": 0,
+      "n_candidate": 1,
+      "status_counts": {
+        "0": 1,
+        "1": 1,
+        "2": 0
+      },
+      "angles_deg": [
+        179.87592661846583,
+        165.5311980711572
+      ],
+      "detected": false,
+      "error": null,
+      "rss_kb": 185028,
+      "notes": [
+        "median subtracted (standard MRT preprocessing); buffer rescaled to small image; theta explicit (step documented) to bound cost; processes=1; all file outputs disabled.",
+        "some sources reached status 1 (passed SNR+width, failed persistence) but are NOT counted as accepted (status 2)."
+      ],
+      "case_id": "dense_field",
+      "size": 256,
+      "theta_step": 0.5,
+      "seed": 20261002,
+      "worker_wall_s": 6.378,
+      "rss_delta_kb": 12888,
+      "gt_has_trail": false,
+      "gt_ntrails": 0,
+      "angle_error_deg": null,
+      "is_true_positive": false,
+      "is_false_positive": false
+    }
+  ],
+  "summary": {
+    "acstools.satdet": {
+      "n_cases": 3,
+      "n_ok": 3,
+      "n_error": 0,
+      "n_timeout": 0,
+      "n_unevaluated_positive": 0,
+      "n_unevaluated_negative": 0,
+      "n_positive_cases": 2,
+      "n_negative_cases": 1,
+      "synthetic_tp": 1,
+      "synthetic_fp": 0,
+      "synthetic_fn": 1,
+      "synthetic_tn": 1,
+      "synthetic_detection_rate_positives": 0.5,
+      "synthetic_false_positive_rate_negatives": 0.0,
+      "runtime_s_mean": 0.0197,
+      "runtime_s_p50": 0.020194763999825227,
+      "runtime_s_p95": 0.021468497100795503,
+      "runtime_s_n": 3
+    },
+    "acstools.findsat_mrt": {
+      "n_cases": 3,
+      "n_ok": 3,
+      "n_error": 0,
+      "n_timeout": 0,
+      "n_unevaluated_positive": 0,
+      "n_unevaluated_negative": 0,
+      "n_positive_cases": 2,
+      "n_negative_cases": 1,
+      "synthetic_tp": 2,
+      "synthetic_fp": 0,
+      "synthetic_fn": 0,
+      "synthetic_tn": 1,
+      "synthetic_detection_rate_positives": 1.0,
+      "synthetic_false_positive_rate_negatives": 0.0,
+      "runtime_s_mean": 3.8,
+      "runtime_s_p50": 3.811833376999857,
+      "runtime_s_p95": 3.845786763500837,
+      "runtime_s_n": 3
+    }
+  }
+}

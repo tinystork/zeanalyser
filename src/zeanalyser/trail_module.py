@@ -68,6 +68,8 @@ import os
 import warnings
 import inspect
 import traceback
+import math
+import glob
 
 # --- Gestion acstools ---
 SATDET_AVAILABLE = False
@@ -110,11 +112,250 @@ if SATDET_AVAILABLE:
     else:
         print("AVERTISSEMENT (trail_module): scikit-image non trouvé.")
 
+# --- Backend identity (for provenance / per-row trail_backend_* fields) ---
+ACSTOOLS_BACKEND_ID = 'acstools.satdet'
+ACSTOOLS_BACKEND_VERSION = None
+try:
+    import acstools as _acstools_pkg
+    ACSTOOLS_BACKEND_VERSION = getattr(_acstools_pkg, '__version__', None)
+except Exception:
+    ACSTOOLS_BACKEND_VERSION = None
+if ACSTOOLS_BACKEND_VERSION is None:
+    try:
+        import importlib.metadata as _importlib_metadata
+        ACSTOOLS_BACKEND_VERSION = _importlib_metadata.version('acstools')
+    except Exception:
+        ACSTOOLS_BACKEND_VERSION = None
+
+
+def backend_info():
+    """Return ``(backend_id, backend_version)`` for the active detector."""
+    return (ACSTOOLS_BACKEND_ID, ACSTOOLS_BACKEND_VERSION)
+
+
+# --- Canonical parameters and normalization primitives ---
+TRAIL_PARAM_DEFAULTS = {
+    'sigma': 2.0,
+    'low_thresh': 0.1,
+    'h_thresh': 0.5,
+    'line_len': 150,
+    'small_edge': 60,
+    'line_gap': 75,
+}
+
+# Sentinel keys for global (non-file) errors. These are never filesystem paths.
+GLOBAL_ERROR_SENTINELS = frozenset({
+    'FATAL_ERROR',
+    'CONFIG_ERROR',
+    'DEPENDENCY_ERROR',
+    'IMPORT_ERROR',
+    'FATAL_CALL_ERROR',
+})
+
+
+def normalize_detsat_key(key):
+    """Normalize a satdet result/error key to a canonical ``(normpath, ext)``.
+
+    Handles both the string form (``'/abs/file.fits'``) and the tuple form
+    (``('/abs/file.fits', 0)``). The path is made absolute and normcase'd so a
+    single file is keyed identically across results and errors.
+
+    Returns ``None`` when the key cannot be interpreted, including when the
+    extension is not convertible to an ``int`` (an invalid extension is never
+    silently coerced to ``0``).
+    """
+    if isinstance(key, tuple) and len(key) == 2:
+        path, ext = key
+    elif isinstance(key, str):
+        path, ext = key, 0
+    else:
+        return None
+    try:
+        ext_int = int(ext)
+    except (TypeError, ValueError):
+        return None
+    # Path must be a non-empty str/PathLike; None/empty is never mapped to a
+    # probative cwd/... path.
+    if not isinstance(path, (str, os.PathLike)) or not str(path).strip():
+        return None
+    try:
+        norm_path = os.path.normcase(os.path.abspath(str(path)))
+    except Exception:
+        norm_path = os.path.normcase(str(path))
+    return (norm_path, ext_int)
+
+
+def is_global_error_key(key):
+    """Return True when a key is a non-file sentinel (fatal/config/etc.).
+
+    Accepts both the tuple form ``('CONFIG_ERROR', 0)`` and the bare string
+    form ``'CONFIG_ERROR'``.
+    """
+    if isinstance(key, str):
+        return key.upper() in GLOBAL_ERROR_SENTINELS
+    if isinstance(key, tuple) and len(key) == 2 and isinstance(key[0], str):
+        return key[0].upper() in GLOBAL_ERROR_SENTINELS
+    return False
+
+
+def segments_to_serializable(segments):
+    """Convert satdet segment arrays into JSON-serializable endpoint lists.
+
+    acstools returns an ndarray of shape ``(n, 2, 2)`` (or an empty array for
+    no trail).
+
+    Returns ``(segments, error)``:
+    - ``segments``: list of ``[[x0, y0], [x1, y1]]`` pairs with plain Python
+      numbers, or ``[]`` for an explicit-empty (valid) result.
+    - ``error``: ``None`` on success; a bounded message when the input is not
+      a valid segment container (None, string/scalar, wrong segment shape,
+      non-numeric or non-finite coordinates), so the caller can mark the
+      outcome ``indeterminate`` instead of silently treating it as a measured
+      negative. Only an explicitly-empty container is a measured negative.
+    """
+    if segments is None:
+        return [], "trail result is None (missing payload)"
+    if isinstance(segments, (str, bytes)):
+        return [], "trail result is not a segment container"
+    try:
+        items = list(segments)
+    except TypeError:
+        return [], "trail result is not iterable"
+    if not items:
+        return [], None  # explicit empty container -> valid negative
+    serializable = []
+    for seg in items:
+        try:
+            (x0, y0), (x1, y1) = seg
+        except (TypeError, ValueError):
+            return [], "malformed trail segment in result"
+        try:
+            coords = [float(x0), float(y0), float(x1), float(y1)]
+        except (TypeError, ValueError):
+            return [], "non-numeric trail segment coordinates"
+        if any(not math.isfinite(c) for c in coords):
+            return [], "non-finite trail segment coordinates"
+        serializable.append([[coords[0], coords[1]], [coords[2], coords[3]]])
+    return serializable, None
+
+
+def bound_message(msg, limit=500):
+    """Bound a message string to ``limit`` characters for provenance fields."""
+    if msg is None:
+        return None
+    msg = str(msg)
+    if len(msg) <= limit:
+        return msg
+    return msg[:limit - 3] + '...'
+
+
+def resolve_trail_params(sat_params_input, log_callback=None):
+    """Resolve and validate canonical trail-detection parameters.
+
+    Canonical threshold names are ``low_thresh``/``h_thresh`` (fractions in
+    ``[0, 1]``). Legacy keys ``low_thr``/``high_thr`` carry **percentage**
+    semantics (``0..100``) and are divided by 100 deterministically, with a
+    migration log. Mixing canonical and legacy forms for the same threshold,
+    out-of-range values, or ``low_thresh > h_thresh`` are explicit
+    configuration errors (never silently swapped or clamped).
+
+    Non-threshold parameters keep a documented fallback to defaults on invalid
+    input, but the effective value is always returned so it can be journaled.
+
+    Returns ``(params, error)`` where ``params`` is a dict of canonical
+    effective parameters (or ``None``) and ``error`` is a message (or ``None``).
+    """
+    _log = log_callback if callable(log_callback) else (lambda k, **kw: None)
+    input_params = sat_params_input or {}
+
+    thresholds = {}
+    for canonical_key, role, legacy_key in (
+        ('low_thresh', 'low', 'low_thr'),
+        ('h_thresh', 'high', 'high_thr'),
+    ):
+        canonical_val = input_params.get(canonical_key)
+        legacy_val = input_params.get(legacy_key)
+        has_canonical = canonical_val is not None
+        has_legacy = legacy_val is not None
+
+        if has_canonical and has_legacy:
+            return None, (
+                f"Configuration ambiguous: both canonical '{canonical_key}' and "
+                f"legacy '{legacy_key}' provided for the {role} threshold."
+            )
+        if has_canonical:
+            try:
+                val = float(canonical_val)
+            except (TypeError, ValueError):
+                return None, f"Invalid {canonical_key} value: {canonical_val!r}"
+            if not 0.0 <= val <= 1.0:
+                return None, (
+                    f"Invalid {canonical_key}={val}: must be a fraction in [0, 1]."
+                )
+            thresholds[role] = val
+        elif has_legacy:
+            try:
+                val = float(legacy_val)
+            except (TypeError, ValueError):
+                return None, f"Invalid {legacy_key} value: {legacy_val!r}"
+            if not 0.0 <= val <= 100.0:
+                return None, (
+                    f"Invalid {legacy_key}={val}: percentage must be in [0, 100]."
+                )
+            fraction = val / 100.0
+            _log(
+                "logic_trail_threshold_legacy_migration",
+                legacy_key=legacy_key,
+                legacy_value=val,
+                canonical_key=canonical_key,
+                canonical_value=fraction,
+            )
+            thresholds[role] = fraction
+        else:
+            thresholds[role] = TRAIL_PARAM_DEFAULTS[canonical_key]
+
+    low = thresholds['low']
+    high = thresholds['high']
+    if low > high:
+        return None, (
+            f"Invalid thresholds: low_thresh={low} > h_thresh={high} "
+            "(low must be <= high)."
+        )
+
+    params = {'low_thresh': low, 'h_thresh': high}
+    for key in ('sigma', 'line_len', 'small_edge', 'line_gap'):
+        default_val = TRAIL_PARAM_DEFAULTS[key]
+        raw = input_params.get(key)
+        current = default_val
+        if raw is not None:
+            try:
+                if key == 'sigma':
+                    current = float(raw)
+                else:
+                    current = int(raw)
+                if key == 'sigma' and current <= 0:
+                    raise ValueError('must be > 0')
+                if key == 'line_len' and current <= 0:
+                    raise ValueError('must be > 0')
+                if key == 'small_edge' and current < 0:
+                    raise ValueError('must be >= 0')
+                if key == 'line_gap' and current <= 0:
+                    raise ValueError('must be > 0')
+            except (TypeError, ValueError):
+                current = default_val
+        params[key] = current
+
+    return params, None
+
+
 # --- RESTORED FUNCTION (rétro-compatible str/list/tuple) ---
 def run_trail_detection(search_pattern, sat_params_input, status_callback=None, log_callback=None):
     """
     Exécute acstools.satdet.detsat pour détecter les traînées en utilisant un search_pattern ou une liste de fichiers.
     (Version rétro-compatible : accepte str, list, tuple)
+
+    Sur une configuration de seuils invalide, retourne une erreur globale
+    ``CONFIG_ERROR`` et n'appelle jamais acstools.
     """
     _status_callback = status_callback if callable(status_callback) else lambda k, **kw: print(f"TRAIL_STATUS: {k} {kw}")
     _log_callback = log_callback if callable(log_callback) else lambda k, **kw: print(f"TRAIL_LOG: {k} {kw}")
@@ -141,25 +382,12 @@ def run_trail_detection(search_pattern, sat_params_input, status_callback=None, 
          _log_callback("logic_error_prefix", text=err_msg); _status_callback("status_satdet_dep_error")
          return {}, {('DEPENDENCY_ERROR', 0): err_msg}
 
-    # --- Récupérer et valider les paramètres (inchangé) ---
-    defaults = {'sigma': 2.0, 'low_thresh': 0.1, 'h_thresh': 0.5, 'line_len': 150, 'small_edge': 60, 'line_gap': 75}
-    params = {}
-    for key, default_val in defaults.items():
-        value_str = sat_params_input.get(key); current_val = default_val
-        if value_str is not None:
-            try:
-                if key in ['sigma', 'low_thresh', 'h_thresh']: current_val = float(value_str)
-                else: current_val = int(value_str)
-                if key == 'sigma' and current_val <= 0: raise ValueError("doit être > 0")
-                if key == 'low_thresh' and not (0 <= current_val <= 1): raise ValueError("doit être entre 0 et 1")
-                if key == 'h_thresh' and not (0 <= current_val <= 1): raise ValueError("doit être entre 0 et 1")
-                if key == 'line_len' and current_val <= 0: raise ValueError("doit être > 0")
-                if key == 'small_edge' and current_val < 0: raise ValueError("doit être >= 0")
-                if key == 'line_gap' and current_val <= 0: raise ValueError("doit être > 0")
-                params[key] = current_val
-            except (ValueError, TypeError) as e: log_key = f"logic_{key.replace('_thresh','thr')}_invalid"; _log_callback(log_key, e=e, default=default_val); params[key] = default_val
-        else: params[key] = default_val
-    if params['h_thresh'] < params['low_thresh']: original_high = params['h_thresh']; params['h_thresh'] = params['low_thresh']; _log_callback("logic_warn_prefix", text=f"High Thresh ({original_high}) < Low Thresh ({params['low_thresh']}). Ajustement High Thresh à {params['h_thresh']}.")
+    # --- Résoudre et valider les paramètres canoniques ---
+    params, cfg_error = resolve_trail_params(sat_params_input, _log_callback)
+    if cfg_error is not None:
+        _log_callback("logic_trail_config_error", text=cfg_error)
+        _status_callback("status_satdet_error")
+        return {}, {('CONFIG_ERROR', 0): cfg_error}
 
     # --- Paramètres fixes (inchangé) ---
     chips_to_use = [0]; n_processes = 1; verbose_det = False; plot_det = False
@@ -192,7 +420,11 @@ def run_trail_detection(search_pattern, sat_params_input, status_callback=None, 
                 results = {}
                 errors = {}
                 for single_file in file_input:
-                    satdet_kwargs[first_param_name] = single_file
+                    # A list/tuple contains literal file names, not glob
+                    # patterns. Escape metacharacters such as ``[``/``*`` so
+                    # acstools' internal glob expansion still opens the exact
+                    # requested file.
+                    satdet_kwargs[first_param_name] = glob.escape(os.fspath(single_file))
                     res, err = satdet.detsat(**satdet_kwargs)
                     results.update(res)
                     errors.update(err)
@@ -200,13 +432,22 @@ def run_trail_detection(search_pattern, sat_params_input, status_callback=None, 
 
         _status_callback("status_satdet_done")
 
-        # Logguer les erreurs spécifiques (inchangé)
+        # Logguer les erreurs spécifiques
         if errors:
             _log_callback("logic_satdet_errors_title"); count = 0
             for key, msg in errors.items():
-                if isinstance(key, tuple) and len(key) == 2: fname, ext = key;
-                if "is not a valid science extension" not in str(msg): _log_callback("logic_satdet_errors_item", fname=os.path.basename(fname), ext=ext, msg=msg); count += 1
-                else: _log_callback("logic_error_prefix", text=f"Erreur Satdet non liée à un fichier ({key}): {msg}"); count += 1
+                if is_global_error_key(key):
+                    _log_callback("logic_error_prefix", text=f"Erreur Satdet globale ({key}): {msg}"); count += 1
+                    continue
+                norm_key = normalize_detsat_key(key)
+                if norm_key is None:
+                    _log_callback("logic_error_prefix", text=f"Erreur Satdet clé inconnue ({key}): {msg}"); count += 1
+                    continue
+                fname, ext = norm_key
+                if "is not a valid science extension" not in str(msg):
+                    _log_callback("logic_satdet_errors_item", fname=os.path.basename(fname), ext=ext, msg=msg); count += 1
+                else:
+                    _log_callback("logic_error_prefix", text=f"Erreur Satdet non liée à un fichier ({key}): {msg}"); count += 1
             if count == 0: _log_callback("logic_satdet_errors_none")
         return results, errors
 

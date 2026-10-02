@@ -1,0 +1,390 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:zeanalyser:contracts:corpus-manifest:v1",
+  "title": "ZeAnalyser Corpus Manifest v1",
+  "description": "Versioned corpus manifest grouping images by session and target, declaring closed splits and per-image annotations. Anti-leak is enforced structurally: a session/target belongs to exactly one split.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "contract",
+    "manifest_id",
+    "corpus",
+    "splits",
+    "targets",
+    "sessions",
+    "annotations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "contract": {
+      "const": "zeanalyser.corpus-manifest.v1"
+    },
+    "manifest_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "corpus": {
+      "$ref": "#/$defs/corpus"
+    },
+    "splits": {
+      "$ref": "#/$defs/splits"
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/target"
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/session"
+      }
+    },
+    "annotations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/annotation"
+      }
+    },
+    "anti_leak_rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Human-readable anti-leak rules this manifest obeys. Normative text lives in the corpus contract document."
+    }
+  },
+  "$defs": {
+    "corpus": {
+      "type": "object",
+      "required": [
+        "corpus_id",
+        "phase",
+        "target_image_count"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "corpus_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "phase": {
+          "enum": [
+            "initial",
+            "extended"
+          ],
+          "description": "initial = first 100-200 image objective; extended = added negatives for rare false-positive measurement."
+        },
+        "target_image_count": {
+          "type": "object",
+          "required": [
+            "min",
+            "max"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "min": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "description": "Objective range, not a delivered count. min <= max is enforced by the cross-record test."
+        }
+      }
+    },
+    "splits": {
+      "type": "object",
+      "required": [
+        "development",
+        "validation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "development": {
+          "$ref": "#/$defs/split"
+        },
+        "validation": {
+          "$ref": "#/$defs/split"
+        },
+        "holdout": {
+          "$ref": "#/$defs/split"
+        }
+      }
+    },
+    "split": {
+      "type": "object",
+      "required": [
+        "split_id",
+        "session_ids",
+        "target_ids"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "split_id": {
+          "enum": [
+            "development",
+            "validation",
+            "holdout"
+          ]
+        },
+        "session_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "target_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "description": "Closed split. Sessions and targets are assigned by whole group; random per-file splitting is forbidden."
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "target_id",
+        "split",
+        "session_ids",
+        "object_type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "split": {
+          "enum": [
+            "development",
+            "validation",
+            "holdout"
+          ]
+        },
+        "session_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "object_type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "e.g. 'deep_sky_nebula', 'deep_sky_field', 'moon_adjacent_pollution'."
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "required": [
+        "session_id",
+        "target_id",
+        "split",
+        "image_ids",
+        "metadata"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "split": {
+          "enum": [
+            "development",
+            "validation",
+            "holdout"
+          ]
+        },
+        "image_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/imageRef"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Instrument, exposure, filter, gain, binning, calibration, site. Kept open to allow heterogeneous fields."
+        }
+      }
+    },
+    "imageRef": {
+      "type": "object",
+      "required": [
+        "image_id",
+        "rel_path"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "image_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rel_path": {
+          "type": "string",
+          "minLength": 1,
+          "not": {
+            "pattern": "^(/|[A-Za-z]:[\\\\/]|~|\\\\+)"
+          },
+          "description": "Corpus-relative, pseudonymized path. Must be relative: absolute POSIX (/...), home (~...), Windows drive (C:...), and UNC (\\\\server\\share...) prefixes are forbidden."
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-fA-F]{64}$",
+          "description": "Optional content hash; null when omitted."
+        },
+        "color_mode": {
+          "enum": [
+            "mono",
+            "rgb",
+            "cfa",
+            null
+          ]
+        },
+        "bayer_pattern": {
+          "enum": [
+            "RGGB",
+            "BGGR",
+            "GRBG",
+            "GBRG",
+            null
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "color_mode": {
+                "const": "cfa"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "bayer_pattern"
+            ],
+            "properties": {
+              "bayer_pattern": {
+                "enum": [
+                  "RGGB",
+                  "BGGR",
+                  "GRBG",
+                  "GBRG"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "annotation": {
+      "type": "object",
+      "required": [
+        "annotation_id",
+        "image_id",
+        "kind",
+        "label",
+        "confidence",
+        "annotator",
+        "provenance",
+        "reviewed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "annotation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "image_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "trail",
+            "transparency"
+          ],
+          "description": "Trail and transparency annotations are kept separate."
+        },
+        "label": {
+          "enum": [
+            "present",
+            "absent",
+            "uncertain",
+            "not_applicable"
+          ]
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "annotator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Annotator tool, date, review status. Kept open."
+        },
+        "geometry": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Optional geometry (trail segments) when available."
+        },
+        "object_class": {
+          "enum": [
+            "satellite",
+            "aircraft",
+            "unknown",
+            null
+          ]
+        },
+        "stacking_usability": {
+          "enum": [
+            "usable",
+            "unusable",
+            "uncertain",
+            null
+          ],
+          "description": "Veil presence (label) is distinct from stacking usefulness."
+        },
+        "reviewed": {
+          "type": "boolean",
+          "description": "Required. True when a second annotator reviewed this annotation (required for validation/holdout images)."
+        }
+      }
+    }
+  }
+}

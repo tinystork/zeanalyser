@@ -26,10 +26,10 @@ def test_numeric_and_boolean_filters(monkeypatch):
     win = mod.ZeAnalyserMainWindow()
 
     rows = [
-        {'file': 'imgA.fit', 'path': '/data/a', 'snr': 5.0, 'fwhm': 2.0, 'ecc': 0.1, 'has_trails': False},
-        {'file': 'imgB.fit', 'path': '/data/b', 'snr': 20.0, 'fwhm': 1.2, 'ecc': 0.05, 'has_trails': True},
-        {'file': 'imgC.fit', 'path': '/data/c', 'snr': 12.0, 'fwhm': 2.5, 'ecc': 0.3, 'has_trails': False},
-        {'file': 'imgD.fit', 'path': '/data/d', 'snr': None, 'fwhm': None, 'ecc': None, 'has_trails': False},
+        {'file': 'imgA.fit', 'path': '/data/a', 'snr': 5.0, 'fwhm': 2.0, 'ecc': 0.1, 'has_trails': False, 'trail_state': 'measured_negative'},
+        {'file': 'imgB.fit', 'path': '/data/b', 'snr': 20.0, 'fwhm': 1.2, 'ecc': 0.05, 'has_trails': True, 'trail_state': 'measured_positive'},
+        {'file': 'imgC.fit', 'path': '/data/c', 'snr': 12.0, 'fwhm': 2.5, 'ecc': 0.3, 'has_trails': False, 'trail_state': 'measured_negative'},
+        {'file': 'imgD.fit', 'path': '/data/d', 'snr': None, 'fwhm': None, 'ecc': None, 'has_trails': False, 'trail_state': 'measured_negative'},
     ]
 
     win.set_results(rows)

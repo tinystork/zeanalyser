@@ -74,6 +74,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, scrolledtext, messagebox
 from pathlib import Path
 from zeanalyser import project_state
+from zeanalyser import analysis_schema
 import matplotlib
 _env_backend = os.environ.get("MPLBACKEND")
 if _env_backend:
@@ -732,6 +733,7 @@ class AstroImageAnalyzerGUI:
         self.snr_selection_value = tk.StringVar(value='80')
         self.snr_reject_dir = tk.StringVar()
         self.starcount_reject_dir = tk.StringVar()
+        self.reco_reject_dir = tk.StringVar()
 
         # Paramètres Détection Traînées (acstools.satdet)
         self.trail_params = {
@@ -1589,11 +1591,11 @@ class AstroImageAnalyzerGUI:
                 if fig2: plt.close(fig2)
 
             # --- Onglet Traînées Satellites (Camembert) ---
-            detect_trails_was_active = any('has_trails' in r for r in self.analysis_results)
+            detect_trails_was_active = analysis_schema.has_measured_or_attempted_trail_state(self.analysis_results)
             if detect_trails_was_active:
                 sat_tab = ttk.Frame(notebook); notebook.add(sat_tab, text=self._("visu_tab_sat_trails")); fig3 = None
                 try:
-                    sat_count = sum(1 for r in self.analysis_results if r.get('has_trails', False)); no_sat_count = sum(1 for r in self.analysis_results if 'has_trails' in r and not r.get('has_trails')); total_analyzed_for_trails = sat_count + no_sat_count
+                    sat_count, no_sat_count = analysis_schema.count_trail_states(self.analysis_results); total_analyzed_for_trails = sat_count + no_sat_count
                     if total_analyzed_for_trails > 0:
                         fig3, ax4 = plt.subplots(figsize=(6, 6)); figures_list.append(fig3); labels = [self._("visu_sat_pie_without"), self._("visu_sat_pie_with")]; sizes = [no_sat_count, sat_count]; colors = ['#66b3ff', '#ff9999']; explode = (0, 0.1 if sat_count > 0 and no_sat_count > 0 else 0)
                         wedges, texts, autotexts = ax4.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%', shadow=True, startangle=90); ax4.axis('equal'); ax4.set_title(self._("visu_sat_pie_title")); plt.setp(autotexts, size=10, weight="bold", color="white"); plt.setp(texts, size=10)
@@ -1645,8 +1647,14 @@ class AstroImageAnalyzerGUI:
                                 else "N/A"
                             )
                         elif col_id == 'pixsig': vals.append(f"{r.get('signal_pixels',0)}")
-                        elif col_id == 'trails': vals.append(self._("logic_trail_yes") if r.get('has_trails',False) else self._("logic_trail_no"))
-                        elif col_id == 'nbseg': vals.append(f"{r.get('num_trails',0)}" if 'num_trails' in r else "N/A")
+                        elif col_id == 'trails':
+                            state = analysis_schema.resolve_trail_state(r)
+                            if state == 'measured_positive': vals.append(self._("logic_trail_yes"))
+                            elif state == 'measured_negative': vals.append(self._("logic_trail_no"))
+                            else: vals.append("N/A")
+                        elif col_id == 'nbseg':
+                            nbseg = r.get('num_trails')
+                            vals.append(str(nbseg) if nbseg is not None else "N/A")
                         elif col_id == 'action': vals.append(r.get('action','?'))
                         elif col_id == 'reason': vals.append(r.get('rejected_reason','') or '')
                         elif col_id == 'comment': vals.append(r.get('error_message', '') + r.get('action_comment', ''))
@@ -2941,6 +2949,7 @@ class AstroImageAnalyzerGUI:
             self.output_log.set(os.path.join(directory, "analyse_resultats.log")) 
             self.snr_reject_dir.set(os.path.join(directory, "rejected_low_snr"))
             self.trail_reject_dir.set(os.path.join(directory, "rejected_satellite_trails"))
+            self.reco_reject_dir.set(os.path.join(directory, "rejected_recommendations"))
             
             # reset_ui_for_new_analysis appellera _update_log_and_vis_buttons_state à la fin
             self.reset_ui_for_new_analysis() 
@@ -3844,23 +3853,70 @@ class AstroImageAnalyzerGUI:
         self._apply_recommendations_gui(auto=auto)
 
     def _apply_recommendations_gui(self, *, auto: bool = False):
-        """Keep only recommended images and apply reject actions."""
+        """Keep only recommended images and apply reject actions.
+
+        Recommendations move to a dedicated ``rejected_recommendations``
+        directory (never the low-SNR directory). Manual application requires
+        explicit confirmation; cancel => zero mutation. In ``auto`` mode the
+        recommendation is computed/previewed but NEVER applied (no consent),
+        so the caller may continue with already-pending SNR/trail categories.
+        """
         if not getattr(self, 'recommended_images', None):
             if not auto:
                 messagebox.showinfo("Info", "Aucune recommandation calculée.")
             return
 
-        reco_files = {os.path.abspath(img['file']) for img in self.recommended_images}
+        def _abs(r):
+            return analysis_schema.resolve_row_abs_path(r)
 
-        for r in self.analysis_results:
-            if r.get('status') == 'ok' and r.get('action') == 'kept':
-                if os.path.abspath(r['file']) not in reco_files:
-                    r['rejected_reason'] = 'not_in_recommendation'
-                    r['action'] = 'pending_reco_action'
+        reco_files = {_abs(img) for img in self.recommended_images}
+        reco_files.discard('')
+
+        kept_rows = [
+            r for r in self.analysis_results
+            if r.get('status') == 'ok' and r.get('action') == 'kept'
+        ]
+
+        def _is_recommended(r):
+            return _abs(r) in reco_files
+
+        # Dedicated recommendations reject directory — NEVER the SNR dir.
+        reco_dir = analyse_logic.resolve_reco_reject_dir(
+            self.reco_reject_dir.get(), self.input_dir.get()
+        )
+
+        to_move = [
+            r for r in kept_rows
+            if _abs(r) and not _is_recommended(r)
+        ]
+
+        # Consent contract: NO auto-apply of recommendations without explicit
+        # consent. In auto mode, compute/preview only, then continue with the
+        # already-pending SNR/trail categories.
+        if auto:
+            self.update_results_text(
+                'gui_reco_auto_skipped', count=len(to_move)
+            )
+            return
+
+        # Explicit confirmation before manual application.
+        if not self._confirm_recommendations_apply(
+            total=len(kept_rows),
+            recommended_count=len(self.recommended_images),
+            move_count=len(to_move),
+            reco_dir=reco_dir,
+            to_move=to_move,
+        ):
+            return
+
+        for r in kept_rows:
+            if _abs(r) and not _is_recommended(r):
+                r['rejected_reason'] = 'not_in_recommendation'
+                r['action'] = 'pending_reco_action'
 
         analyse_logic.apply_pending_reco_actions(
             self.analysis_results,
-            self.snr_reject_dir.get(),
+            reco_dir,
             delete_rejected_flag=self.reject_action.get() == 'delete',
             move_rejected_flag=self.reject_action.get() == 'move',
             log_callback=lambda *a, **k: None,
@@ -3868,57 +3924,6 @@ class AstroImageAnalyzerGUI:
             progress_callback=lambda p: None,
             input_dir_abs=self.input_dir.get()
         )
-
-        # Apply any pending SNR/FWHM/Starcount/Eccentricity actions as well
-        try:
-            analyse_logic.apply_pending_snr_actions(
-                self.analysis_results,
-                self.snr_reject_dir.get(),
-                delete_rejected_flag=self.reject_action.get() == 'delete',
-                move_rejected_flag=self.reject_action.get() == 'move',
-                log_callback=lambda *a, **k: None,
-                status_callback=lambda *a, **k: None,
-                progress_callback=lambda p: None,
-                input_dir_abs=self.input_dir.get(),
-            )
-        except Exception:
-            pass
-
-        if hasattr(analyse_logic, 'apply_pending_starcount_actions'):
-            analyse_logic.apply_pending_starcount_actions(
-                self.analysis_results,
-                self.starcount_reject_dir.get(),
-                delete_rejected_flag=self.reject_action.get() == 'delete',
-                move_rejected_flag=self.reject_action.get() == 'move',
-                log_callback=lambda *a, **k: None,
-                status_callback=lambda *a, **k: None,
-                progress_callback=lambda p: None,
-                input_dir_abs=self.input_dir.get(),
-            )
-
-        if hasattr(analyse_logic, 'apply_pending_fwhm_actions'):
-            analyse_logic.apply_pending_fwhm_actions(
-                self.analysis_results,
-                self.starcount_reject_dir.get(),
-                delete_rejected_flag=self.reject_action.get() == 'delete',
-                move_rejected_flag=self.reject_action.get() == 'move',
-                log_callback=lambda *a, **k: None,
-                status_callback=lambda *a, **k: None,
-                progress_callback=lambda p: None,
-                input_dir_abs=self.input_dir.get(),
-            )
-
-        if hasattr(analyse_logic, 'apply_pending_ecc_actions'):
-            analyse_logic.apply_pending_ecc_actions(
-                self.analysis_results,
-                self.starcount_reject_dir.get(),
-                delete_rejected_flag=self.reject_action.get() == 'delete',
-                move_rejected_flag=self.reject_action.get() == 'move',
-                log_callback=lambda *a, **k: None,
-                status_callback=lambda *a, **k: None,
-                progress_callback=lambda p: None,
-                input_dir_abs=self.input_dir.get(),
-            )
 
         if hasattr(self, '_refresh_treeview') and callable(getattr(self, '_refresh_treeview')):
             self._refresh_treeview()
@@ -3929,6 +3934,53 @@ class AstroImageAnalyzerGUI:
         if hasattr(self, 'visual_apply_reco_button') and self.visual_apply_reco_button:
             self.visual_apply_reco_button.config(state=tk.DISABLED)
         self._regenerate_stack_plan()
+
+    def _confirm_recommendations_apply(self, *, total, recommended_count,
+                                       move_count, reco_dir, to_move):
+        """Confirm applying recommendations (Tk); False => zero mutation."""
+        snr_min = fwhm_max = ecc_max = sc_min = None
+        try:
+            snr_min = getattr(self, 'reco_snr_min', None)
+            fwhm_max = getattr(self, 'reco_fwhm_max', None)
+            ecc_max = getattr(self, 'reco_ecc_max', None)
+            sc_min = getattr(self, 'reco_starcount_min', None)
+            use_sc = bool(getattr(self, 'use_starcount_filter', None))
+            if use_sc and hasattr(self, 'use_starcount_filter'):
+                use_sc = bool(self.use_starcount_filter.get())
+            breakdown = analyse_logic.recommendation_failure_breakdown(
+                to_move, snr_min=snr_min, fwhm_max=fwhm_max, ecc_max=ecc_max,
+                starcount_min=sc_min, use_starcount=use_sc,
+            )
+        except Exception:
+            breakdown = {'snr': 0, 'fwhm': 0, 'ecc': 0, 'starcount': 0, 'overlap': 0, 'none': 0}
+
+        def _fmt(v):
+            if v is None:
+                return "-"
+            if isinstance(v, float):
+                return f"{v:.3g}"
+            return str(v)
+
+        msg = (
+            f"Images conservées : {total}\n"
+            f"Recommandées : {recommended_count}\n"
+            f"À déplacer : {move_count}\n"
+            f"Dossier : {reco_dir or '-'}\n"
+            f"Seuils — SNR≥{_fmt(snr_min)} · FWHM≤{_fmt(fwhm_max)} · "
+            f"ECC≤{_fmt(ecc_max)} · Starcount≥{_fmt(sc_min)}\n"
+            f"Échecs — SNR: {breakdown['snr']} · FWHM: {breakdown['fwhm']} · "
+            f"ECC: {breakdown['ecc']} · Starcount: {breakdown['starcount']} · "
+            f"Chevauchements: {breakdown['overlap']}"
+        )
+        try:
+            return messagebox.askyesno(
+                self._('msg_info'),
+                self._('gui_reco_confirm_title', default='Appliquer les recommandations ?')
+                + "\n\n" + msg,
+                parent=self.root,
+            )
+        except Exception:
+            return False
 
     def _on_visual_apply_snr(self):
         """Handler pour le bouton d'application SNR de la fenêtre de visualisation."""
@@ -4218,6 +4270,7 @@ class AstroImageAnalyzerGUI:
                         'delete_rejected': (self.reject_action.get() == 'delete'),
                         'snr_reject_dir': self.snr_reject_dir.get(),
                         'trail_reject_dir': self.trail_reject_dir.get(),
+                        'reco_reject_dir': self.reco_reject_dir.get(),
                         'snr_selection_mode': self.snr_selection_mode.get(),
                         'snr_selection_value': self.snr_selection_value.get(),
                         'trail_params': { k: self.trail_params[k].get() for k in self.trail_params }
@@ -4444,7 +4497,7 @@ class AstroImageAnalyzerGUI:
 
             total += analyse_logic.apply_pending_reco_actions(
                 self.analysis_results,
-                self.snr_reject_dir.get(),
+                analyse_logic.resolve_reco_reject_dir(self.reco_reject_dir.get(), input_dir),
                 delete_rejected_flag=delete_flag,
                 move_rejected_flag=move_flag,
                 log_callback=callbacks['log'],
@@ -4535,6 +4588,7 @@ class AstroImageAnalyzerGUI:
                         'delete_rejected': (self.reject_action.get() == 'delete'),
                         'snr_reject_dir': self.snr_reject_dir.get(),
                         'trail_reject_dir': self.trail_reject_dir.get(),
+                        'reco_reject_dir': self.reco_reject_dir.get(),
                         'snr_selection_mode': self.snr_selection_mode.get(),
                         'snr_selection_value': self.snr_selection_value.get(),
                         'trail_params': {k: self.trail_params[k].get() for k in self.trail_params},

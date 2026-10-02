@@ -81,7 +81,7 @@ import threading
 from zeanalyser import project_state
 from zeanalyser import perf_diagnostics
 from zeanalyser._version import __version__
-from zeanalyser.path_safety import resolved_normcase, source_is_within_root
+from zeanalyser.path_safety import resolved_normcase, source_is_within_root, resolve_reject_destination
 import zipfile
 import xml.etree.ElementTree as ET
 import csv
@@ -251,6 +251,12 @@ except Exception as e:
     logger.error("Error importing or reading trail_module: %s", e)
 
 
+try:
+    from zeanalyser import analysis_schema
+except ImportError:  # pragma: no cover - schema module is always present
+    analysis_schema = None
+
+
 def sanitize_for_json(obj):
     """Convertit récursivement les objets pour compatibilité JSON."""
     if isinstance(obj, dict):
@@ -266,6 +272,44 @@ def sanitize_for_json(obj):
     if isinstance(obj, float) and not np.isfinite(obj):
         return None
     return obj
+
+
+def payloads_equal(a, b):
+    """Return True if two trail payloads are structurally equal (always bool).
+
+    Exception-free recursive equality used for normalized-key collision
+    detection. Handles numpy arrays (shape + ``array_equal`` with an explicit
+    NaN-equal policy), sequences (length + element-wise recursion), mappings,
+    and scalars/objects with a safe bool coercion. Ragged or incomparable
+    inputs (including objects whose ``__eq__`` returns an array or raises)
+    never raise: they are treated as unequal (or, for non-arrays, a collision).
+    """
+    if isinstance(a, np.ndarray) or isinstance(b, np.ndarray):
+        try:
+            aa = np.asarray(a)
+            bb = np.asarray(b)
+            if aa.shape != bb.shape:
+                return False
+            return bool(np.array_equal(aa, bb, equal_nan=True))
+        except Exception:
+            return False
+    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+        if len(a) != len(b):
+            return False
+        return all(payloads_equal(x, y) for x, y in zip(a, b))
+    if isinstance(a, dict) and isinstance(b, dict):
+        if set(a.keys()) != set(b.keys()):
+            return False
+        return all(payloads_equal(a[k], b[k]) for k in a)
+    try:
+        if a is b:
+            return True
+        eq = a == b
+        if isinstance(eq, np.ndarray):
+            return bool(np.all(eq))
+        return bool(eq)
+    except Exception:
+        return False
 
 
 
@@ -322,18 +366,20 @@ def write_log_summary(log_file_path, input_dir, options,
                 log_file.write("Aucune analyse individuelle de fichier effectuée pour ce résumé.\n")
             else:
                 total_processed = len(results_list); analyzed_count = sum(1 for r in results_list if r.get('status') != 'pending'); errors_count = sum(1 for r in results_list if r.get('status') == 'error')
-                rejected_trails = sum(1 for r in results_list if r.get('rejected_reason') == 'trail'); rejected_low_snr = sum(1 for r in results_list if r.get('rejected_reason') == 'low_snr'); kept_count = sum(1 for r in results_list if r.get('status') == 'ok' and r.get('rejected_reason') is None)
-                moved_trails = sum(1 for r in results_list if r.get('action') == 'moved_trail'); moved_low_snr = sum(1 for r in results_list if r.get('action') == 'moved_snr'); deleted_trails = sum(1 for r in results_list if r.get('action') == 'deleted_trail'); deleted_low_snr = sum(1 for r in results_list if r.get('action') == 'deleted_snr')
-                log_file.write(f"Nombre total de fichiers FITS trouvés (hors dossiers ignorés): {total_processed}\n"); log_file.write(f"  Fichiers analysés (ou tentative): {analyzed_count}\n"); log_file.write(f"  Images conservées dans le dossier source/sous-dossiers: {kept_count}\n"); log_file.write(f"  Images marquées pour rejet (traînées): {rejected_trails}\n"); log_file.write(f"  Images marquées pour rejet (faible SNR): {rejected_low_snr}\n"); log_file.write(f"  Erreurs d'analyse fichier: {errors_count}\n")
-                snr_reject_path_base = options.get('snr_reject_dir','N/A'); trail_reject_path_base = options.get('trail_reject_dir','N/A')
+                rejected_trails = sum(1 for r in results_list if r.get('rejected_reason') in ('trail', 'trail_pending_action')); rejected_low_snr = sum(1 for r in results_list if r.get('rejected_reason') == 'low_snr'); rejected_reco = sum(1 for r in results_list if r.get('rejected_reason') == 'not_in_recommendation'); kept_count = sum(1 for r in results_list if r.get('status') == 'ok' and r.get('rejected_reason') is None)
+                moved_trails = sum(1 for r in results_list if r.get('action') == 'moved_trail'); moved_low_snr = sum(1 for r in results_list if r.get('action') == 'moved_snr'); moved_reco = sum(1 for r in results_list if r.get('action') == 'moved_reco'); deleted_trails = sum(1 for r in results_list if r.get('action') == 'deleted_trail'); deleted_low_snr = sum(1 for r in results_list if r.get('action') == 'deleted_snr'); deleted_reco = sum(1 for r in results_list if r.get('action') == 'deleted_reco')
+                log_file.write(f"Nombre total de fichiers FITS trouvés (hors dossiers ignorés): {total_processed}\n"); log_file.write(f"  Fichiers analysés (ou tentative): {analyzed_count}\n"); log_file.write(f"  Images conservées dans le dossier source/sous-dossiers: {kept_count}\n"); log_file.write(f"  Images marquées pour rejet (traînées): {rejected_trails}\n"); log_file.write(f"  Images marquées pour rejet (faible SNR): {rejected_low_snr}\n"); log_file.write(f"  Images hors recommandation: {rejected_reco}\n"); log_file.write(f"  Erreurs d'analyse fichier: {errors_count}\n")
+                snr_reject_path_base = options.get('snr_reject_dir','N/A'); trail_reject_path_base = options.get('trail_reject_dir','N/A'); reco_reject_path_base = resolve_reco_reject_dir(options.get('reco_reject_dir'), input_dir) or 'N/A'
                 if options.get('move_rejected'): 
                     log_file.write(f"Actions (Déplacement activé):\n")
                     if os.path.basename(trail_reject_path_base): log_file.write(f"  Déplacées vers '{os.path.basename(trail_reject_path_base)}' (traînées): {moved_trails}\n")
                     if os.path.basename(snr_reject_path_base): log_file.write(f"  Déplacées vers '{os.path.basename(snr_reject_path_base)}' (faible SNR): {moved_low_snr}\n")
+                    if os.path.basename(reco_reject_path_base): log_file.write(f"  Déplacées vers '{os.path.basename(reco_reject_path_base)}' (hors recommandation): {moved_reco}\n")
                 elif options.get('delete_rejected'): 
                     log_file.write(f"Actions (Suppression activée):\n")
                     log_file.write(f"  Supprimées (traînées): {deleted_trails}\n")
                     log_file.write(f"  Supprimées (faible SNR): {deleted_low_snr}\n")
+                    log_file.write(f"  Supprimées (hors recommandation): {deleted_reco}\n")
                 else: 
                     log_file.write(f"Actions: Aucune (fichiers rejetés non déplacés/supprimés)\n")
                 
@@ -377,6 +423,31 @@ def write_log_summary(log_file_path, input_dir, options,
 
 # --- DANS analyse_logic.py ---
 # (Placez cette fonction au même niveau que perform_analysis, par exemple après)
+
+def move_to_reject_destination(current_path, dest_path):
+    """Safely move ``current_path`` to ``dest_path`` for a reject action.
+
+    Returns:
+      * ``'already'``   — the source is already at the destination (no move);
+      * ``'collision'`` — the destination exists and is NOT the source; the
+        move is refused (no overwrite) and the source is left intact;
+      * ``'moved'``     — the file was moved (parent dirs created as needed);
+      * ``'none'``      — no usable destination was provided.
+
+    Raises ``OSError`` on a real move failure (permission, missing parent).
+    """
+    if not current_path or not dest_path:
+        return 'none'
+    if os.path.normpath(current_path) == os.path.normpath(dest_path):
+        return 'already'
+    if os.path.exists(dest_path):
+        return 'collision'
+    parent = os.path.dirname(dest_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    shutil.move(current_path, dest_path)
+    return 'moved'
+
 
 def apply_pending_snr_actions(results_list, snr_reject_abs_path,
                               delete_rejected_flag, move_rejected_flag,
@@ -462,10 +533,10 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
                     r['rejected_reason'] = original_rejected_reason
                     continue 
 
-            dest_path = os.path.join(snr_reject_abs_path, os.path.basename(current_path))
+            dest_path = resolve_reject_destination(current_path, snr_reject_abs_path, input_dir_abs)
             try:
-                if os.path.normpath(current_path) != os.path.normpath(dest_path):
-                    shutil.move(current_path, dest_path)
+                status = move_to_reject_destination(current_path, dest_path)
+                if status == 'moved':
                     _log("logic_moved_info", folder=os.path.basename(snr_reject_abs_path), 
                          text_key_suffix="_deferred_snr", # Pour un message log plus spécifique
                          file_rel_path=rel_path)
@@ -475,12 +546,18 @@ def apply_pending_snr_actions(results_list, snr_reject_abs_path,
                     r['status'] = 'processed_action'
                     actions_count += 1
                     action_taken_this_file = True
-                else:
+                elif status == 'already':
                     r['action_comment'] += " Déjà dans dossier cible (différé)?"
                     r['action'] = 'kept' 
                     r['rejected_reason'] = 'low_snr' 
                     r['status'] = 'processed_action' # Consideré comme actionné car déjà à destination
                     action_taken_this_file = True # On le compte comme une "action"
+                else:
+                    # collision (or no usable destination): refuse, never overwrite.
+                    # Preserve the exact pending state so the action can be
+                    # retried once the destination conflict is resolved.
+                    _log("logic_move_collision", file=rel_path, dest=os.path.basename(dest_path or ''))
+                    r['action_comment'] += " Collision: destination existante, déplacement refusé."
             except Exception as move_e:
                 _log("logic_move_error", file=rel_path, e=move_e)
                 r['action_comment'] += f" Erreur déplacement différé: {move_e}"
@@ -573,10 +650,10 @@ def apply_pending_trail_actions(results_list, trail_reject_abs_path,
                     r['rejected_reason'] = original_reason
                     continue
 
-            dest_path = os.path.join(trail_reject_abs_path, os.path.basename(current_path))
+            dest_path = resolve_reject_destination(current_path, trail_reject_abs_path, input_dir_abs)
             try:
-                if os.path.normpath(current_path) != os.path.normpath(dest_path):
-                    shutil.move(current_path, dest_path)
+                status = move_to_reject_destination(current_path, dest_path)
+                if status == 'moved':
                     _log('logic_moved_info', folder=os.path.basename(trail_reject_abs_path), text_key_suffix='_deferred_trail', file_rel_path=rel_path)
                     r['path'] = dest_path
                     r['action'] = 'moved_trail'
@@ -584,12 +661,17 @@ def apply_pending_trail_actions(results_list, trail_reject_abs_path,
                     r['status'] = 'processed_action'
                     actions_count += 1
                     action_done = True
-                else:
+                elif status == 'already':
                     r['action_comment'] = r.get('action_comment', '') + ' Déjà dans dossier cible (différé)?'
                     r['action'] = 'kept'
                     r['rejected_reason'] = 'trail'
                     r['status'] = 'processed_action'
                     action_done = True
+                else:
+                    # collision: refuse, never overwrite. Preserve the exact
+                    # pending state so the action can be retried after resolution.
+                    _log('logic_move_collision', file=rel_path, dest=os.path.basename(dest_path or ''))
+                    r['action_comment'] = r.get('action_comment', '') + ' Collision: destination existante, déplacement refusé.'
             except Exception as move_e:
                 _log('logic_move_error', file=rel_path, e=move_e)
                 r['action_comment'] = r.get('action_comment', '') + f' Erreur déplacement différé: {move_e}'
@@ -606,6 +688,75 @@ def apply_pending_trail_actions(results_list, trail_reject_abs_path,
     _status('logic_trail_apply_done', count=actions_count)
     _log('logic_trail_apply_done', count=actions_count)
     return actions_count
+
+
+RECO_REJECT_DIR_NAME = "rejected_recommendations"
+
+
+def resolve_reco_reject_dir(reco_reject_dir, input_dir_abs):
+    """Resolve the dedicated recommendations reject directory.
+
+    Recommendations are NEVER merged into the low-SNR reject directory. When
+    no explicit directory is configured, default to
+    ``<input_dir>/rejected_recommendations``. Returns None only when there is
+    no usable directory at all (e.g. delete mode without an explicit path).
+    """
+    if reco_reject_dir:
+        return reco_reject_dir
+    if input_dir_abs:
+        return os.path.join(input_dir_abs, RECO_REJECT_DIR_NAME)
+    return None
+
+
+def recommendation_failure_breakdown(rows, snr_min=None, fwhm_max=None,
+                                     ecc_max=None, starcount_min=None,
+                                     use_starcount=False):
+    """Breakdown of why kept images fail the recommendation criteria.
+
+    Returns a dict ``{'snr': n, 'fwhm': n, 'ecc': n, 'starcount': n,
+    'overlap': n, 'none': n}`` where each count is the number of kept rows
+    failing that single criterion, ``overlap`` counts rows failing more than
+    one criterion, and ``none`` counts rows failing none of the active
+    criteria. Rows that are not ``ok``/``kept`` or lack finite metrics are
+    ignored for the per-criterion counts.
+    """
+    counts = {'snr': 0, 'fwhm': 0, 'ecc': 0, 'starcount': 0, 'overlap': 0, 'none': 0}
+
+    def _num(v):
+        if v is None:
+            return None
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        return f if np.isfinite(f) else None
+
+    for r in rows:
+        if r.get('status') != 'ok' or r.get('action') != 'kept':
+            continue
+        snr = _num(r.get('snr'))
+        fwhm = _num(r.get('fwhm'))
+        ecc = _num(r.get('ecc') if r.get('ecc') is not None else r.get('e'))
+        sc = _num(r.get('starcount'))
+
+        failures = []
+        if snr_min is not None and snr is not None and snr < snr_min:
+            failures.append('snr')
+        if fwhm_max is not None and fwhm is not None and fwhm > fwhm_max:
+            failures.append('fwhm')
+        if ecc_max is not None and ecc is not None and ecc > ecc_max:
+            failures.append('ecc')
+        if use_starcount and starcount_min is not None and sc is not None and sc < starcount_min:
+            failures.append('starcount')
+
+        if len(failures) > 1:
+            counts['overlap'] += 1
+        elif len(failures) == 1:
+            counts[failures[0]] += 1
+        else:
+            counts['none'] += 1
+
+    return counts
 
 
 def apply_pending_reco_actions(results_list, reject_abs_path,
@@ -678,10 +829,10 @@ def apply_pending_reco_actions(results_list, reject_abs_path,
                     r['rejected_reason'] = original_reason
                     continue
 
-            dest_path = os.path.join(reject_abs_path, os.path.basename(current_path))
+            dest_path = resolve_reject_destination(current_path, reject_abs_path, input_dir_abs)
             try:
-                if os.path.normpath(current_path) != os.path.normpath(dest_path):
-                    shutil.move(current_path, dest_path)
+                status = move_to_reject_destination(current_path, dest_path)
+                if status == 'moved':
                     _log('logic_moved_info', folder=os.path.basename(reject_abs_path), text_key_suffix='_deferred_reco', file_rel_path=rel_path)
                     r['path'] = dest_path
                     r['action'] = 'moved_reco'
@@ -689,12 +840,17 @@ def apply_pending_reco_actions(results_list, reject_abs_path,
                     r['status'] = 'processed_action'
                     actions_count += 1
                     action_done = True
-                else:
+                elif status == 'already':
                     r['action_comment'] = r.get('action_comment', '') + ' Déjà dans dossier cible (différé)?'
                     r['action'] = 'kept'
                     r['rejected_reason'] = 'not_in_recommendation'
                     r['status'] = 'processed_action'
                     action_done = True
+                else:
+                    # collision: refuse, never overwrite. Preserve the exact
+                    # pending state so the action can be retried after resolution.
+                    _log('logic_move_collision', file=rel_path, dest=os.path.basename(dest_path or ''))
+                    r['action_comment'] = r.get('action_comment', '') + ' Collision: destination existante, déplacement refusé.'
             except Exception as move_e:
                 _log('logic_move_error', file=rel_path, e=move_e)
                 r['action_comment'] = r.get('action_comment', '') + f' Erreur déplacement différé: {move_e}'
@@ -711,6 +867,20 @@ def apply_pending_reco_actions(results_list, reject_abs_path,
     _status('logic_reco_apply_done', count=actions_count)
     _log('logic_reco_apply_done', count=actions_count)
     return actions_count
+
+
+def compute_snr_percent_threshold(snrs, keep_percent):
+    """Return the SNR threshold that keeps the top ``keep_percent`` %.
+
+    The bottom ``100 - keep_percent`` % fall strictly below the returned
+    threshold. Pure and deterministic: ``keep_percent`` must be in (0, 100].
+    """
+    keep_percent = float(keep_percent)
+    if not (0 < keep_percent <= 100):
+        raise ValueError(f"keep_percent must be in (0, 100], got {keep_percent}")
+    percentile_val = 100.0 - keep_percent
+    arr = np.asarray(snrs, dtype=float)
+    return float(np.nanpercentile(arr, percentile_val))
 
 
 def build_recommended_images(results):
@@ -956,6 +1126,8 @@ def _snr_worker(path):
         'sky_noise': np.nan,
         'signal_pixels': 0,
         'starcount': None,
+        'starcount_outcome': None,
+        'starcount_error': None,
         'exposure': 'N/A',
         'filter': 'N/A',
         'temperature': 'N/A',
@@ -1005,13 +1177,24 @@ def _snr_worker(path):
                 if starcount_module is not None:
 
                     try:
-                        result['starcount'] = starcount_module.calculate_starcount(
+                        sc_outcome = starcount_module.calculate_starcount_outcome(
                             data,
                             sky_bg=sky_bg,
                             sky_noise=sky_noise,
                         )
-                    except Exception:
+                        result['starcount'] = sc_outcome.get('count')
+                        result['starcount_outcome'] = sc_outcome.get('outcome')
+                        result['starcount_error'] = sc_outcome.get('reason')
+                    except Exception as sc_error:
                         result['starcount'] = None
+                        result['starcount_outcome'] = 'measurement_failure'
+                        result['starcount_error'] = (
+                            '{}: {}'.format(type(sc_error).__name__, sc_error)
+                        )[:250]
+                else:
+                    # Module not importable: explicit unavailable state, never
+                    # a star count of zero.
+                    result['starcount_outcome'] = 'unavailable'
 
                 if ecc_module is not None:
 
@@ -1116,6 +1299,22 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         and hasattr(trail_module, 'run_trail_detection')
     )
     progress_plan = _build_progress_plan(trails_planned)
+
+    # Initial per-row trail state. Files are only measured when the trail
+    # phase actually runs; otherwise they carry an explicit, non-negative
+    # state (skipped/unavailable) instead of a probative False.
+    if trails_planned:
+        _initial_trail_state = None
+        _initial_trail_reason = None
+        trail_backend_id, trail_backend_version = trail_module.backend_info()
+    elif not options.get('detect_trails'):
+        _initial_trail_state = 'skipped'
+        _initial_trail_reason = 'trail detection disabled'
+        trail_backend_id, trail_backend_version = None, None
+    else:
+        _initial_trail_state = 'unavailable'
+        _initial_trail_reason = 'trail backend unavailable'
+        trail_backend_id, trail_backend_version = None, None
 
     def _phase_progress(phase, fraction):
         start, end = progress_plan[phase]
@@ -1361,6 +1560,23 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 'reason': reason or 'unspecified',
             })
 
+    # Central starcount measurement-failure aggregation (bounded examples),
+    # kept separate from FWHM/ECC so a starcount failure is never folded into
+    # another metric's statistics.
+    starcount_failure_count = 0
+    starcount_failure_examples = []
+    starcount_failure_examples_limit = 3
+
+    def _record_starcount_failure(rel_path, reason):
+        """Count a starcount measurement failure and keep a bounded first example."""
+        nonlocal starcount_failure_count
+        starcount_failure_count += 1
+        if len(starcount_failure_examples) < starcount_failure_examples_limit:
+            starcount_failure_examples.append({
+                'file': rel_path,
+                'reason': reason or 'unspecified',
+            })
+
     if _is_cancelled():
         return _cancelled_result()
     try:
@@ -1406,9 +1622,19 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     'rejected_reason': None,
                     'action_comment': '',
                     'error_message': '',
-                    'has_trails': False,
-                    'num_trails': 0,
+                    'has_trails': None,
+                    'num_trails': None,
+                    'trail_state': _initial_trail_state,
+                    'trail_error': None,
+                    'trail_reason': _initial_trail_reason,
+                    'trail_segments': None,
+                    'trail_segment_count': None,
+                    'trail_backend_id': trail_backend_id,
+                    'trail_backend_version': trail_backend_version,
+                    'trail_parameters_effective': None,
                     'starcount': None,
+                    'starcount_outcome': None,
+                    'starcount_error': None,
                     'fwhm': np.nan,
                     'ecc': np.nan,
                     'n_star_ecc': 0,
@@ -1445,6 +1671,15 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                         result_base['dec'] = worker_res.get('dec')
                         if 'starcount' in worker_res:
                             result_base['starcount'] = worker_res['starcount']
+                        if 'starcount_outcome' in worker_res:
+                            result_base['starcount_outcome'] = worker_res['starcount_outcome']
+                        if 'starcount_error' in worker_res:
+                            result_base['starcount_error'] = worker_res['starcount_error']
+                        if worker_res.get('starcount_outcome') == 'measurement_failure':
+                            _record_starcount_failure(
+                                result_base['rel_path'],
+                                worker_res.get('starcount_error'),
+                            )
                         if 'fwhm' in worker_res:
                             result_base['fwhm'] = worker_res['fwhm']
                         if 'ecc' in worker_res:
@@ -1461,6 +1696,9 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                     else:
                         if result_base['status'] == 'pending':
                             result_base['status'] = 'ok'
+                        # SNR analysis disabled: starcount is not run for this
+                        # file, so the outcome is explicit rather than zero.
+                        result_base['starcount_outcome'] = 'not_run'
                 except Exception as snr_e:
                     err_msg = f"SNR/FITS analysis error: {snr_e}"
                     result_base['status'] = 'error'
@@ -1484,6 +1722,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         # restart from zero to avoid double counting partial pool results.
         metric_failure_count = 0
         metric_failure_examples = []
+        starcount_failure_count = 0
+        starcount_failure_examples = []
 
         for i, fits_file_path in enumerate(fits_files_to_process):
             if _is_cancelled():
@@ -1504,9 +1744,19 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 'rejected_reason': None,
                 'action_comment': '',
                 'error_message': '',
-                'has_trails': False,
-                'num_trails': 0,
+                'has_trails': None,
+                'num_trails': None,
+                'trail_state': _initial_trail_state,
+                'trail_error': None,
+                'trail_reason': _initial_trail_reason,
+                'trail_segments': None,
+                'trail_segment_count': None,
+                'trail_backend_id': trail_backend_id,
+                'trail_backend_version': trail_backend_version,
+                'trail_parameters_effective': None,
                 'starcount': None,
+                'starcount_outcome': None,
+                'starcount_error': None,
                 'ra': None,
                 'dec': None,
                 'eqmode': 2,
@@ -1556,13 +1806,33 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                     if starcount_module is not None:
 
                                         try:
-                                            result['starcount'] = starcount_module.calculate_starcount(
+                                            sc_outcome = starcount_module.calculate_starcount_outcome(
                                                 data,
                                                 sky_bg=sky_bg,
                                                 sky_noise=sky_noise,
                                             )
-                                        except Exception:
+                                            result['starcount'] = sc_outcome.get('count')
+                                            result['starcount_outcome'] = sc_outcome.get('outcome')
+                                            result['starcount_error'] = sc_outcome.get('reason')
+                                            if sc_outcome.get('outcome') == 'measurement_failure':
+                                                _record_starcount_failure(
+                                                    result['rel_path'],
+                                                    sc_outcome.get('reason'),
+                                                )
+                                        except Exception as sc_error:
                                             result['starcount'] = None
+                                            result['starcount_outcome'] = 'measurement_failure'
+                                            result['starcount_error'] = (
+                                                '{}: {}'.format(type(sc_error).__name__, sc_error)
+                                            )[:250]
+                                            _record_starcount_failure(
+                                                result['rel_path'],
+                                                result['starcount_error'],
+                                            )
+                                    else:
+                                        # Module not importable: explicit
+                                        # unavailable state, never zero.
+                                        result['starcount_outcome'] = 'unavailable'
 
                                     if ecc_module is not None:
 
@@ -1611,6 +1881,8 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 else:
                     if result['status'] == 'pending':
                         result['status'] = 'ok'
+                    # SNR analysis disabled: starcount is not run for this file.
+                    result['starcount_outcome'] = 'not_run'
             except Exception as file_e:
                 err_msg = f"General processing error: {file_e}"
                 result['status'] = 'error'
@@ -1630,6 +1902,15 @@ def perform_analysis(input_dir, output_log, options, callbacks):
             count=metric_failure_count,
             file=first_example['file'],
             reason=first_example['reason'],
+        )
+
+    if starcount_failure_count > 0:
+        first_sc_example = starcount_failure_examples[0] if starcount_failure_examples else {'file': '', 'reason': ''}
+        _log(
+            "logic_starcount_measurement_failures",
+            count=starcount_failure_count,
+            file=first_sc_example['file'],
+            reason=first_sc_example['reason'],
         )
 
     if _is_cancelled():
@@ -1657,8 +1938,7 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 except (ValueError, TypeError): _log("logic_snr_threshold_invalid", value=value_str)
             elif mode == 'percent':
                 try:
-                    percentile_to_keep = float(value_str); assert 0 < percentile_to_keep <= 100
-                    percentile_val = 100.0 - percentile_to_keep; local_snr_threshold = np.nanpercentile(eligible_snrs, percentile_val); selection_stats['threshold'] = local_snr_threshold
+                    local_snr_threshold = compute_snr_percent_threshold(eligible_snrs, value_str); selection_stats['threshold'] = local_snr_threshold
                 except Exception as e: _log("logic_snr_percent_invalid", value=value_str, e=e)
             elif mode == 'none': selection_stats['threshold'] = None 
             snr_threshold = local_snr_threshold
@@ -1711,14 +1991,17 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                                 if action_to_take == 'moved_snr':
                                     if _is_cancelled():
                                         return _cancelled_result()
-                                    dest_path = os.path.join(snr_reject_abs, os.path.basename(current_path))
+                                    dest_path = resolve_reject_destination(current_path, snr_reject_abs, abs_input_dir)
                                     try:
-                                         if os.path.normpath(current_path) != os.path.normpath(dest_path): 
-                                             shutil.move(current_path, dest_path)
+                                        status = move_to_reject_destination(current_path, dest_path)
+                                        if status == 'moved':
                                              _log("logic_moved_info", folder=os.path.basename(snr_reject_abs), text_key_suffix="_snr", file_rel_path=r['rel_path'])
                                              r['path'] = dest_path; r['action'] = 'moved_snr'
-                                         else: 
+                                        elif status == 'already':
                                              r['action_comment'] += " Déjà dans dossier cible SNR?"; r['action'] = 'kept'; process_for_trails = True
+                                        else:
+                                             _log("logic_move_collision", file=r['rel_path'], dest=os.path.basename(dest_path or ''))
+                                             r['action_comment'] += " Collision: destination existante, déplacement refusé (retry différé)."; r['rejected_reason'] = 'low_snr_pending_action'; r['action'] = 'pending_snr_action'; r['status'] = 'ok'; process_for_trails = True
                                     except Exception as move_e: 
                                         _log("logic_move_error", file=r['rel_path'], e=move_e)
                                         r['action_comment'] += f" Erreur déplacement SNR: {move_e}"; r['action'] = 'error_move'; r['rejected_reason'] = None; process_for_trails = True
@@ -1790,6 +2073,13 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     trail_results = {}
     trail_errors = {}
     trail_analysis_config = None
+    trail_params = options.get('trail_params', {})
+    trail_effective_params = None
+    trail_cfg_error = None
+    norm_trail_results = {}
+    norm_trail_errors = {}
+    global_trail_errors = {}
+    collision_files = set()
     if _is_cancelled():
         return _cancelled_result()
     if options.get('detect_trails') and SATDET_AVAILABLE:
@@ -1799,44 +2089,86 @@ def perform_analysis(input_dir, output_log, options, callbacks):
         elif not files_kept_for_trails:
             _log("logic_trail_no_eligible")
         else:
-            input_for_trail_module = files_kept_for_trails
-            trail_params = options.get('trail_params', {})
-            trail_analysis_config = trail_params.copy()
-            chunks = [input_for_trail_module[i::n_workers] for i in range(n_workers)]
-            _progress('indeterminate')
-            _status("logic_trail_detection_start")
-            completed = 0
-            try:
-                diag.stage_start("trail_executor_startup")
-                with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as ex:
-                    diag.stage_end("trail_executor_startup")
-                    futures = {ex.submit(_trail_worker, (chunk, trail_params)): chunk for chunk in chunks if chunk}
-                    if _is_cancelled():
-                        for pending_future in futures:
-                            pending_future.cancel()
-                        ex.shutdown(wait=True, cancel_futures=True)
-                        return _cancelled_result()
-                    total_chunks = len(futures)
-                    for future in concurrent.futures.as_completed(futures):
+            # Résoudre les paramètres canoniques UNE SEULE FOIS avec le log
+            # officiel (migration legacy journalisée), avant toute soumission.
+            trail_effective_params, trail_cfg_error = trail_module.resolve_trail_params(trail_params, _log)
+            if trail_cfg_error is not None:
+                # Config invalide : aucun worker, erreur globale CONFIG_ERROR.
+                _log("logic_trail_config_error", e=trail_cfg_error)
+                _status("status_satdet_error")
+                trail_errors[('CONFIG_ERROR', 0)] = trail_cfg_error
+                trail_effective_params = None
+            else:
+                trail_analysis_config = dict(trail_effective_params)
+                input_for_trail_module = files_kept_for_trails
+                chunks = [input_for_trail_module[i::n_workers] for i in range(n_workers)]
+                _progress('indeterminate')
+                _status("logic_trail_detection_start")
+                completed = 0
+                try:
+                    diag.stage_start("trail_executor_startup")
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as ex:
+                        diag.stage_end("trail_executor_startup")
+                        futures = {ex.submit(_trail_worker, (chunk, trail_effective_params)): chunk for chunk in chunks if chunk}
                         if _is_cancelled():
                             for pending_future in futures:
                                 pending_future.cancel()
                             ex.shutdown(wait=True, cancel_futures=True)
                             return _cancelled_result()
-                        res, err = future.result()
-                        trail_results.update(res or {})
-                        trail_errors.update(err or {})
-                        completed += 1
-                        prog = _phase_progress('trail_detection', completed / total_chunks)
-                        _progress(prog)
-            except Exception as trail_e:
-                if _is_cancelled():
-                    return _cancelled_result()
-                _log("logic_trail_pool_error", e=trail_e)
-                traceback.print_exc()
-                trail_errors[('FATAL_CALL_ERROR', 0)] = str(trail_e)
-            if trails_planned:
-                _progress(_phase_progress('trail_detection', 1.0))
+                        total_chunks = len(futures)
+                        for future in concurrent.futures.as_completed(futures):
+                            if _is_cancelled():
+                                for pending_future in futures:
+                                    pending_future.cancel()
+                                ex.shutdown(wait=True, cancel_futures=True)
+                                return _cancelled_result()
+                            res, err = future.result()
+                            trail_results.update(res or {})
+                            trail_errors.update(err or {})
+                            completed += 1
+                            prog = _phase_progress('trail_detection', completed / total_chunks)
+                            _progress(prog)
+                except Exception as trail_e:
+                    if _is_cancelled():
+                        return _cancelled_result()
+                    _log("logic_trail_pool_error", e=trail_e)
+                    traceback.print_exc()
+                    trail_errors[('FATAL_CALL_ERROR', 0)] = str(trail_e)
+                if trails_planned:
+                    _progress(_phase_progress('trail_detection', 1.0))
+
+    # Normaliser les clés résultats/erreurs une seule fois (primitive unique) et
+    # agréger par fichier (toutes extensions). Les paramètres effectifs ont déjà
+    # été résolus une seule fois ci-dessus (migration journalisée) ; aucune
+    # seconde résolution divergente ici.
+    for key, val in trail_results.items():
+        norm_key = trail_module.normalize_detsat_key(key)
+        if norm_key is None:
+            continue
+        normpath, ext = norm_key
+        bucket = norm_trail_results.setdefault(normpath, {})
+        if ext in bucket:
+            # Deux clés sources distinctes normalisent vers le même (path, ext).
+            # Payloads différents => collision ambiguë, jamais de vainqueur.
+            if not payloads_equal(bucket[ext], val):
+                collision_files.add(normpath)
+        else:
+            bucket[ext] = val
+    for key, msg in trail_errors.items():
+        if trail_module.is_global_error_key(key):
+            global_trail_errors[key] = trail_module.bound_message(msg)
+            continue
+        norm_key = trail_module.normalize_detsat_key(key)
+        if norm_key is None:
+            continue
+        normpath, ext = norm_key
+        bucket = norm_trail_errors.setdefault(normpath, {})
+        bounded = trail_module.bound_message(msg)
+        if ext in bucket:
+            if bucket[ext] != bounded:
+                collision_files.add(normpath)
+        else:
+            bucket[ext] = bounded
 
 
     # --- Étape 6: Rejet Traînées et Actions Associées ---
@@ -1844,6 +2176,57 @@ def perform_analysis(input_dir, output_log, options, callbacks):
     #      Progression de 90% à 95%
     _log("logic_trail_apply_marking")
     if options.get('detect_trails') and SATDET_AVAILABLE: # SATDET_AVAILABLE vérifié à nouveau au cas où désactivé
+
+        def _lookup_trail_state(abs_path):
+            """Resolve the canonical trail state for one file (fail-safe).
+
+            Global errors dominate (no per-chunk provenance is kept): any global
+            error makes the whole run non-probative, so never return measured
+            positive/negative. Per-file resolution aggregates all extensions
+            deterministically (sorted by extension).
+            """
+            file_key = os.path.normcase(os.path.abspath(abs_path))
+
+            # Global errors dominate: the run as a whole is non-probative.
+            if global_trail_errors:
+                first_key = next(iter(global_trail_errors))
+                first_msg = global_trail_errors[first_key]
+                key_str = first_key[0] if isinstance(first_key, tuple) else first_key
+                if str(key_str).upper() in ('CONFIG_ERROR', 'DEPENDENCY_ERROR'):
+                    return 'unavailable', None, None, first_msg
+                return 'measurement_failure', None, first_msg, None
+
+            if file_key in collision_files:
+                return 'indeterminate', None, None, 'ambiguous normalized keys (collision)'
+
+            results_by_ext = norm_trail_results.get(file_key, {})
+            errors_by_ext = norm_trail_errors.get(file_key, {})
+
+            has_result = bool(results_by_ext)
+            has_error = bool(errors_by_ext)
+
+            if has_result and has_error:
+                # partial: a result on one ext + an error on another is not probative
+                first_err = next(iter(errors_by_ext.values()))
+                return 'indeterminate', None, first_err, 'result and error both present'
+
+            if has_result:
+                segments = []
+                for ext in sorted(results_by_ext):
+                    parsed, parse_err = trail_module.segments_to_serializable(results_by_ext[ext])
+                    if parse_err is not None:
+                        return 'indeterminate', None, parse_err, 'malformed trail result'
+                    segments.extend(parsed)
+                if segments:
+                    return 'measured_positive', segments, None, None
+                return 'measured_negative', [], None, None
+
+            if has_error:
+                first_err = next(iter(errors_by_ext.values()))
+                return 'measurement_failure', None, first_err, None
+
+            return 'indeterminate', None, None, 'no trail result or error for file'
+
         for r_idx, r in enumerate(all_results_list):
             if _is_cancelled():
                 return _cancelled_result()
@@ -1855,121 +2238,110 @@ def perform_analysis(input_dir, output_log, options, callbacks):
             if r['status'] == 'ok' and \
                (r.get('rejected_reason') is None or r.get('rejected_reason') == 'low_snr_pending_action') and \
                r.get('action') not in ['moved_snr', 'deleted_snr', 'moved_trail', 'deleted_trail']: # Ne pas retraiter si déjà actionné
-                
+
                 current_path = r['path']
                 if not current_path: # Si le chemin est None (ex: déjà supprimé par SNR immédiat - ne devrait pas arriver ici)
                     continue
-                
-                # Trouver les résultats de trail_module pour ce fichier
-                abs_file_path_for_trail = os.path.abspath(current_path)
-                found_key_trail = None
-                # trail_results peut avoir des clés comme ('/abs/path/to/file.fits', 0)
-                # ou pour les listes, directement le chemin '/abs/path/to/file.fits'
-                if isinstance(input_for_trail_module, list): # Si trail_module a pris une liste
-                    if abs_file_path_for_trail in trail_results:
-                        found_key_trail = abs_file_path_for_trail
-                else: # Si trail_module a pris un pattern
-                    for key_tuple in trail_results.keys():
-                        if isinstance(key_tuple, tuple) and len(key_tuple) == 2:
-                            try:
-                                res_abs_path = os.path.abspath(key_tuple[0])
-                                if os.path.normcase(res_abs_path) == os.path.normcase(abs_file_path_for_trail) and key_tuple[1] == 0: # Extension 0
-                                    found_key_trail = key_tuple
-                                    break
-                            except Exception: pass # Ignorer erreurs de normalisation de chemin
 
-                if found_key_trail:
-                    trail_segments = trail_results[found_key_trail]
-                    if isinstance(trail_segments, (list, np.ndarray)) and len(trail_segments) > 0:
-                        r['has_trails'] = True
-                        r['num_trails'] = len(trail_segments)
-                        _log("logic_trail_reject", rel=r['rel_path'], count=len(trail_segments))
+                # Résoudre l'état canonique de traînées pour ce fichier.
+                state, segments, trail_err, reason = _lookup_trail_state(current_path)
+                r['trail_state'] = state
+                r['trail_error'] = trail_module.bound_message(trail_err)
+                r['trail_reason'] = trail_module.bound_message(reason)
+                r['trail_parameters_effective'] = trail_effective_params
+                # Alias legacy : True seulement mesuré positif, False seulement
+                # mesuré négatif, None dans tous les autres états.
+                r['has_trails'] = analysis_schema.has_trails_alias(state)
+                if state in ('measured_positive', 'measured_negative'):
+                    r['trail_segments'] = segments if segments is not None else []
+                    r['trail_segment_count'] = len(r['trail_segments'])
+                    r['num_trails'] = len(r['trail_segments'])
+                else:
+                    # Unknown/failure/indeterminate/unavailable never resembles zero.
+                    r['trail_segments'] = None
+                    r['trail_segment_count'] = None
+                    r['num_trails'] = None
 
-                        if apply_trail_action_immediately:
-                            r['rejected_reason'] = 'trail'
-                            action_to_take_trail = 'kept'
-                            reject_dir_trail_option = options.get('trail_reject_dir')
-                            if options.get('delete_rejected'):
-                                action_to_take_trail = 'deleted_trail'
-                            elif options.get('move_rejected') and reject_dir_trail_option and trail_reject_abs:
-                                action_to_take_trail = 'moved_trail'
+                if state == 'measured_positive':
+                    _log("logic_trail_reject", rel=r['rel_path'], count=r['trail_segment_count'])
+                    if apply_trail_action_immediately:
+                        r['rejected_reason'] = 'trail'
+                        action_to_take_trail = 'kept'
+                        reject_dir_trail_option = options.get('trail_reject_dir')
+                        if options.get('delete_rejected'):
+                            action_to_take_trail = 'deleted_trail'
+                        elif options.get('move_rejected') and reject_dir_trail_option and trail_reject_abs:
+                            action_to_take_trail = 'moved_trail'
 
-                            if action_to_take_trail != 'kept':
-                                if os.path.exists(current_path):
-                                    if not source_action_allowed(r, current_path, abs_input_dir, _log):
-                                        continue
-                                    if action_to_take_trail == 'moved_trail':
-                                        if _is_cancelled():
-                                            return _cancelled_result()
-                                        dest_path_trail = os.path.join(trail_reject_abs, os.path.basename(current_path))
-                                        try:
-                                            if os.path.normpath(current_path) != os.path.normpath(dest_path_trail):
-                                                shutil.move(current_path, dest_path_trail)
-                                                _log("logic_moved_info", folder=os.path.basename(trail_reject_abs), text_key_suffix="_trail", file_rel_path=r['rel_path'])
-                                                r['path'] = dest_path_trail
-                                                r['action'] = 'moved_trail'
-                                            else:
-                                                r['action_comment'] += " Déjà dans dossier cible Trail?"
-                                                r['action'] = 'kept'
-                                        except Exception as move_e_tr:
-                                            _log("logic_move_error", file=r['rel_path'], e=move_e_tr)
-                                            r['action_comment'] += f" Erreur déplacement Trail: {move_e_tr}"
-                                            r['action'] = 'error_move'
-                                            r['rejected_reason'] = None
-                                    elif action_to_take_trail == 'deleted_trail':
-                                        if _is_cancelled():
-                                            return _cancelled_result()
-                                        try:
-                                            os.remove(current_path)
-                                            _log("logic_trail_file_deleted", rel=r['rel_path'])
-                                            r['path'] = None
-                                            r['action'] = 'deleted_trail'
-                                        except Exception as del_e_tr:
-                                            _log("logic_trail_delete_error", rel=r['rel_path'], e=del_e_tr)
-                                            r['action_comment'] += f" Erreur suppression Trail: {del_e_tr}"
-                                            r['action'] = 'error_delete'
-                                            r['rejected_reason'] = None
-                                else:
-                                    _log("logic_move_skipped", file=r['rel_path'])
-                                    r['action_comment'] += " Ignoré action Trail (source non trouvée)."
-                                    r['action'] = 'error_action'
-                                    r['rejected_reason'] = None
-                            else:
-                                r['action'] = 'kept'
-                                r['action_comment'] += " Rejeté (traînée) mais action=none."
-                        else:
-                            r['rejected_reason'] = 'trail_pending_action'
-                            r['action'] = 'pending_trail_action'
-                            r['action_comment'] += ' Action Trail différée.'
-                    else: # Pas de traînées trouvées pour ce fichier
-                        r['has_trails'] = False; r['num_trails'] = 0
-                else:  # Pas de résultat de trail_module pour ce fichier, vérifier les erreurs
-                    file_had_trail_error = False
-                    if trail_errors:
-                        # Chercher une erreur spécifique à ce fichier
-                        err_key_to_check = None
-                        if isinstance(input_for_trail_module, list): err_key_to_check = abs_file_path_for_trail
-                        else: err_key_to_check = (abs_file_path_for_trail, 0) # Tuple pour les patterns
-
-                        # Adapter la recherche d'erreur selon le type d'input_for_trail_module
-                        error_message_for_file = None
-                        if isinstance(input_for_trail_module, list):
-                            error_message_for_file = trail_errors.get(err_key_to_check)
-                        else: # Pattern
-                            for key_tuple_err, msg_err in trail_errors.items():
-                                if isinstance(key_tuple_err, tuple) and len(key_tuple_err) == 2:
+                        if action_to_take_trail != 'kept':
+                            if os.path.exists(current_path):
+                                if not source_action_allowed(r, current_path, abs_input_dir, _log):
+                                    continue
+                                if action_to_take_trail == 'moved_trail':
+                                    if _is_cancelled():
+                                        return _cancelled_result()
+                                    dest_path_trail = resolve_reject_destination(current_path, trail_reject_abs, abs_input_dir)
                                     try:
-                                        err_abs_path = os.path.abspath(key_tuple_err[0])
-                                        if os.path.normcase(err_abs_path) == os.path.normcase(abs_file_path_for_trail) and key_tuple_err[1] == 0:
-                                            error_message_for_file = msg_err
-                                            break
-                                    except: pass
-                        
-                        if error_message_for_file and "is not a valid science extension" not in str(error_message_for_file):
-                            r['action_comment'] += f" Erreur détection trail ({str(error_message_for_file)[:50]}...). "
-                            file_had_trail_error = True
-                    if not file_had_trail_error:
-                         r['has_trails'] = False; r['num_trails'] = 0 # Marquer comme non-traînée si pas d'erreur spécifique
+                                        status = move_to_reject_destination(current_path, dest_path_trail)
+                                        if status == 'moved':
+                                            _log("logic_moved_info", folder=os.path.basename(trail_reject_abs), text_key_suffix="_trail", file_rel_path=r['rel_path'])
+                                            r['path'] = dest_path_trail
+                                            r['action'] = 'moved_trail'
+                                        elif status == 'already':
+                                            r['action_comment'] += " Déjà dans dossier cible Trail?"
+                                            r['action'] = 'kept'
+                                        else:
+                                            _log("logic_move_collision", file=r['rel_path'], dest=os.path.basename(dest_path_trail or ''))
+                                            r['action_comment'] += " Collision: destination existante, déplacement refusé (retry différé)."
+                                            r['rejected_reason'] = 'trail_pending_action'
+                                            r['action'] = 'pending_trail_action'
+                                            r['status'] = 'ok'
+                                    except Exception as move_e_tr:
+                                        _log("logic_move_error", file=r['rel_path'], e=move_e_tr)
+                                        r['action_comment'] += f" Erreur déplacement Trail: {move_e_tr}"
+                                        r['action'] = 'error_move'
+                                        r['rejected_reason'] = None
+                                elif action_to_take_trail == 'deleted_trail':
+                                    if _is_cancelled():
+                                        return _cancelled_result()
+                                    try:
+                                        os.remove(current_path)
+                                        _log("logic_trail_file_deleted", rel=r['rel_path'])
+                                        r['path'] = None
+                                        r['action'] = 'deleted_trail'
+                                    except Exception as del_e_tr:
+                                        _log("logic_trail_delete_error", rel=r['rel_path'], e=del_e_tr)
+                                        r['action_comment'] += f" Erreur suppression Trail: {del_e_tr}"
+                                        r['action'] = 'error_delete'
+                                        r['rejected_reason'] = None
+                            else:
+                                _log("logic_move_skipped", file=r['rel_path'])
+                                r['action_comment'] += " Ignoré action Trail (source non trouvée)."
+                                r['action'] = 'error_action'
+                                r['rejected_reason'] = None
+                        else:
+                            r['action'] = 'kept'
+                            r['action_comment'] += " Rejeté (traînée) mais action=none."
+                    else:
+                        r['rejected_reason'] = 'trail_pending_action'
+                        r['action'] = 'pending_trail_action'
+                        r['action_comment'] += ' Action Trail différée.'
+                # Tous les autres états (négatif/échec/indéterminé/indisponible)
+                # ne déclenchent JAMAIS d'action de rejet/déplacement/suppression.
+
+        # Fichiers jamais mesurés (exclus en amont par SNR/starcount/FWHM/ECC, ou
+        # source disparue) : état skipped explicite, jamais indeterminate implicite.
+        for r in all_results_list:
+            if r.get('trail_state') is None:
+                r['trail_state'] = 'skipped'
+                reason = 'upstream_selection'
+                if r.get('rejected_reason'):
+                    reason = f"upstream_selection:{r['rejected_reason']}"
+                r['trail_reason'] = trail_module.bound_message(reason)
+                r['has_trails'] = None
+                r['num_trails'] = None
+                r['trail_segments'] = None
+                r['trail_segment_count'] = None
 
     # --- Tri Bortle et organisation ---
     if _is_cancelled():
@@ -2057,9 +2429,15 @@ def perform_analysis(input_dir, output_log, options, callbacks):
                 ]
                 if options.get('detect_trails') and SATDET_AVAILABLE:
                     trail_status = 'N/A'
-                    if 'has_trails' in r:
-                        trail_status = 'Oui' if r['has_trails'] else 'Non'
-                    log_line_parts.extend([trail_status, str(r.get('num_trails', 0))])
+                    state = r.get('trail_state')
+                    if state == 'measured_positive':
+                        trail_status = 'Oui'
+                    elif state == 'measured_negative':
+                        trail_status = 'Non'
+                    # Pas de fallback has_trails : un bool legacy sans preuve
+                    # reste N/A (jamais Oui/Non probant).
+                    nbseg = r.get('num_trails')
+                    log_line_parts.extend([trail_status, str(nbseg) if nbseg is not None else 'N/A'])
 
                 log_line_parts.extend([
                     str(r.get('exposure', 'N/A')),

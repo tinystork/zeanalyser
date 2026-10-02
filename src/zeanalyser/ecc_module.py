@@ -69,9 +69,22 @@ pour avoir isolé un cas rarissime et permis d'améliorer l’équilibre ECC / s
  
 """
 
+import inspect
+
 import numpy as np
 from astropy.stats import sigma_clipped_stats
 from photutils.detection import DAOStarFinder
+
+# Photutils replaced the deprecated ``sharplo/sharphi/roundlo/roundhi``
+# parameters with ``sharpness_range``/``roundness_range``. Detect support once
+# at import time so the same detection path works across Photutils versions
+# without changing the effective filter values.
+try:
+    _DAO_PARAMS = inspect.signature(DAOStarFinder.__init__).parameters
+except Exception:  # pragma: no cover - defensive, signature should exist
+    _DAO_PARAMS = {}
+_HAS_SHARPNESS_RANGE = 'sharpness_range' in _DAO_PARAMS
+_HAS_ROUNDNESS_RANGE = 'roundness_range' in _DAO_PARAMS
 
 # Default constants for star detection
 DEFAULT_THRESHOLD_SIGMA = 5.0
@@ -118,6 +131,44 @@ def _outcome(outcome, fwhm=np.nan, ecc=np.nan, n=0, reason=None):
         'n': int(n),
         'reason': reason,
     }
+
+
+def _second_moments_eigen(cov_matrix):
+    """Return ``(sigma_major2, sigma_minor2)`` for a physical star, else ``None``.
+
+    ``cov_matrix`` is a real symmetric 2x2 covariance of the weighted second
+    moments of a star cutout. Its eigenvalues are the squared semi-axes of the
+    fitted 2-D Gaussian, so they are real. The real-symmetric eigensolver
+    (``eigvalsh``) is used instead of the general solver (``eigvals``): the
+    latter can return a complex dtype even for symmetric input, which made the
+    downstream ``float(...)`` casts emit ComplexWarning. No global warning
+    filtering is used. ``eigvalsh`` returns eigenvalues in ascending order.
+
+    Only negligible rounding errors are clipped (a covariance is positive
+    semi-definite); genuinely degenerate or non-finite stars return ``None``
+    so they are skipped rather than masked.
+    """
+    cov = np.asarray(cov_matrix)
+    if cov.shape != (2, 2):
+        return None
+    if not np.all(np.isfinite(cov)):
+        return None
+    eigvals = np.linalg.eigvalsh(cov)
+    sigma_minor2 = eigvals[0]
+    sigma_major2 = eigvals[1]
+
+    if not (np.isfinite(sigma_major2) and np.isfinite(sigma_minor2)):
+        return None
+    if sigma_major2 <= 0:
+        return None
+    # A covariance is positive semi-definite; clip only negligible
+    # negative rounding on the minor variance.
+    if sigma_minor2 < 0:
+        if sigma_minor2 > -1e-12 * sigma_major2:
+            sigma_minor2 = 0.0
+        else:
+            return None
+    return sigma_major2, sigma_minor2
 
 
 def _measure_fwhm_ecc(
@@ -178,15 +229,18 @@ def _measure_fwhm_ecc(
         xy_cov = np.sum((x_coords - (x_mean - x_min)) * (y_coords - (y_mean - y_min)) * cutout) / total_flux
 
         cov_matrix = np.array([[x_var, xy_cov], [xy_cov, y_var]])
-        eigvals = np.linalg.eigvals(cov_matrix)
-        sigma_major2 = np.max(eigvals)
-        sigma_minor2 = np.min(eigvals)
+        moments = _second_moments_eigen(cov_matrix)
+        if moments is None:
+            continue
+        sigma_major2, sigma_minor2 = moments
 
         fwhm_major = 2.3548 * np.sqrt(sigma_major2)
         fwhm_minor = 2.3548 * np.sqrt(sigma_minor2)
         fwhm_mean = 0.5 * (fwhm_major + fwhm_minor)
 
         ecc = np.sqrt(1.0 - sigma_minor2 / sigma_major2)
+        if not (np.isfinite(fwhm_mean) and np.isfinite(ecc) and 0.0 <= ecc <= 1.0):
+            continue
 
         fwhm_list.append(fwhm_mean)
         ecc_list.append(ecc)
@@ -272,9 +326,10 @@ def _detect_stars(
     if not np.isfinite(bg) or not np.isfinite(noise) or noise <= 0:
         return bg, noise, None
 
-    finder = DAOStarFinder(
+    finder = _make_star_finder(
         fwhm=fwhm,
-        threshold=threshold_sigma * noise,
+        threshold_sigma=threshold_sigma,
+        noise=noise,
         sharplo=sharplo,
         sharphi=sharphi,
         roundlo=roundlo,
@@ -282,6 +337,41 @@ def _detect_stars(
     )
     sources = finder(data - bg)
     return bg, noise, sources if sources is not None and len(sources) > 0 else None
+
+
+def _make_star_finder(
+    *,
+    fwhm,
+    threshold_sigma,
+    noise,
+    sharplo=DEFAULT_SHARPLO,
+    sharphi=DEFAULT_SHARPHI,
+    roundlo=DEFAULT_ROUNDLO,
+    roundhi=DEFAULT_ROUNDHI,
+):
+    """Build a DAOStarFinder with the current Photutils parameter forms.
+
+    On Photutils that supports ``sharpness_range``/``roundness_range`` these
+    are used instead of the deprecated ``sharplo/sharphi/roundlo/roundhi``;
+    the effective filter bounds stay identical (``(sharplo, sharphi)`` and
+    ``(roundlo, roundhi)``). On older Photutils the legacy parameters are
+    passed unchanged.
+    """
+    if _HAS_SHARPNESS_RANGE and _HAS_ROUNDNESS_RANGE:
+        return DAOStarFinder(
+            fwhm=fwhm,
+            threshold=threshold_sigma * noise,
+            sharpness_range=(sharplo, sharphi),
+            roundness_range=(roundlo, roundhi),
+        )
+    return DAOStarFinder(
+        fwhm=fwhm,
+        threshold=threshold_sigma * noise,
+        sharplo=sharplo,
+        sharphi=sharphi,
+        roundlo=roundlo,
+        roundhi=roundhi,
+    )
 
 
 def calculate_fwhm_ecc(

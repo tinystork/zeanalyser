@@ -444,4 +444,4 @@ def test_new_translation_keys_and_placeholders_have_fr_en_parity():
 
 
 def test_mission_minor_version_bump():
-    assert __version__ == "3.4.0"
+    assert __version__ == "3.5.0"
