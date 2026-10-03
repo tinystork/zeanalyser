@@ -2102,6 +2102,8 @@ class ZeAnalyserMainWindow(QMainWindow):
             self.input_btn.clicked.connect(self._choose_input_folder)
         if isinstance(self.log_btn, QPushButton):
             self.log_btn.clicked.connect(self._choose_output_file)
+        if isinstance(self.bortle_browse_btn, QPushButton):
+            self.bortle_browse_btn.clicked.connect(self._choose_bortle_file)
 
         # SNR browsing and apply actions
         try:
@@ -3884,6 +3886,45 @@ class ZeAnalyserMainWindow(QMainWindow):
             except Exception:
                 pass
             self._update_log_and_vis_buttons_state(emit_diagnostic=True)
+
+    def _choose_bortle_file(self) -> None:
+        """Choose a Bortle base raster file (GeoTIFF/KMZ) via a file dialog."""
+        if QFileDialog is object:
+            return
+
+        # Derive a portable, useful starting directory from the existing path
+        # when present, without requiring the raster to exist on disk.
+        start_dir = ""
+        try:
+            current = getattr(self, 'bortle_path_edit', None)
+            if current is not None:
+                value = current.text().strip()
+                if value:
+                    if os.path.isdir(value):
+                        start_dir = value
+                    else:
+                        parent = os.path.dirname(value)
+                        if parent:
+                            start_dir = parent
+        except Exception:
+            start_dir = ""
+        if not start_dir:
+            start_dir = os.path.expanduser("~")
+
+        filename, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            _("bortle_file_label"),
+            start_dir,
+            "GeoTIFF/KMZ (*.tif *.tiff *.kmz);;All Files (*)",
+        )
+        if filename:
+            if getattr(self, 'bortle_path_edit', None) is not None:
+                self.bortle_path_edit.setText(filename)
+            try:
+                settings = QSettings()
+                settings.setValue('paths/bortle', filename)
+            except Exception:
+                pass
 
     def _open_log_file(self) -> None:
         """Open the log file with the system default application (best-effort)."""
