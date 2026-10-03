@@ -4040,6 +4040,20 @@ class ZeAnalyserMainWindow(QMainWindow):
             include_exposure_cb.setChecked(False)
             layout.addWidget(include_exposure_cb)
 
+            # Ranking mode selector (quality default, metadata/legacy optional)
+            ranking_layout = QHBoxLayout()
+            ranking_layout.addWidget(QLabel(_("ranking_mode_label")))
+            ranking_combo = QComboBox()
+            ranking_combo.addItem(_("ranking_mode_quality"), "quality")
+            ranking_combo.addItem(_("ranking_mode_metadata"), "metadata")
+            ranking_combo.setCurrentIndex(0)
+            ranking_layout.addWidget(ranking_combo)
+            layout.addLayout(ranking_layout)
+
+            ranking_hint = QLabel(_("ranking_mode_quality_hint"))
+            ranking_hint.setWordWrap(True)
+            layout.addWidget(ranking_hint)
+
             # Preview labels
             preview_layout = QHBoxLayout()
             total_label = QLabel(_("stack_plan_preview_total", count=0))
@@ -4077,6 +4091,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     include_exposure_in_batch=include_exposure_cb.isChecked(),
                     criteria=criteria,
                     sort_spec=sort_spec,
+                    ranking_mode=ranking_combo.currentData(),
                 )
 
                 total_count = len(plan_rows)
@@ -4106,6 +4121,7 @@ class ZeAnalyserMainWindow(QMainWindow):
                     include_exposure_in_batch=include_exposure_cb.isChecked(),
                     criteria=criteria,
                     sort_spec=sort_spec,
+                    ranking_mode=ranking_combo.currentData(),
                 )
 
                 if not plan_rows:
@@ -4144,6 +4160,7 @@ class ZeAnalyserMainWindow(QMainWindow):
             for combo in sort_vars.values():
                 combo.currentTextChanged.connect(update_preview)
             include_exposure_cb.stateChanged.connect(update_preview)
+            ranking_combo.currentIndexChanged.connect(update_preview)
 
             generate_btn.clicked.connect(generate_plan)
             cancel_btn.clicked.connect(dialog.reject)

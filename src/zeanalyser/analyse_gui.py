@@ -4367,9 +4367,13 @@ class AstroImageAnalyzerGUI:
         include_expo_var = tk.BooleanVar(value=False)
         value_vars = {}
         sort_order_vars = {}
+        ranking_var = tk.StringVar(value='quality')
 
         total_var = tk.StringVar()
         batch_var = tk.StringVar()
+
+        def current_ranking_mode():
+            return ranking_var.get() if ranking_var.get() in ('quality', 'metadata') else 'quality'
 
         def update_preview(*args):
             criteria = {}
@@ -4387,6 +4391,7 @@ class AstroImageAnalyzerGUI:
                 include_exposure_in_batch=include_expo_var.get(),
                 criteria=criteria,
                 sort_spec=sort_spec,
+                ranking_mode=current_ranking_mode(),
             )
             total_var.set(self._('stack_plan_preview_total', count=len(rows)))
             batch_var.set(self._('stack_plan_preview_batches', count=len({r['batch_id'] for r in rows})))
@@ -4417,6 +4422,30 @@ class AstroImageAnalyzerGUI:
                         variable=include_expo_var, command=update_preview).grid(row=row, column=0, sticky='w', pady=5)
         row += 1
 
+        ranking_frame = ttk.Frame(main)
+        ranking_frame.grid(row=row, column=0, sticky='w', pady=5)
+        ttk.Label(ranking_frame, text=self._('ranking_mode_label')).pack(side=tk.LEFT)
+        ranking_cb = ttk.Combobox(
+            ranking_frame, state='readonly', width=28,
+            values=[self._('ranking_mode_quality'), self._('ranking_mode_metadata')],
+        )
+        ranking_cb.set(self._('ranking_mode_quality'))
+        ranking_cb.pack(side=tk.LEFT, padx=5)
+
+        def _sync_ranking_mode(event=None):
+            txt = ranking_cb.get()
+            if txt == self._('ranking_mode_metadata'):
+                ranking_var.set('metadata')
+            else:
+                ranking_var.set('quality')
+            update_preview()
+
+        ranking_cb.bind('<<ComboboxSelected>>', _sync_ranking_mode)
+        row += 1
+
+        ttk.Label(main, text=self._('ranking_mode_quality_hint'), wraplength=520, justify=tk.LEFT).grid(row=row, column=0, sticky='w', pady=5)
+        row += 1
+
         ttk.Label(main, textvariable=total_var).grid(row=row, column=0, sticky='w'); row += 1
         ttk.Label(main, textvariable=batch_var).grid(row=row, column=0, sticky='w'); row += 1
 
@@ -4436,6 +4465,7 @@ class AstroImageAnalyzerGUI:
                 include_exposure_in_batch=include_expo_var.get(),
                 criteria=criteria,
                 sort_spec=sort_spec,
+                ranking_mode=current_ranking_mode(),
             )
             if not rows:
                 messagebox.showwarning(self._('msg_warning'), self._('msg_export_no_images'), parent=window)
