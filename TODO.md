@@ -1,6 +1,7 @@
 # TODO — ZeAnalyser
 
-Mis à jour le **2026-10-01**. Branche de travail : **beta**.
+Mis à jour le **2026-10-03**. Produit stable de travail : **beta** ;
+plan expérimental « Future development » : **test** locale issue de beta.
 
 Ce fichier est le tableau de bord des deux prochains chantiers : **traînées** et
 **transparence / voile nuageux**. Il distingue les prérequis, les critères de
@@ -8,7 +9,7 @@ validation et les dettes indépendantes. Une case cochée indique une preuve
 acquise, pas simplement du code présent. Aucun nouveau chantier scientifique
 n'a été implémenté lors de sa rédaction.
 
-## 1. État de départ vérifié
+## 1. État de départ vérifié — historique du 2026-10-01
 
 - [x] Références distantes actualisées ; `beta` locale avancée en fast-forward
   vers `origin/beta`, sans nouvelle fusion de fonctionnalités.
@@ -31,6 +32,16 @@ L'ancien échec `test_project_tab_file_pickers_and_analyse_enable` n'a **pas** �
 reproduit dans cette exécution isolée. Ne pas le déclarer encore défectueux,
 ni considérer qu'une correction produit a été faite : surveiller son isolation.
 Les tests de GUI existants ne prouvent pas à eux seuls l'efficacité d'un détecteur.
+
+### Point de situation au 2026-10-03
+
+- [x] BASE-01/02/03A et TRAIL-01 acceptés (détails ci-dessous) ; pas à refaire.
+- [x] Sur beta 3.5.0 `c0f7a3b` : intégration quality-first + Browse Bortle ;
+  dernière validation enregistrée **381 tests passés / 45 warnings**, revue ACCEPT.
+  Bilan repris de l'intégration ; aucune suite rejouée pour cet ajout documentaire.
+- [x] Branche locale `test` créée depuis ce beta dans un worktree séparé ;
+  checkout beta/runtime inchangé, ancienne `origin/test` non réécrite.
+- [ ] Piste ML ci-dessous : plan uniquement, modèle/données/outillage non livrés.
 
 ## 2. Avant les nouveaux algorithmes : stabilisation courte
 
@@ -361,8 +372,84 @@ Références algorithmiques :
 - [PyASB](https://github.com/mireianievas/PyASB) : photométrie plein ciel.
 - [Photutils](https://photutils.readthedocs.io/) : briques de mesure déjà disponibles.
 
-**Prochaine tâche unique recommandée : constituer le corpus réel annoté et
-trancher l'architecture des défauts capteur (mono-image indéterminé vs contexte
-multi-frame / carte bad-pixel) avant sélection du backend TRAIL.**
-Ce fichier prépare les missions ;
-il n'autorise ni ne constate leur réalisation, publication ou déploiement.
+## 8. Future development — apprentissage visuel assisté par le viewer
+
+**Statut : plan expérimental, non implémenté, non promu.** Branche locale `test`
+issue de beta `c0f7a3b`. Cette piste ne remplace pas les baselines explicites ni
+leurs contrats. [Plan de développement complet](docs/future-ml-quality-learning.md).
+
+### Intention
+
+Annoter les poses individuelles dans le viewer après analyse, puis entraîner
+un candidat séparément : traînées, sous-type satellite/avion/unknown,
+obstructions opaques et voile probable. Plusieurs défauts peuvent coexister.
+Pas d'apprentissage silencieux à chaque clic ni de rejet automatique.
+
+### ML-00 — Choix du candidat et extension des contrats
+
+- [x] Recherche documentaire : candidat **LR-ASPP + MobileNetV3-Large**,
+  TorchVision BSD-3-Clause, référence 3,22 M paramètres / fichier ~12,49 MB.
+  Poids génériques, **pas un détecteur astro déjà entraîné** ; RAM/vitesse à mesurer.
+- [ ] Valider droits/provenance des poids et corpus séparément de la licence code.
+- [ ] Définir une nouvelle version des contrats corpus/résultats : obstruction,
+  masques/polygones, régions revues/ignore, multi-label, provenance modèle/humain.
+  Préserver les schémas v1 et la règle de non-confusion erreur/négatif.
+- [ ] Challenger limité : U-Net à encodeur mobile si LR-ASPP perd les traits fins ;
+  architecture choisie sur résultats réels, pas sur seule taille de poids.
+
+### ML-01 — Atelier d'annotation intégré, autonome sans ML
+
+- [ ] Mode Annotation Qt : traits + largeur, polygones/pinceau, tags de voile,
+  unknown/incertain, validation négative explicite par famille, undo/redo.
+- [ ] Overlays sur ZeImageView existant, coordonnées natives correctes à tous
+  zooms/CFA/HiDPI, protection contre changements asynchrones d'image.
+- [ ] Delete/Backspace supprime l'annotation en cours, jamais le FITS dans ce mode.
+- [ ] Sauvegarde locale atomique/reload/export sans modifier les originaux ou rejets.
+
+### ML-02 — Corpus versionné et révisé
+
+- [ ] Exploiter les 7 poses de traînées et la séquence de feuillage signalées
+  comme premiers événements à annoter ; la séquence de 84 poses n'est qu'un
+  événement, pas 84 observations indépendantes.
+- [ ] Inclure négatifs difficiles et événements nouveaux ; les rangs qualité
+  actuels et prédictions ML ne sont pas des vérités terrain.
+- [ ] Splits par groupes liés session/cible/événement avant tuiles/augmentations,
+  revue indépendante validation/holdout, suivi des désaccords et régions inconnues.
+- [ ] Pilote 100–200 images puis premier essai de l'ordre de 500–1 000 images
+  diverses ; élargir selon courbes d'apprentissage, pas quota magique 5k/20k.
+- [ ] Objectif de collecte indicatif : ~3 000 images uniques (1 500 négatifs
+  et 500 par strate traînées/obstructions/voile), validation/holdout inclus,
+  événements indépendants et masques réels. Pas une garantie de suffisance.
+- [ ] Données privées/poids hors Git ; export portable relatif et pseudonymisé.
+
+### ML-03 / ML-04 — Modèle et inférence portables
+
+- [ ] Entraînement isolé PyTorch, tête multilabel et labels partiels ; commencer
+  traînées/obstructions, puis voile avec indices photométriques/temporels.
+- [ ] Vue globale + tuiles haute résolution ; aucune promesse sur traits 1 px
+  après forte réduction. Prétraitement FITS versionné identique train/inférence.
+- [ ] Export ONNX et parité mesurée ; TinyDebian CPU / GPU 3070M optionnel,
+  batch/thread/mémoire bornés, aucun modèle dupliqué dans chaque worker.
+- [ ] RTX 3070M (Ampere) : runtime PyTorch/CUDA qualifié par vrai forward/backward ;
+  annotation/inférence CPU normales sur TinyDebian, entraînement complet non promis.
+  VRAM 3070M typiquement 8 Go, à confirmer ; tuiles/batch/AMP ajustés aux mesures.
+  Les utilisateurs des poids entraînés n'ont besoin ni de NVIDIA ni de réentraîner.
+- [ ] Comparer satdet/Hough/MRT ; rappel/localisation, FP/image, abstention,
+  sous-types et masques, coûts complets p50/p95/RSS/VRAM avec tuilage.
+
+### ML-05 / ML-06 — Boucle d'amélioration et promotion
+
+- [ ] Export corpus / entraînement candidat hors thread GUI / import modèle ;
+  snapshot de données, logs, interruption/checkpoint et reproductibilité.
+- [ ] Sélection actif/candidat explicite, paquet modèle versionné, rollback ;
+  modèle actif immuable durant un run, pas d'auto-apprentissage sur ses prédictions.
+- [ ] Active learning dans le pool de développement avec échantillon diversifié ;
+  corpus ancien+nouveau pour éviter l'oubli, holdout jamais recyclé pour réglage.
+- [ ] Validation par nuits/cibles/événements indépendants, intervalles et taille
+  effective des échantillons ; vitesse CPU et GPU réellement mesurées.
+- [ ] Mode conseil seulement au départ. Toute influence sur quality-first,
+  sélection/CSV/consommation ZSSS fait l'objet d'un contrat et d'une mission distincts.
+
+**Prochaine mission pour cette piste : ML-00 puis ML-01 (annotation).**
+Le corpus ainsi créé servira aussi aux détecteurs explicites TRAIL/CLOUD ;
+aucun backend scientifique existant n'est retiré ou promu par ce plan.
